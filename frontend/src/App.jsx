@@ -67,6 +67,15 @@ const CATEGORY_MAP = {
 	manta: 'acessorios',
 };
 
+// Ordem de renderização do catálogo (categorias × produtos) → prioridade de imagem.
+// Posições 1–4: alta (eager/high) · 5–8: média (lazy/auto) · 9+: baixa (lazy/low).
+const CATALOG_ORDER = CATEGORIES.flatMap(cat =>
+	PRODUCTS.filter(p => CATEGORY_MAP[p.id] === cat.id).map(p => p.id),
+);
+const IMG_PRIORITY_BY_ID = Object.fromEntries(
+	CATALOG_ORDER.map((id, i) => [id, i < 4 ? 'high' : i < 8 ? 'auto' : 'low']),
+);
+
 const MATERIAL_MAP = {
 	moletom: '50% Algodão, 50% Poliéster. Conforto premium para treino e lazer.',
 	kits: 'Itens da atlética reunidos com desconto de combo.',
@@ -286,6 +295,15 @@ export default function App() {
 		localStorage.setItem('aasiam-theme', theme);
 	}, [theme]);
 
+	/* hide splash screen once React has mounted (fallback de 2.5s no index.html) */
+	useEffect(() => {
+		const splash = document.getElementById('splash-screen');
+		if (splash) {
+			splash.style.opacity = '0';
+			setTimeout(() => splash.remove(), 400);
+		}
+	}, []);
+
 	function toggleTheme() {
 		setTheme(t => (t === 'dark' ? 'light' : 'dark'));
 	}
@@ -473,10 +491,12 @@ function SiteHeader({
 					{brokenMobile ? (
 						fallbackSpan
 					) : (
-						<img
+						<SmartImage
 							src="/logo-aasiam.jpg"
 							alt="AASIAM"
 							className="brand-logo"
+							priority="high"
+							skeleton={false}
 							onError={() => setBrokenMobile(true)}
 						/>
 					)}
@@ -497,10 +517,12 @@ function SiteHeader({
 							{brokenDesktop ? (
 								fallbackSpan
 							) : (
-								<img
+								<SmartImage
 									src="/logo-aasiam.jpg"
 									alt="AASIAM"
 									className="brand-logo"
+									priority="high"
+									skeleton={false}
 									onError={() => setBrokenDesktop(true)}
 								/>
 							)}
@@ -640,7 +662,7 @@ function HeroBanner() {
 							if (!wasDrag.current) setCurrent(i);
 						}}
 					>
-						<img src={slide.src} alt={slide.alt} draggable={false} />
+						<SmartImage src={slide.src} alt={slide.alt} priority="high" />
 					</div>
 				))}
 			</div>
@@ -730,9 +752,65 @@ function CatalogView({ onOpen, className }) {
 	);
 }
 
+function toWebp(src) {
+	return src.replace(/\.(png|jpe?g)$/i, '.webp');
+}
+
+/**
+ * <picture> com WebP (source principal) + fallback PNG/JPG, prioridade de
+ * carregamento e skeleton com pulse enquanto a imagem não carrega.
+ * priority: 'high' (eager) | 'auto' (lazy) | 'low' (lazy)
+ */
+function SmartImage({
+	src,
+	alt,
+	priority = 'low',
+	className,
+	imgRef,
+	onLoad,
+	onError,
+	skeleton = true,
+}) {
+	const [loaded, setLoaded] = useState(false);
+	function handleLoaded(e) {
+		setLoaded(true);
+		onLoad?.(e);
+	}
+	function handleError(e) {
+		setLoaded(true);
+		onError?.(e);
+	}
+	return (
+		<>
+			{skeleton && (
+				<span
+					className={`img-skeleton${loaded ? ' is-hidden' : ''}`}
+					aria-hidden="true"
+				/>
+			)}
+			<picture className="smart-picture">
+				<source srcSet={toWebp(src)} type="image/webp" />
+				<img
+					ref={imgRef}
+					src={src}
+					alt={alt}
+					className={className}
+					draggable={false}
+					decoding="async"
+					loading={priority === 'high' ? 'eager' : 'lazy'}
+					fetchPriority={priority}
+					onLoad={handleLoaded}
+					onError={handleError}
+				/>
+			</picture>
+		</>
+	);
+}
+
 function ProductTile({ product, onOpen }) {
 	const img = product.images?.[0];
 	const soldOut = product.soldOut === true;
+	const priority = IMG_PRIORITY_BY_ID[product.id] || 'low';
 	// Combos (têm lista `includes`) não exibem badge de texto sobreposto na imagem
 	const isCombo = Array.isArray(product.includes) && product.includes.length > 0;
 	return (
@@ -745,7 +823,7 @@ function ProductTile({ product, onOpen }) {
 		>
 			<div className="tile-media">
 				{img ? (
-					<img src={img} alt={product.name} />
+					<SmartImage src={img} alt={product.name} priority={priority} />
 				) : (
 					<div className="tile-placeholder">
 						<ShoppingBag size={48} />
@@ -856,11 +934,12 @@ function DetailView({ product, onBack, onAdd, onBuyNow, className }) {
 					onTouchEnd={onSwipeEnd}
 				>
 					{images.length > 0 ? (
-						<img
-							ref={imgRef}
+						<SmartImage
 							src={images[imgIndex]}
 							alt={product.name}
-							draggable={false}
+							priority="low"
+							imgRef={imgRef}
+							skeleton={false}
 						/>
 					) : (
 						<div className="detail-placeholder">
@@ -1377,7 +1456,12 @@ function CartItem({ item, onQty, onRemove }) {
 		<div className="cart-item">
 			<div className="cart-thumb">
 				{item.image ? (
-					<img src={item.image} alt={item.name} />
+					<SmartImage
+						src={item.image}
+						alt={item.name}
+						priority="low"
+						skeleton={false}
+					/>
 				) : (
 					<div className="cart-thumb-ph">
 						<PackageCheck size={26} />
@@ -1638,7 +1722,12 @@ function CheckoutView({ cart, onBack, onResult, appliedCupom, className }) {
 							<div className="summary-mini-item" key={item.key}>
 								<div className="summary-mini-thumb">
 									{item.image ? (
-										<img src={item.image} alt={item.name} />
+										<SmartImage
+											src={item.image}
+											alt={item.name}
+											priority="low"
+											skeleton={false}
+										/>
 									) : (
 										<div className="summary-mini-ph">
 											<PackageCheck size={18} />

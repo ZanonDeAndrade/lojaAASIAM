@@ -8,14 +8,90 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+
+    <!-- Prioridade 1: imagens acima da dobra (logo, banner e primeiros cards) -->
+    <link rel="preload" as="image" href="/logo-aasiam.webp" type="image/webp" fetchpriority="high" />
+    <link rel="preload" as="image" href="/imgs/anuncio.webp" type="image/webp" fetchpriority="high" />
+    <link rel="preload" as="image" href="/imgs/moletom-verde.webp" type="image/webp" fetchpriority="high" />
+    <link rel="preload" as="image" href="/imgs/moletom-off-white.webp" type="image/webp" fetchpriority="high" />
+    <link rel="preload" as="image" href="/imgs/camiseta-aasiam.webp" type="image/webp" fetchpriority="high" />
+    <link rel="preload" as="image" href="/imgs/camiseta-aasiam-goleiro.webp" type="image/webp" fetchpriority="high" />
+
     <script>
       // Apply persisted theme before first paint — prevents flash
       const saved = localStorage.getItem("aasiam-theme");
       if (saved === "light") document.documentElement.classList.replace("dark", "light");
     </script>
+
+    <!-- Splash screen: estilizada inline para aparecer ANTES do bundle JS -->
+    <style>
+      #splash-screen {
+        position: fixed;
+        inset: 0;
+        z-index: 9999;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 22px;
+        background: #0b0f0d;
+        transition: opacity 0.4s ease;
+      }
+      html.light #splash-screen { background: #f5faf7; }
+      #splash-screen .splash-logo {
+        width: 92px;
+        height: 92px;
+        border-radius: 22px;
+        object-fit: cover;
+        box-shadow: 0 12px 44px -12px rgba(34, 197, 94, 0.5);
+        animation: splashPulse 1.6s ease-in-out infinite;
+      }
+      #splash-screen .splash-spinner {
+        width: 38px;
+        height: 38px;
+        border-radius: 50%;
+        border: 3px solid rgba(34, 197, 94, 0.22);
+        border-top-color: #22c55e;
+        animation: splashSpin 0.8s linear infinite;
+      }
+      @keyframes splashSpin { to { transform: rotate(360deg); } }
+      @keyframes splashPulse {
+        0%, 100% { transform: scale(1); }
+        50% { transform: scale(1.06); }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        #splash-screen .splash-logo,
+        #splash-screen .splash-spinner { animation: none; }
+      }
+    </style>
   </head>
   <body>
     <div id="root"></div>
+
+    <!-- Splash fica FORA do #root para existir antes do React montar -->
+    <div id="splash-screen">
+      <picture>
+        <source srcset="/logo-aasiam.webp" type="image/webp" />
+        <img class="splash-logo" src="/logo-aasiam.jpg" alt="AASIAM" />
+      </picture>
+      <div class="splash-spinner" aria-label="Carregando" role="status"></div>
+    </div>
+
+    <script>
+      // Remove a splash quando o React montar (App.jsx) OU após 2.5s — o que vier primeiro.
+      (function () {
+        function hideSplash() {
+          var el = document.getElementById("splash-screen");
+          if (!el || el.dataset.hiding) return;
+          el.dataset.hiding = "1";
+          el.style.opacity = "0";
+          setTimeout(function () { el.remove(); }, 400);
+        }
+        window.__hideSplash = hideSplash;
+        setTimeout(hideSplash, 2500);
+      })();
+    </script>
+
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>
