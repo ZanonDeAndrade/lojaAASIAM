@@ -3,6 +3,7 @@ import {
 	ArrowLeft,
 	Check,
 	CheckCircle2,
+	ChevronDown,
 	ChevronRight,
 	Copy,
 	CreditCard,
@@ -14,6 +15,7 @@ import {
 	PackageCheck,
 	Plus,
 	QrCode,
+	Ruler,
 	Share2,
 	ShoppingBag,
 	ShoppingCart,
@@ -913,6 +915,8 @@ function DetailView({ product, onBack, onAdd, onBuyNow, className }) {
 
 					<ProductSelectors product={product} sel={sel} onChange={set} />
 
+					{productHasHoodie(product) && <MedidaTabela />}
+
 					<div className="detail-actions">
 						{product.soldOut ? (
 							<button
@@ -1135,6 +1139,87 @@ function SizePills({ sizes, value, onChange }) {
 					{s}
 				</button>
 			))}
+		</div>
+	);
+}
+
+/* ── Guia de medidas (moletons) ── */
+const MEDIDAS_MOLETOM = [
+	{ size: 'PP', a: 60, b: 50 },
+	{ size: 'P', a: 63, b: 53 },
+	{ size: 'M', a: 67, b: 56 },
+	{ size: 'G', a: 70, b: 59 },
+	{ size: 'GG', a: 74, b: 63 },
+	{ size: 'XG', a: 77, b: 66 },
+];
+
+// Produtos que incluem moletom exibem o guia de medidas.
+function productHasHoodie(product) {
+	return (
+		product.kind === 'sizedVariants' ||
+		product.kind === 'doubleHoodie' ||
+		(product.kind === 'configuredBundle' && product.hasHoodie)
+	);
+}
+
+function MedidaTabela() {
+	const [open, setOpen] = useState(false);
+
+	return (
+		<div className="size-guide">
+			<button
+				type="button"
+				className={`size-guide-toggle${open ? ' open' : ''}`}
+				onClick={() => setOpen(o => !o)}
+				aria-expanded={open}
+			>
+				<span className="size-guide-toggle-label">
+					<Ruler size={16} /> Ver medidas
+				</span>
+				<ChevronDown size={16} className="size-guide-chevron" />
+			</button>
+
+			{open && (
+				<div className="size-guide-panel">
+					<h4 className="size-guide-title">
+						<Ruler size={16} /> Guia de Medidas
+					</h4>
+
+					<div className="size-guide-table-wrap">
+						<table className="size-guide-table">
+							<thead>
+								<tr>
+									<th>Tamanho</th>
+									<th>A (cm)</th>
+									<th>B (cm)</th>
+								</tr>
+							</thead>
+							<tbody>
+								{MEDIDAS_MOLETOM.map(row => (
+									<tr key={row.size}>
+										<td>{row.size}</td>
+										<td>{row.a}</td>
+										<td>{row.b}</td>
+									</tr>
+								))}
+							</tbody>
+						</table>
+					</div>
+
+					<p className="size-guide-legend">
+						A = Comprimento | B = Largura (em centímetros)
+					</p>
+
+					<div className="size-guide-notes">
+						<p>
+							<AlertCircle size={13} /> Os valores podem variar de 3cm a 5cm
+						</p>
+						<p className="size-guide-note-strong">
+							<AlertCircle size={13} /> Não realizamos trocas por tamanho
+						</p>
+					</div>
+				</div>
+			)}
 		</div>
 	);
 }
