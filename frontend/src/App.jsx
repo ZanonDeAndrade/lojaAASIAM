@@ -27,6 +27,7 @@ import gsap from 'gsap';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { PRODUCTS } from './shared/products.js';
 import { createEmptySelection } from './shared/order.js';
+import ChurrascoPage from './churrasco/ChurrascoPage.jsx';
 
 /* ─── constants ─── */
 const currency = new Intl.NumberFormat('pt-BR', {
@@ -271,6 +272,10 @@ export default function App() {
 	const [view, setView] = useState(() => {
 		const path = window.location.pathname;
 		const params = new URLSearchParams(window.location.search);
+		// Tudo sob /churrasco é a página do evento — inclusive o endereço
+		// antigo /churrasco/pagamento-concluido, que a própria página redireciona
+		// para /churrasco (o pagamento Pix acontece dentro dela, sem sair).
+		if (path === '/churrasco' || path.startsWith('/churrasco/')) return 'churrasco';
 		if (
 			path === '/pagamento-concluido' ||
 			(params.has('pedido') && params.has('status'))
@@ -365,6 +370,10 @@ export default function App() {
 	}
 
 	const cartCount = cart.reduce((t, i) => t + i.qty, 0);
+
+	// /churrasco é uma página própria da AASIAM: sem header da loja, sem
+	// carrinho e sem alternância de tema. Fica fora do app-shell de propósito.
+	if (view === 'churrasco') return <ChurrascoPage />;
 
 	return (
 		<div className="app-shell">

@@ -8,6 +8,17 @@ import express from "express";
 import { google } from "googleapis";
 import { calculateOrder, sanitizeSelection, getProduct, centsToAmount } from "./shared/order.js";
 import { criarLinkPagamento, verificarPagamento } from "./infinitepay.js";
+import {
+  createGoogleAuth,
+  ensureSheetExists,
+  ensureSheetHeader,
+  formatDateTime,
+  getGooglePrivateKey,
+  isGoogleSheetsConfigured,
+  quoteSheetName,
+} from "./google-sheets.js";
+import { CHURRASCO_WEBHOOK_PATH, registerChurrascoRoutes } from "./churrasco.js";
+import { ambienteMercadoPago, isMercadoPagoConfigured, isWebhookSecretConfigured } from "./mercadopago.js";
 
 const app = express();
 const port = process.env.PORT || 3333;
@@ -119,7 +130,8 @@ app.use((req, res, next) => {
   if (allowed) {
     res.setHeader("Access-Control-Allow-Origin", origin || "*");
     res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+    // X-Inscricao-Token: consulta de status da inscrição do churrasco.
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type, X-Inscricao-Token");
     res.setHeader("Access-Control-Max-Age", "86400");
   }
   if (req.method === "OPTIONS") return res.sendStatus(204);
@@ -128,11 +140,22 @@ app.use((req, res, next) => {
 
 app.use(express.json({ limit: "1mb" }));
 
+/* ─── CHURRASCO DA ALCATEIA ─── */
+// POST /api/churrasco/checkout · GET /api/churrasco/pagamentos/:orderId/status
+// POST /api/churrasco/webhook/mercadopago · GET /api/churrasco/config
+// Cobra por Pix no Checkout Transparente do Mercado Pago (API de Orders), com
+// aba de planilha própria. O checkout da loja continua na InfinitePay.
+registerChurrascoRoutes(app);
+
 app.get("/api/health", (_req, res) => {
   res.json({
     ok: true,
     infinitePayConfigured: Boolean(process.env.INFINITEPAY_HANDLE),
-    googleSheetsConfigured: isGoogleSheetsConfigured()
+    googleSheetsConfigured: isGoogleSheetsConfigured(),
+    // Só diz se está configurado — nunca a credencial em si.
+    churrascoConfigured: isMercadoPagoConfigured(),
+    churrascoWebhookConfigured: isWebhookSecretConfigured(),
+    churrascoAmbiente: ambienteMercadoPago()
   });
 });
 
@@ -589,6 +612,23 @@ app.listen(port, () => {
   console.log(`CORS    : ${[...ALLOWED_ORIGINS].join(", ")} + *.vercel.app`);
   console.log(`InfinitePay handle: ${process.env.INFINITEPAY_HANDLE || "⚠ NÃO CONFIGURADO"}`);
 
+  // Diagnóstico do churrasco — diz só se a credencial existe e de que tipo é.
+  console.log(
+    `Churrasco (Mercado Pago, só Pix): ${
+      isMercadoPagoConfigured()
+        ? `✓ credencial de ${ambienteMercadoPago()}`
+        : "✗ defina MERCADO_PAGO_ACCESS_TOKEN"
+    }`
+  );
+  console.log(
+    `  → webhook : ${(process.env.API_URL || "http://localhost:3333").replace(/\/$/, "")}${CHURRASCO_WEBHOOK_PATH}`
+  );
+  console.log(
+    `  → assinatura do webhook: ${
+      isWebhookSecretConfigured() ? "✓ configurada" : "✗ defina MERCADO_PAGO_WEBHOOK_SECRET"
+    }`
+  );
+
   // Diagnóstico do Google Sheets
   const sheetsOk = isGoogleSheetsConfigured();
   console.log(`Google Sheets configurado: ${sheetsOk ? "✓ SIM" : "✗ NÃO"}`);
@@ -635,7 +675,7 @@ async function appendOrderToSheet({
   const sheetName = defaultGoogleSheetName;
 
   await ensureSheetExists(sheets, spreadsheetId, sheetName);
-  await ensureSheetHeader(sheets, spreadsheetId, sheetName);
+  await ensureSheetHeader(sheets, spreadsheetId, sheetName, SHEET_HEADERS);
 
   const itemSummary = summarizeOrderLines(order.lines || []);
   const pagamento   = resolveCaptureMethod(captureMethod);
@@ -671,51 +711,6 @@ async function appendOrderToSheet({
   return { enabled: true, status: "appended", sheetName };
 }
 
-async function ensureSheetExists(sheets, spreadsheetId, sheetName) {
-  const spreadsheet = await sheets.spreadsheets.get({
-    spreadsheetId,
-    fields: "sheets.properties.title"
-  });
-
-  const hasSheet = spreadsheet.data.sheets?.some(
-    (sheet) => sheet.properties?.title === sheetName
-  );
-
-  if (hasSheet) return;
-
-  await sheets.spreadsheets.batchUpdate({
-    spreadsheetId,
-    requestBody: {
-      requests: [{ addSheet: { properties: { title: sheetName } } }]
-    }
-  });
-}
-
-async function ensureSheetHeader(sheets, spreadsheetId, sheetName) {
-  const res = await sheets.spreadsheets.values.get({
-    spreadsheetId,
-    range: `${quoteSheetName(sheetName)}!A1:N1`
-  });
-
-  const currentHeaders = res.data.values?.[0] || [];
-
-  // Grava/atualiza o cabeçalho se estiver ausente ou desatualizado (ex: migração de 13 → 14 colunas)
-  const needsUpdate =
-    currentHeaders.length === 0 ||
-    currentHeaders.length !== SHEET_HEADERS.length ||
-    !SHEET_HEADERS.every((h, i) => currentHeaders[i] === h);
-
-  if (!needsUpdate) return;
-
-  await sheets.spreadsheets.values.update({
-    spreadsheetId,
-    range: `${quoteSheetName(sheetName)}!A1`,
-    valueInputOption: "USER_ENTERED",
-    requestBody: { values: [SHEET_HEADERS] }
-  });
-  console.log("[Sheets] Cabeçalho da planilha atualizado.");
-}
-
 function resolveCaptureMethod(method) {
   const map = {
     pix:         "Pix",
@@ -742,56 +737,6 @@ function normalizeWebhookStatus(status) {
   return "Em análise";
 }
 
-function formatDateTime() {
-  return new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" });
-}
-
-function createGoogleAuth() {
-  const email = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
-  const key   = getGooglePrivateKey();
-
-  // Logs de diagnóstico — nunca expõe a chave completa
-  console.log(`[Google Auth] email configurado: ${email ? `${email.slice(0, 20)}...` : "NÃO DEFINIDO"}`);
-  console.log(`[Google Auth] private key: ${key
-    ? `${key.slice(0, 27).replace(/\n/g, "↵")}... (${key.length} chars, começa com BEGIN: ${key.includes("BEGIN PRIVATE KEY")})`
-    : "NÃO DEFINIDA"}`);
-
-  return new google.auth.JWT({
-    email,
-    key,
-    scopes: ["https://www.googleapis.com/auth/spreadsheets"]
-  });
-}
-
-function getGooglePrivateKey() {
-  // Alternativa Base64 (mais segura para painel de hosting)
-  if (process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY_BASE64) {
-    return Buffer.from(
-      process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY_BASE64,
-      "base64"
-    ).toString("utf8");
-  }
-
-  const raw = process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY || "";
-
-  // Normaliza os três formatos possíveis dependendo do ambiente:
-  //  1. Render UI: cole a chave com newlines reais → já tem \n reais, replace é no-op
-  //  2. .env local dotenv v17+: \n já convertido para newline real → idem
-  //  3. .env local dotenv antigo / var exportada manualmente: \n como backslash-n literal
-  return raw
-    .replace(/\\n/g, "\n")   // backslash-n literal → newline real
-    .trim();
-}
-
-function isGoogleSheetsConfigured() {
-  return Boolean(
-    process.env.GOOGLE_SHEETS_SPREADSHEET_ID &&
-      process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL &&
-      (process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY ||
-        process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY_BASE64)
-  );
-}
-
 function summarizeOrderLines(lines) {
   if (!lines.length) return { items: "", sizes: "" };
   return {
@@ -815,10 +760,6 @@ function cleanText(value, maxLength) {
     .trim()
     .replace(/\s+/g, " ")
     .slice(0, maxLength);
-}
-
-function quoteSheetName(sheetName) {
-  return `'${String(sheetName).replace(/'/g, "''")}'`;
 }
 
 function createOrderId() {

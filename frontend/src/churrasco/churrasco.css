@@ -1,0 +1,1119 @@
+/* ============================================================
+   AASIAM — Churrasco da Alcateia  (/churrasco)
+   Preto esverdeado · verde neon · brasa como único acento quente.
+   Tudo escopado em .ch-page para não tocar no CSS da loja.
+   ============================================================ */
+
+.ch-page {
+  /* ── cor ── */
+  --ch-carvao: #050806;
+  --ch-carvao-2: #080d09;
+  --ch-panel: #0b120e;
+  --ch-panel-2: #101a13;
+  --ch-field: #0c1410;
+  --ch-lista: #060d09;
+  --ch-lista-foco: #103322;
+  --ch-line: rgba(59, 228, 119, 0.16);
+  --ch-line-2: rgba(59, 228, 119, 0.32);
+  --ch-neon: #3be477;
+  --ch-neon-dim: #1aa85a;
+  --ch-osso: #f1f8f3;
+  --ch-fumaca: #8fa795;
+  --ch-brasa: #ff6b2b;
+  --ch-erro: #ff6b6b;
+
+  /* ── tipografia ── */
+  --ch-sans: 'Archivo', ui-sans-serif, system-ui, sans-serif;
+  --ch-mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+
+  /* ── forma ── */
+  --ch-r-sm: 10px;
+  --ch-r-md: 14px;
+  --ch-r-lg: 22px;
+  --ch-r-pill: 999px;
+
+  color-scheme: dark;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--ch-carvao);
+  color: var(--ch-osso);
+  font-family: var(--ch-sans);
+  overflow-x: hidden;
+}
+
+/* Brasa distante sob a dobra — a churrasqueira do mascote se apoia nela. */
+.ch-page::before {
+  content: '';
+  position: fixed;
+  inset: auto 0 0 0;
+  height: 45vh;
+  pointer-events: none;
+  z-index: 0;
+  background:
+    radial-gradient(70% 100% at 50% 130%, rgba(255, 107, 43, 0.10), transparent 68%),
+    radial-gradient(60% 100% at 50% 128%, rgba(59, 228, 119, 0.07), transparent 70%);
+}
+
+.ch-page > * { position: relative; z-index: 1; }
+
+.ch-page :focus-visible {
+  outline: 2px solid var(--ch-neon);
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+
+/* Estes títulos recebem foco por código só para o leitor de tela anunciar a
+   troca de etapa. Como não são controles, o anel visível confundiria. */
+.ch-page .ch-sucesso-title:focus-visible,
+.ch-page .ch-pix-titulo:focus-visible,
+.ch-page .ch-retorno-titulo:focus-visible {
+  outline: none;
+}
+
+.ch-container {
+  width: 100%;
+  max-width: 1140px;
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+.ch-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ─── BARRA DE MARCA ─────────────────────────────────────── */
+.ch-brandbar {
+  border-bottom: 1px solid var(--ch-line);
+  background: rgba(5, 8, 6, 0.86);
+  backdrop-filter: blur(10px);
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+
+.ch-brandbar-inner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 62px;
+}
+
+.ch-brand-logo {
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  object-fit: cover;
+  border: 1px solid var(--ch-line-2);
+  flex: 0 0 auto;
+}
+
+.ch-brand-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+
+.ch-brand-name {
+  font-weight: 800;
+  font-size: 1rem;
+  letter-spacing: 0.08em;
+  color: var(--ch-osso);
+  line-height: 1;
+}
+
+.ch-brand-sub {
+  font-family: var(--ch-mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ch-fumaca);
+  line-height: 1.3;
+}
+
+.ch-brand-link {
+  margin-left: auto;
+  font-family: var(--ch-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ch-fumaca);
+  text-decoration: none;
+  padding: 10px 4px;
+  transition: color 0.15s;
+  white-space: nowrap;
+}
+
+.ch-brand-link:hover { color: var(--ch-neon); }
+
+/* ─── GRADE PRINCIPAL ────────────────────────────────────── */
+/* Acima do rodapé: a lista de cursos abre para fora do painel e não pode
+   passar por baixo dele. */
+.ch-main { flex: 1; padding: 48px 0 0; z-index: 2; }
+
+.ch-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 440px);
+  gap: 56px;
+  align-items: start;
+}
+
+/* ─── APRESENTAÇÃO (coluna esquerda) ─────────────────────── */
+.ch-apresentacao {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.ch-title {
+  font-family: var(--ch-sans);
+  font-weight: 800;
+  font-size: clamp(2.5rem, 7vw, 4.3rem);
+  line-height: 0.92;
+  letter-spacing: -0.035em;
+  text-transform: uppercase;
+  color: var(--ch-osso);
+  margin: 0 0 18px;
+  text-wrap: balance;
+}
+
+.ch-title span { display: block; color: var(--ch-neon); }
+
+.ch-subtitle {
+  font-size: 1.02rem;
+  line-height: 1.6;
+  color: var(--ch-fumaca);
+  margin: 0 0 26px;
+  max-width: 44ch;
+}
+
+/* ── regra de valores: uma condição, não uma sequência ── */
+.ch-valores { max-width: 560px; }
+
+.ch-valores-label {
+  font-family: var(--ch-mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--ch-neon);
+  margin: 0 0 10px;
+}
+
+.ch-valores-linha {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(148px, 1fr));
+  gap: 10px;
+}
+
+.ch-tier {
+  border: 1px solid var(--ch-line);
+  border-radius: var(--ch-r-md);
+  background: var(--ch-panel);
+  padding: 12px 15px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ch-tier-label {
+  font-family: var(--ch-mono);
+  font-size: 0.6rem;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--ch-fumaca);
+  line-height: 1.35;
+}
+
+.ch-tier-price {
+  font-family: var(--ch-mono);
+  font-weight: 700;
+  font-size: 1.3rem;
+  letter-spacing: -0.02em;
+  color: var(--ch-osso);
+  line-height: 1;
+}
+
+.ch-tier-si {
+  border-color: var(--ch-line-2);
+  background: linear-gradient(160deg, rgba(59, 228, 119, 0.09), rgba(59, 228, 119, 0.02));
+}
+
+.ch-tier-si .ch-tier-label,
+.ch-tier-si .ch-tier-price { color: var(--ch-neon); }
+
+/* ── detalhes do evento (só aparecem quando preenchidos) ── */
+.ch-detalhes {
+  display: grid;
+  gap: 10px;
+  margin: 18px 0 0;
+  padding: 16px 18px;
+  max-width: 560px;
+  border: 1px solid var(--ch-line);
+  border-radius: var(--ch-r-md);
+  background: var(--ch-panel);
+}
+
+.ch-detalhe { display: flex; align-items: baseline; gap: 10px; font-size: 0.9rem; }
+
+.ch-detalhe dt {
+  font-family: var(--ch-mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ch-fumaca);
+  flex: 0 0 84px;
+}
+
+.ch-detalhe dd { margin: 0; color: var(--ch-osso); font-weight: 500; }
+
+/* ── o mascote ──
+   Recortado do fundo original, ele fica direto sobre o preto. A brasa é a
+   única coisa atrás dele: dá chão à churrasqueira sem virar moldura. */
+.ch-lobo {
+  position: relative;
+  width: 100%;
+  max-width: 620px;
+  margin: 28px 0 0;
+  align-self: flex-start;
+}
+
+.ch-lobo::before {
+  content: '';
+  position: absolute;
+  left: 4%;
+  right: 4%;
+  bottom: 2%;
+  height: 22%;
+  z-index: -1;
+  border-radius: 50%;
+  background: radial-gradient(ellipse at center, rgba(255, 107, 43, 0.34), transparent 70%);
+  filter: blur(26px);
+}
+
+.ch-lobo img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+/* ─── PAINEL DO FORMULÁRIO (coluna direita) ──────────────── */
+.ch-panel {
+  background: var(--ch-panel);
+  border: 1px solid var(--ch-line-2);
+  border-radius: var(--ch-r-lg);
+  padding: 28px;
+  box-shadow: 0 30px 70px -40px rgba(0, 0, 0, 0.9);
+  position: sticky;
+  top: 86px;
+}
+
+.ch-panel-head { margin: 0 0 22px; }
+
+.ch-panel-title {
+  font-weight: 800;
+  font-size: 1.15rem;
+  letter-spacing: -0.01em;
+  color: var(--ch-osso);
+  margin: 0 0 5px;
+}
+
+.ch-panel-hint { font-size: 0.86rem; color: var(--ch-fumaca); margin: 0; line-height: 1.5; }
+
+.ch-restaurando {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  padding: 10px 0;
+  font-size: 0.9rem;
+  color: var(--ch-fumaca);
+}
+
+.ch-form { display: flex; flex-direction: column; gap: 18px; }
+
+.ch-field { display: flex; flex-direction: column; gap: 8px; }
+
+.ch-label {
+  font-weight: 600;
+  font-size: 0.78rem;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  color: var(--ch-osso);
+}
+
+.ch-input {
+  width: 100%;
+  height: 52px;
+  padding: 0 16px;
+  border: 1px solid var(--ch-line);
+  border-radius: var(--ch-r-md);
+  background: var(--ch-field);
+  color: var(--ch-osso);
+  font-family: var(--ch-sans);
+  font-size: 1rem;
+  font-weight: 500;
+  outline: none;
+  transition: border-color 0.16s, box-shadow 0.16s, background 0.16s;
+}
+
+.ch-input::placeholder { color: #5d7264; }
+.ch-input:hover { border-color: var(--ch-line-2); }
+
+.ch-input:focus {
+  border-color: var(--ch-neon);
+  box-shadow: 0 0 0 3px rgba(59, 228, 119, 0.14);
+  background: var(--ch-panel-2);
+}
+
+.ch-input[aria-invalid='true'] {
+  border-color: var(--ch-erro);
+  box-shadow: 0 0 0 3px rgba(255, 107, 107, 0.12);
+}
+
+/* ─── LISTA DE CURSOS ────────────────────────────────────
+   Combobox próprio: o menu nativo do sistema é cinza e ignora
+   qualquer estilo. Aqui a lista é da AASIAM, e só ela existe.
+──────────────────────────────────────────────────────────── */
+.ch-combo { position: relative; }
+
+.ch-combo-gatilho {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  height: 52px;
+  padding: 0 14px 0 16px;
+  border: 1px solid var(--ch-line);
+  border-radius: var(--ch-r-md);
+  background: var(--ch-field);
+  color: var(--ch-osso);
+  font-family: var(--ch-sans);
+  font-size: 1rem;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.16s, box-shadow 0.16s, background 0.16s;
+}
+
+.ch-combo-gatilho:hover:not(:disabled) { border-color: var(--ch-line-2); }
+.ch-combo-gatilho:disabled { cursor: not-allowed; opacity: 0.6; }
+
+.ch-combo-gatilho.is-vazio .ch-combo-valor { color: #5d7264; }
+
+.ch-combo-valor {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ch-combo-seta {
+  flex: 0 0 auto;
+  color: var(--ch-fumaca);
+  transition: transform 0.18s ease, color 0.18s;
+}
+
+.ch-combo-gatilho[aria-expanded='true'] {
+  border-color: var(--ch-neon);
+  box-shadow: 0 0 0 3px rgba(59, 228, 119, 0.14);
+  background: var(--ch-panel-2);
+}
+
+.ch-combo-gatilho[aria-expanded='true'] .ch-combo-seta {
+  transform: rotate(180deg);
+  color: var(--ch-neon);
+}
+
+.ch-combo-gatilho[aria-invalid='true'] {
+  border-color: var(--ch-erro);
+  box-shadow: 0 0 0 3px rgba(255, 107, 107, 0.12);
+}
+
+/* A lista flutua sobre o painel: abrir não empurra nada. */
+.ch-combo-lista {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  z-index: 40;
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  max-height: min(330px, 58vh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--ch-lista);
+  border: 1px solid var(--ch-line-2);
+  border-radius: var(--ch-r-md);
+  box-shadow: 0 26px 54px -20px rgba(0, 0, 0, 0.95);
+  animation: ch-combo-abrir 0.14s ease both;
+}
+
+.ch-combo-lista.is-acima {
+  top: auto;
+  bottom: calc(100% + 8px);
+  animation-name: ch-combo-abrir-acima;
+}
+
+@keyframes ch-combo-abrir {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes ch-combo-abrir-acima {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+
+.ch-combo-opcao {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 11px 12px;
+  border-radius: 9px;
+  color: var(--ch-osso);
+  font-size: 0.95rem;
+  line-height: 1.3;
+  cursor: pointer;
+}
+
+.ch-combo-opcao.is-foco { background: var(--ch-lista-foco); }
+.ch-combo-opcao.is-selecionada { color: var(--ch-neon); font-weight: 600; }
+.ch-combo-opcao svg { flex: 0 0 auto; color: var(--ch-neon); }
+
+.ch-form-nota {
+  margin: -4px 0 0;
+  font-size: 0.78rem;
+  line-height: 1.55;
+  color: var(--ch-fumaca);
+  text-align: center;
+}
+
+.ch-error {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--ch-erro);
+  margin: 0;
+}
+
+.ch-error svg { flex: 0 0 auto; }
+
+/* ─── COMANDA ────────────────────────────────────────────
+   A assinatura da página: a inscrição vira uma comanda de
+   churrascaria — mesmo objeto no resumo e na confirmação.
+──────────────────────────────────────────────────────────── */
+.ch-comanda {
+  background: #131f18;
+  border: 1px solid var(--ch-line-2);
+  border-radius: var(--ch-r-md);
+  padding: 16px 18px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  overflow: hidden;
+}
+
+.ch-comanda-eyebrow {
+  font-family: var(--ch-mono);
+  font-size: 0.6rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--ch-fumaca);
+  margin-bottom: 8px;
+}
+
+.ch-comanda-curso {
+  font-weight: 700;
+  font-size: 1.06rem;
+  color: var(--ch-osso);
+  line-height: 1.25;
+}
+
+.ch-comanda-categoria {
+  font-family: var(--ch-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  color: var(--ch-fumaca);
+}
+
+/* linha picotada + entalhes laterais */
+.ch-comanda-tear {
+  position: relative;
+  height: 0;
+  border-top: 1px dashed var(--ch-line-2);
+  margin: 15px -18px;
+}
+
+.ch-comanda-tear::before,
+.ch-comanda-tear::after {
+  content: '';
+  position: absolute;
+  top: -9px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--ch-panel);
+}
+
+.ch-comanda-tear::before { left: -9px; }
+.ch-comanda-tear::after { right: -9px; }
+
+.ch-comanda-foot {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.ch-comanda-valor-label {
+  font-family: var(--ch-mono);
+  font-size: 0.6rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ch-fumaca);
+  display: block;
+  margin-bottom: 3px;
+}
+
+.ch-comanda-valor {
+  font-family: var(--ch-mono);
+  font-weight: 700;
+  font-size: 1.72rem;
+  letter-spacing: -0.02em;
+  color: var(--ch-neon);
+  line-height: 1;
+}
+
+.ch-stamp {
+  font-family: var(--ch-mono);
+  font-weight: 700;
+  font-size: 0.58rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ch-brasa);
+  border: 1.5px solid var(--ch-brasa);
+  border-radius: 5px;
+  padding: 5px 9px;
+  transform: rotate(-5deg);
+  white-space: nowrap;
+  opacity: 0.92;
+  flex: 0 0 auto;
+}
+
+.ch-stamp.is-pago { color: var(--ch-neon); border-color: var(--ch-neon); }
+
+.ch-comanda-codigo {
+  font-family: var(--ch-mono);
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--ch-osso);
+  overflow-wrap: anywhere;
+}
+
+.ch-comanda-nome { font-weight: 600; font-size: 0.95rem; color: var(--ch-osso); }
+
+/* ─── BOTÕES ─────────────────────────────────────────────── */
+.ch-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 54px;
+  padding: 0 24px;
+  border: 0;
+  border-radius: var(--ch-r-pill);
+  font-family: var(--ch-sans);
+  font-weight: 700;
+  font-size: 0.9rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+  text-decoration: none;
+  transition: background 0.16s, color 0.16s, border-color 0.16s, box-shadow 0.16s;
+}
+
+.ch-btn-primary {
+  background: var(--ch-neon);
+  color: #04140a;
+  box-shadow: 0 12px 30px -14px rgba(59, 228, 119, 0.75);
+}
+
+.ch-btn-primary:hover:not(:disabled) { background: #56ec8b; }
+
+.ch-btn-primary:disabled {
+  background: var(--ch-panel-2);
+  color: var(--ch-fumaca);
+  box-shadow: none;
+  cursor: not-allowed;
+}
+
+.ch-btn-ghost {
+  background: transparent;
+  color: var(--ch-osso);
+  border: 1px solid var(--ch-line-2);
+}
+
+.ch-btn-ghost:hover:not(:disabled) { border-color: var(--ch-neon); color: var(--ch-neon); }
+.ch-btn-ghost:disabled { color: var(--ch-fumaca); cursor: not-allowed; }
+
+.ch-btn-copiar {
+  min-height: 48px;
+  background: var(--ch-panel-2);
+  color: var(--ch-osso);
+  border: 1px solid var(--ch-line-2);
+}
+
+.ch-btn-copiar:hover { border-color: var(--ch-neon); color: var(--ch-neon); }
+
+.ch-btn-copiar.is-copiado {
+  background: rgba(59, 228, 119, 0.12);
+  border-color: var(--ch-neon);
+  color: var(--ch-neon);
+}
+
+.ch-spin { animation: ch-spin 0.9s linear infinite; }
+.ch-spin-lento { animation: ch-spin 2.8s linear infinite; }
+@keyframes ch-spin { to { transform: rotate(360deg); } }
+
+/* ─── MENSAGEM DE ERRO DO ENVIO ──────────────────────────── */
+.ch-alert {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 14px 16px;
+  border: 1px solid rgba(255, 107, 107, 0.4);
+  border-radius: var(--ch-r-md);
+  background: rgba(255, 107, 107, 0.08);
+  color: #ffc9c9;
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+
+.ch-alert svg { flex: 0 0 auto; margin-top: 1px; color: var(--ch-erro); }
+
+/* ─── PREPARANDO O PAGAMENTO ─────────────────────────────
+   Estado curto entre o envio do formulário e o QR na tela.
+──────────────────────────────────────────────────────────── */
+.ch-redirecionando {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 28px 0 12px;
+  text-align: center;
+  color: var(--ch-neon);
+}
+
+.ch-redirecionando-titulo {
+  margin: 4px 0 0;
+  font-weight: 800;
+  font-size: 1.15rem;
+  letter-spacing: -0.01em;
+  color: var(--ch-osso);
+}
+
+.ch-redirecionando-texto {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.6;
+  color: var(--ch-fumaca);
+  max-width: 34ch;
+}
+
+.ch-redirecionando-link {
+  margin-top: 6px;
+  font-family: var(--ch-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ch-fumaca);
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+.ch-redirecionando-link:hover { color: var(--ch-neon); }
+
+/* ─── ESTADOS DO PAGAMENTO ───────────────────────────────
+   Enquanto o Mercado Pago não fecha a order, a tela diz
+   honestamente que ainda está conferindo.
+──────────────────────────────────────────────────────────── */
+.ch-retorno { display: flex; flex-direction: column; gap: 18px; }
+
+.ch-retorno-head {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  text-align: center;
+}
+
+.ch-retorno-icone {
+  width: 60px;
+  height: 60px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+}
+
+.ch-retorno-icone.is-neutro {
+  background: rgba(59, 228, 119, 0.09);
+  border: 1px solid var(--ch-line-2);
+  color: var(--ch-neon);
+}
+
+.ch-retorno-icone.is-alerta {
+  background: rgba(255, 107, 43, 0.1);
+  border: 1px solid rgba(255, 107, 43, 0.36);
+  color: var(--ch-brasa);
+}
+
+.ch-retorno-titulo {
+  margin: 0;
+  font-weight: 800;
+  font-size: 1.3rem;
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+  color: var(--ch-osso);
+  outline: none;
+  text-wrap: balance;
+}
+
+.ch-retorno-texto {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.6;
+  color: var(--ch-fumaca);
+  max-width: 42ch;
+}
+
+.ch-retorno-carregando {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin: 0;
+  font-family: var(--ch-mono);
+  font-size: 0.66rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ch-fumaca);
+}
+
+.ch-retorno-resumo {
+  margin: 0;
+  border: 1px solid var(--ch-line);
+  border-radius: var(--ch-r-md);
+  background: var(--ch-carvao-2);
+  overflow: hidden;
+}
+
+.ch-retorno-resumo > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 15px;
+}
+
+.ch-retorno-resumo > div + div { border-top: 1px solid var(--ch-line); }
+
+.ch-retorno-resumo dt {
+  flex: 0 0 auto;
+  font-family: var(--ch-mono);
+  font-size: 0.6rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ch-fumaca);
+}
+
+.ch-retorno-resumo dd {
+  margin: 0;
+  font-weight: 600;
+  font-size: 0.95rem;
+  text-align: right;
+  color: var(--ch-osso);
+  overflow-wrap: anywhere;
+}
+
+.ch-retorno-codigo {
+  font-family: var(--ch-mono);
+  font-size: 0.8rem;
+  letter-spacing: 0.03em;
+}
+
+.ch-retorno-auto {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  margin: 0;
+  font-family: var(--ch-mono);
+  font-size: 0.58rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ch-fumaca);
+}
+
+/* ─── TELA DE PAGAMENTO CONFIRMADO ───────────────────────── */
+.ch-sucesso { display: flex; flex-direction: column; gap: 20px; }
+
+.ch-sucesso-head {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  text-align: center;
+}
+
+.ch-sucesso-icon {
+  width: 66px;
+  height: 66px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: rgba(59, 228, 119, 0.1);
+  border: 1px solid var(--ch-line-2);
+  color: var(--ch-neon);
+  box-shadow: 0 0 34px -8px rgba(59, 228, 119, 0.5);
+}
+
+.ch-sucesso-title {
+  font-weight: 800;
+  font-size: 1.5rem;
+  letter-spacing: -0.02em;
+  color: var(--ch-osso);
+  margin: 0;
+  outline: none;
+}
+
+.ch-sucesso-msg { font-size: 0.94rem; line-height: 1.6; color: var(--ch-fumaca); margin: 0; }
+
+/* ─── PAGAMENTO PIX ──────────────────────────────────────
+   O QR não ganha um card próprio: ele é impresso NA comanda,
+   numa faixa clara — que é como um código chega a um papel
+   de churrascaria, e é o fundo que um leitor de QR precisa.
+   O carimbo que já existia faz o trabalho de estado:
+   "Aguardando" vira "Pago" quando o webhook chega.
+──────────────────────────────────────────────────────────── */
+.ch-pix { display: flex; flex-direction: column; gap: 16px; }
+
+.ch-pix-head { display: flex; flex-direction: column; gap: 8px; }
+
+.ch-pix-titulo {
+  margin: 0;
+  font-size: 1.3rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+  color: var(--ch-osso);
+}
+
+.ch-pix-instrucao {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+  font-size: 0.88rem;
+  line-height: 1.55;
+  color: var(--ch-fumaca);
+}
+
+.ch-pix-instrucao svg { flex: 0 0 auto; margin-top: 2px; color: var(--ch-neon); }
+
+/* A comanda do Pix cresce um pouco para caber o código. */
+.ch-comanda-pix { gap: 0; }
+
+/* ── o QR impresso ──
+   Fundo osso porque leitores de QR erram em fundo escuro; a
+   moldura fina reaproveita a linha neon do resto da página. */
+.ch-qr {
+  align-self: center;
+  /* A largura precisa ser resolvida AQUI: a imagem dentro é 100% dela. Sem
+     isto, um QR de poucos pixels encolheria a moldura junto. */
+  width: 100%;
+  max-width: 268px; /* 240 do código + 14 de respiro de cada lado */
+  margin: 16px 0 4px;
+  padding: 14px;
+  background: var(--ch-osso);
+  border: 1px solid var(--ch-line-2);
+  border-radius: var(--ch-r-md);
+  box-shadow: 0 18px 40px -22px rgba(59, 228, 119, 0.55);
+  line-height: 0;
+}
+
+.ch-qr-img {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1 / 1;
+  image-rendering: pixelated; /* o QR é bitmap: nada de suavizar as bordas */
+}
+
+/* ── copia e cola ── */
+.ch-pix-copia-label {
+  margin-top: 16px;
+  font-family: var(--ch-mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ch-fumaca);
+}
+
+.ch-pix-copia {
+  margin: 6px 0 0;
+  padding: 10px 12px;
+  border: 1px dashed var(--ch-line-2);
+  border-radius: var(--ch-r-sm);
+  background: var(--ch-lista);
+  font-family: var(--ch-mono);
+  font-size: 0.72rem;
+  line-height: 1.5;
+  color: var(--ch-osso);
+  /* O payload é longo: ele quebra dentro da caixa em vez de esticar a página. */
+  overflow-wrap: anywhere;
+  max-height: 88px;
+  overflow-y: auto;
+  user-select: all;
+}
+
+.ch-pix-aviso {
+  margin: 12px 0 0;
+  font-size: 0.82rem;
+  line-height: 1.55;
+  color: var(--ch-fumaca);
+}
+
+/* ── validade ──
+   A brasa só existia como brilho ambiente no rodapé da página.
+   Aqui ela vira texto pela primeira vez, no único elemento com
+   pressa de verdade na tela. */
+.ch-pix-validade {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 10px;
+  margin: 0;
+  padding: 12px 16px;
+  border: 1px solid var(--ch-line);
+  border-radius: var(--ch-r-pill);
+  background: var(--ch-panel-2);
+  text-align: center;
+}
+
+.ch-pix-validade-label {
+  font-size: 0.78rem;
+  letter-spacing: 0.02em;
+  color: var(--ch-fumaca);
+}
+
+.ch-pix-relogio {
+  font-family: var(--ch-mono);
+  font-size: 1.05rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+  color: var(--ch-osso);
+}
+
+.ch-pix-validade.is-urgente {
+  border-color: rgba(255, 107, 43, 0.45);
+  background: rgba(255, 107, 43, 0.08);
+}
+
+.ch-pix-validade.is-urgente .ch-pix-relogio { color: var(--ch-brasa); }
+
+/* ─── RODAPÉ ─────────────────────────────────────────────── */
+.ch-footer {
+  margin-top: 56px;
+  border-top: 1px solid var(--ch-line);
+  padding: 26px 0 32px;
+  text-align: center;
+}
+
+.ch-footer p {
+  margin: 0;
+  font-size: 0.78rem;
+  line-height: 1.7;
+  color: var(--ch-fumaca);
+}
+
+/* ─── ANIMAÇÕES DISCRETAS ────────────────────────────────── */
+.ch-reveal { animation: ch-reveal 0.4s ease both; }
+
+@keyframes ch-reveal {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* ─── RESPONSIVO ─────────────────────────────────────────── */
+@media (max-width: 1000px) {
+  .ch-grid { grid-template-columns: 1fr; gap: 34px; }
+  .ch-panel { position: static; }
+
+  /* Sem duas colunas o mascote se centraliza e para de crescer. */
+  .ch-lobo { max-width: 520px; align-self: center; }
+}
+
+@media (max-width: 720px) {
+  .ch-container { padding: 0 18px; }
+  .ch-main { padding: 30px 0 0; }
+
+  /* O título da página já diz de quem é o evento — a barra fica só com a marca. */
+  .ch-brand-sub { display: none; }
+  .ch-brand-name { font-size: 1.05rem; }
+
+  .ch-title { font-size: clamp(2.1rem, 11vw, 3rem); margin-bottom: 12px; }
+  .ch-subtitle { font-size: 0.95rem; margin-bottom: 20px; }
+
+  /* Largura cheia, mas com a altura contida: o formulário precisa aparecer
+     logo abaixo, sem que a imagem tome a tela inteira. */
+  .ch-lobo { margin-top: 22px; max-width: 100%; }
+
+  .ch-lobo img {
+    width: auto;
+    max-width: 100%;
+    height: min(42vh, 400px);
+    margin: 0 auto;
+  }
+
+  .ch-panel { padding: 22px 18px; border-radius: 18px; }
+  .ch-comanda-tear { margin-left: -18px; margin-right: -18px; }
+  .ch-btn { min-height: 56px; } /* área de toque confortável */
+  .ch-footer { margin-top: 40px; }
+
+  .ch-pix-titulo { font-size: 1.18rem; }
+  /* O QR precisa caber inteiro na tela mesmo a 360px. */
+  .ch-qr { padding: 12px; max-width: 300px; }
+}
+
+@media (max-width: 400px) {
+  .ch-comanda-foot { flex-direction: column; align-items: flex-start; gap: 12px; }
+  .ch-pix-validade { flex-direction: column; gap: 2px; padding: 12px; border-radius: var(--ch-r-md); }
+  .ch-pix-copia { font-size: 0.68rem; }
+  .ch-detalhe { flex-direction: column; gap: 2px; }
+  .ch-detalhe dt { flex: none; }
+  .ch-retorno-resumo > div { flex-direction: column; align-items: flex-start; gap: 4px; }
+  .ch-retorno-resumo dd { text-align: left; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ch-page *,
+  .ch-page *::before,
+  .ch-page *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+  .ch-spin,
+  .ch-spin-lento { animation: none !important; }
+}

@@ -5,7 +5,10 @@
   "type": "module",
   "scripts": {
     "start": "node index.js",
-    "dev": "node --watch index.js"
+    "dev": "node --watch index.js",
+    "test": "node _test_churrasco.mjs && node _test_loja.mjs",
+    "test:churrasco": "node _test_churrasco.mjs",
+    "test:loja": "node _test_loja.mjs"
   },
   "dependencies": {
     "dotenv": "^17.2.3",

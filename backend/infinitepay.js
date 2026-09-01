@@ -50,26 +50,61 @@ function httpsPost(url, payload) {
   });
 }
 
+/** URLs base, sem barra final. Usadas pela loja e pelo churrasco. */
+export function appBaseUrl() {
+  return (process.env.APP_URL || "http://localhost:5173").replace(/\/$/, "");
+}
+
+export function apiBaseUrl() {
+  return (process.env.API_URL || "http://localhost:3333").replace(/\/$/, "");
+}
+
+/* Os dois padrões do checkout da loja. Ficam nomeados aqui para que um teste
+   consiga afirmar que eles não mudaram quando o churrasco passou a reusar
+   `criarLinkPagamento`. */
+export function defaultRedirectUrl(orderId) {
+  return `${appBaseUrl()}/pagamento-concluido?pedido=${orderId}&status=concluido`;
+}
+
+export function defaultWebhookUrl() {
+  return `${apiBaseUrl()}/api/webhooks/infinitepay`;
+}
+
 /**
  * Cria um link de pagamento no Checkout Integrado da InfinitePay.
  *
+ * Os quatro últimos parâmetros são opcionais e existem para que outros fluxos
+ * (hoje, as inscrições do churrasco) usem a mesma integração com uma
+ * InfiniteTag, um retorno e um webhook próprios. Sem eles, o comportamento é
+ * exatamente o da loja — nada muda para o checkout existente.
+ *
  * @param {object} params
- * @param {string} params.orderId  - ID único do pedido (order_nsu)
- * @param {Array}  params.items    - [{ quantity, price (centavos, inteiro), description }]
- * @param {object} params.cliente  - { nome, telefone, email? }
+ * @param {string} params.orderId       - ID único do pedido (order_nsu)
+ * @param {Array}  params.items         - [{ quantity, price (centavos, inteiro), description }]
+ * @param {object} params.cliente       - { nome, telefone, email? }
+ * @param {string} [params.handle]      - InfiniteTag; padrão INFINITEPAY_HANDLE
+ * @param {string} [params.redirectUrl] - para onde a pessoa volta após pagar
+ * @param {string} [params.webhookUrl]  - para onde a InfinitePay notifica
+ * @param {string} [params.evento]      - rótulo usado só nos logs
  * @returns {Promise<{ url: string }>}
  */
-export async function criarLinkPagamento({ orderId, items, cliente }) {
-  const handle = process.env.INFINITEPAY_HANDLE;
-  if (!handle) throw new Error("INFINITEPAY_HANDLE não configurado no .env");
+export async function criarLinkPagamento({
+  orderId,
+  items,
+  cliente,
+  handle,
+  redirectUrl,
+  webhookUrl,
+  evento = "Loja",
+}) {
+  const tag = handle || process.env.INFINITEPAY_HANDLE;
+  if (!tag) throw new Error("INFINITEPAY_HANDLE não configurado no .env");
 
-  const appUrl = (process.env.APP_URL || "http://localhost:5173").replace(/\/$/, "");
-  const apiUrl = (process.env.API_URL || "http://localhost:3333").replace(/\/$/, "");
-
-  const webhookUrl = `${apiUrl}/api/webhooks/infinitepay`;
+  const redirect = redirectUrl || defaultRedirectUrl(orderId);
+  const webhook = webhookUrl || defaultWebhookUrl();
 
   // Log de diagnóstico — confirma o destino do webhook enviado à InfinitePay
-  console.log("[InfinitePay] webhook_url:", webhookUrl);
+  console.log(`[InfinitePay/${evento}] webhook_url:`, webhook);
   if (!process.env.API_URL) {
     console.warn(
       "[InfinitePay] ⚠ API_URL não está definida — webhook aponta para localhost e a InfinitePay NÃO conseguirá notificar o pagamento em produção. Configure API_URL no Render."
@@ -77,10 +112,10 @@ export async function criarLinkPagamento({ orderId, items, cliente }) {
   }
 
   const payload = {
-    handle,
+    handle: tag,
     order_nsu: orderId,
-    redirect_url: `${appUrl}/pagamento-concluido?pedido=${orderId}&status=concluido`,
-    webhook_url: webhookUrl,
+    redirect_url: redirect,
+    webhook_url: webhook,
     items: items.map((item) => ({
       quantity: item.quantity,           // inteiro
       price: item.price,                 // centavos, inteiro
@@ -119,13 +154,14 @@ export async function criarLinkPagamento({ orderId, items, cliente }) {
  * @param {string} params.orderId        - order_nsu do pedido
  * @param {string} params.transactionNsu - transaction_nsu do webhook
  * @param {string} params.slug           - invoice_slug do webhook
+ * @param {string} [params.handle]       - InfiniteTag; padrão INFINITEPAY_HANDLE
  */
-export async function verificarPagamento({ orderId, transactionNsu, slug }) {
-  const handle = process.env.INFINITEPAY_HANDLE;
-  if (!handle) throw new Error("INFINITEPAY_HANDLE não configurado no .env");
+export async function verificarPagamento({ orderId, transactionNsu, slug, handle }) {
+  const tag = handle || process.env.INFINITEPAY_HANDLE;
+  if (!tag) throw new Error("INFINITEPAY_HANDLE não configurado no .env");
 
   const { status, body } = await httpsPost(`${BASE_URL}/payment_check`, {
-    handle,
+    handle: tag,
     order_nsu: orderId,
     transaction_nsu: transactionNsu,
     slug,

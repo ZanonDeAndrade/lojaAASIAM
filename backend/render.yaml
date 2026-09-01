@@ -14,8 +14,22 @@ services:
         sync: false   # URL do frontend na Vercel (ex: https://seu-app.vercel.app)
       - key: API_URL
         sync: false   # URL do próprio backend no Render (ex: https://seu-app.onrender.com)
+
+      # ── Loja: InfinitePay ──
       - key: INFINITEPAY_HANDLE
-        sync: false   # Slug da conta InfinitePay
+        sync: false   # Slug da conta InfinitePay (só a loja usa)
+
+      # ── Churrasco: Mercado Pago, só Pix ──
+      - key: MERCADO_PAGO_ACCESS_TOKEN
+        sync: false   # Access Token (TEST-... ou APP_USR-...). Só no backend.
+      - key: MERCADO_PAGO_WEBHOOK_SECRET
+        sync: false   # Chave secreta da assinatura do webhook
+      - key: CHURRASCO_SHEET_NAME
+        value: Inscrições Churrasco
+      - key: CHURRASCO_TOKEN_SECRET
+        sync: false   # Opcional; vazio, é derivado do segredo do webhook
+
+      # ── Google Sheets (loja e churrasco) ──
       - key: GOOGLE_SHEETS_SPREADSHEET_ID
         sync: false   # ID da planilha Google Sheets
       - key: GOOGLE_SHEETS_SHEET_NAME
