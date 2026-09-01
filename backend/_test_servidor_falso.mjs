@@ -46,7 +46,10 @@ process.env.MERCADO_PAGO_ACCESS_TOKEN = "TEST-token-de-ensaio";
 process.env.MERCADO_PAGO_WEBHOOK_SECRET = WEBHOOK_SECRET;
 process.env.GOOGLE_SHEETS_SPREADSHEET_ID = "planilha-de-ensaio";
 process.env.CHURRASCO_TOKEN_SECRET = "segredo-de-ensaio";
-process.env.APP_URL = "http://localhost:5173";
+process.env.APP_URL = process.env.APP_URL || "http://localhost:5173";
+// Assina o QR Code do comprovante. É de ensaio: o de produção fica no Render.
+process.env.COMPROVANTE_SIGNING_SECRET =
+  process.env.COMPROVANTE_SIGNING_SECRET || "segredo-de-ensaio-do-comprovante";
 process.env.API_URL = `http://localhost:${PORT}`;
 
 const express = (await import("express")).default;
@@ -147,6 +150,16 @@ gatilho("cartao", (id) => {
   moverOrder(id, { metodo: { id: "master", type: "credit_card" } });
 });
 
+/* Escreve o status direto na linha, como a organização faria editando a
+   planilha à mão. É o único jeito de rebaixar uma inscrição já paga: o webhook
+   se recusa a fazer isso, de propósito. */
+app.get("/__ensaio/status/:referencia/:rotulo", (req, res) => {
+  const linha = sheet.rows.find((l) => l[1] === req.params.referencia);
+  if (!linha) return res.status(404).json({ ok: false, error: "inscrição não encontrada" });
+  linha[7] = req.params.rotulo;
+  return res.json({ ok: true, referencia: linha[1], status: linha[7] });
+});
+
 app.get("/__ensaio/estado", (_req, res) => {
   res.json({
     linhas: sheet.rows.map((linha) => ({
@@ -172,5 +185,6 @@ app.listen(PORT, () => {
   console.log("Planilha: memória. Mercado Pago: dublê. Nenhum pagamento real.");
   console.log(`Frontend: cd frontend && npm run dev  →  http://localhost:5173/churrasco`);
   console.log(`Gatilhos: /__ensaio/{pagar,expirar,falhar,cancelar,divergir,cartao}/:referencia`);
+  console.log(`          /__ensaio/status/:referencia/:rotulo  (edita a planilha à mão)`);
   console.log("=".repeat(45) + "\n");
 });

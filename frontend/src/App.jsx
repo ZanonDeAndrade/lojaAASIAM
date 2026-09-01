@@ -28,6 +28,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { PRODUCTS } from './shared/products.js';
 import { createEmptySelection } from './shared/order.js';
 import ChurrascoPage from './churrasco/ChurrascoPage.jsx';
+import ValidacaoPage from './churrasco/ValidacaoPage.jsx';
 
 /* ─── constants ─── */
 const currency = new Intl.NumberFormat('pt-BR', {
@@ -272,7 +273,12 @@ export default function App() {
 	const [view, setView] = useState(() => {
 		const path = window.location.pathname;
 		const params = new URLSearchParams(window.location.search);
-		// Tudo sob /churrasco é a página do evento — inclusive o endereço
+		// A validação do comprovante é aberta pela câmera na entrada do evento:
+		// é pública, não depende de nada guardado no navegador e por isso tem a
+		// própria tela, antes da página de inscrição.
+		if (path.startsWith('/churrasco/validar/')) return 'churrasco-validacao';
+
+		// Tudo o mais sob /churrasco é a página do evento — inclusive o endereço
 		// antigo /churrasco/pagamento-concluido, que a própria página redireciona
 		// para /churrasco (o pagamento Pix acontece dentro dela, sem sair).
 		if (path === '/churrasco' || path.startsWith('/churrasco/')) return 'churrasco';
@@ -373,6 +379,7 @@ export default function App() {
 
 	// /churrasco é uma página própria da AASIAM: sem header da loja, sem
 	// carrinho e sem alternância de tema. Fica fora do app-shell de propósito.
+	if (view === 'churrasco-validacao') return <ValidacaoPage />;
 	if (view === 'churrasco') return <ChurrascoPage />;
 
 	return (

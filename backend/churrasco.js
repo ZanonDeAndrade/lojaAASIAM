@@ -32,6 +32,14 @@ import {
   isChurrascoSheetConfigured,
 } from "./churrasco-inscricoes.js";
 import {
+  gerarComprovantePdf,
+  isComprovanteSecretConfigured,
+  lerTokenVerificacao,
+  nomeArquivoComprovante,
+  podeEmitirComprovante,
+  validacaoView,
+} from "./comprovante.js";
+import {
   MercadoPagoError,
   ambienteMercadoPago,
   consultarOrder,
@@ -365,6 +373,31 @@ const statusPorIpLimiter = rateLimit({
   keyFrom: clientIp,
 });
 
+/* Gerar o PDF custa CPU e desenha um QR: o freio é mais apertado que o da
+   consulta de status, mas largo o bastante para quem baixa de novo na fila. */
+const comprovantePorPedidoLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  max: 30,
+  message: "Muitos downloads seguidos. Aguarde um instante e tente de novo.",
+  keyFrom: (req) => `comprovante:${req.params.orderId}`,
+});
+
+const comprovantePorIpLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  max: 120,
+  message: "Muitos downloads seguidos. Aguarde um instante e tente de novo.",
+  keyFrom: clientIp,
+});
+
+/* Na portaria, várias pessoas validam do mesmo wi-fi: o limite é por IP e
+   largo, porque a rota é só leitura e nunca altera a inscrição. */
+const validacaoLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  max: 600,
+  message: "Muitas consultas seguidas. Aguarde um instante.",
+  keyFrom: clientIp,
+});
+
 const webhookLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 600,
@@ -688,6 +721,93 @@ export function registerChurrascoRoutes(app) {
     }
   });
 
+  /**
+   * Validação pública do comprovante — é o que o QR Code abre na entrada.
+   *
+   * O QR carrega só a referência assinada; nada do que vem nele é usado como
+   * verdade. A situação sai da linha da planilha, lida na hora, e a rota
+   * NUNCA escreve: não confirma pagamento, não marca presença.
+   *
+   * Registrada antes da rota do PDF porque "validar" ocuparia o lugar de
+   * `:orderId` se a ordem fosse a inversa.
+   */
+  app.get("/api/churrasco/comprovantes/validar/:token", validacaoLimiter, async (req, res) => {
+    const referencia = lerTokenVerificacao(String(req.params.token || "").slice(0, 200));
+
+    // Assinatura inválida ou adulterada: nem chegamos a consultar nada.
+    if (!referencia || !isChurrascoOrder(referencia)) {
+      return res.json(validacaoView(null, { valido: false }));
+    }
+
+    try {
+      const inscricao = await findInscricao(referencia);
+      if (!inscricao) return res.json(validacaoView(null, { valido: false }));
+      return res.json(validacaoView(inscricao, { valido: true }));
+    } catch (err) {
+      console.error("[Churrasco/Validação] falha ao consultar:", err?.message || err);
+      return res.status(503).json({
+        ok: false,
+        error: "Não foi possível validar agora. Tente novamente em instantes.",
+      });
+    }
+  });
+
+  /**
+   * Download do comprovante em PDF.
+   *
+   * Exige o mesmo `X-Inscricao-Token` da consulta de status, e o documento é
+   * montado a partir da linha oficial — o navegador não envia nenhum dado que
+   * vá para dentro do PDF.
+   *
+   * Aqui o token errado responde 401/403, e não o 404 discreto da consulta de
+   * status: quem chega nesta rota já tem uma inscrição em mãos, e a mensagem
+   * precisa dizer o que houve.
+   */
+  app.get(
+    "/api/churrasco/comprovantes/:orderId/pdf",
+    comprovantePorIpLimiter,
+    comprovantePorPedidoLimiter,
+    async (req, res) => {
+      const orderId = String(req.params.orderId || "").slice(0, 60);
+      const token = req.get("X-Inscricao-Token") || "";
+
+      // O token tem forma fixa: o que não tem essa forma é inválido, não alheio.
+      if (!/^[A-Za-z0-9_-]{32}$/.test(token)) {
+        return res.status(401).json({ ok: false, error: "Inscrição não identificada." });
+      }
+      if (!isChurrascoOrder(orderId)) {
+        return res.status(404).json({ ok: false, error: "Inscrição não encontrada." });
+      }
+      if (!tokenConfere(orderId, token)) {
+        return res.status(403).json({ ok: false, error: "Este código é de outra inscrição." });
+      }
+
+      try {
+        const inscricao = await findInscricao(orderId);
+        const permissao = podeEmitirComprovante(inscricao);
+        if (!permissao.ok) {
+          return res.status(permissao.status).json({ ok: false, error: permissao.error });
+        }
+
+        const pdf = await gerarComprovantePdf(inscricao);
+        const arquivo = nomeArquivoComprovante(inscricao.id);
+
+        res.setHeader("Content-Type", "application/pdf");
+        res.setHeader("Content-Disposition", `attachment; filename="${arquivo}"`);
+        res.setHeader("Content-Length", String(pdf.length));
+        res.setHeader("Cache-Control", "private, no-store");
+        res.setHeader("X-Content-Type-Options", "nosniff");
+        return res.status(200).end(pdf);
+      } catch (err) {
+        console.error("[Churrasco/Comprovante] falha ao gerar:", err?.message || err);
+        return res.status(503).json({
+          ok: false,
+          error: "Não foi possível gerar o comprovante agora. Tente novamente em instantes.",
+        });
+      }
+    }
+  );
+
   /* ── Configuração pública da página ──────────────────────────────── */
   app.get("/api/churrasco/config", (_req, res) => {
     res.json({
@@ -698,6 +818,7 @@ export function registerChurrascoRoutes(app) {
       webhookConfigurado: isWebhookSecretConfigured(),
       ambiente: ambienteMercadoPago(),
       expiracaoMinutos: PIX_EXPIRACAO_MINUTOS,
+      comprovanteAssinado: isComprovanteSecretConfigured(),
       abaPlanilha: CHURRASCO_SHEET_NAME,
     });
   });

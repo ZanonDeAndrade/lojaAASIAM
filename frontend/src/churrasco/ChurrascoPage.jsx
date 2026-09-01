@@ -134,6 +134,8 @@ export default function ChurrascoPage() {
 		if (pedido) {
 			return (
 				<PagamentoPix
+					apiBase={API_BASE}
+					token={pedido.token}
 					inscricao={status.inscricao}
 					carregando={status.carregando || enviando}
 					verificando={status.verificando}

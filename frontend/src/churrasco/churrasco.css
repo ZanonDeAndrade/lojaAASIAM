@@ -1032,6 +1032,108 @@
 
 .ch-pix-validade.is-urgente .ch-pix-relogio { color: var(--ch-brasa); }
 
+/* ─── COMPROVANTE E VALIDAÇÃO ────────────────────────────
+   Duas telas que existem para ser lidas de relance: o botão
+   do PDF, que é a ação principal depois de pagar, e o
+   veredito da portaria, aberto pela câmera na fila.
+──────────────────────────────────────────────────────────── */
+
+/* O PDF é a ação principal da tela paga: ganha um pouco mais
+   de corpo que os botões vizinhos, sem virar outro estilo. */
+.ch-btn-comprovante {
+  min-height: 58px;
+  font-size: 0.95rem;
+}
+
+/* ── veredito da entrada ── */
+.ch-page-validacao .ch-main { padding-top: 34px; }
+
+.ch-validacao-wrap {
+  max-width: 560px;
+  margin: 0 auto;
+}
+
+.ch-validacao { display: flex; flex-direction: column; gap: 16px; }
+
+.ch-validacao-carregando {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 40px 0;
+  color: var(--ch-neon);
+  text-align: center;
+}
+
+.ch-validacao-carregando p {
+  margin: 0;
+  font-size: 0.92rem;
+  color: var(--ch-fumaca);
+}
+
+/* O bloco que decide a entrada. É o único elemento gritante
+   da página inteira — de longe se lê a cor antes do texto. */
+.ch-veredito {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 20px 20px;
+  border-radius: var(--ch-r-md);
+  border: 1px solid transparent;
+}
+
+.ch-veredito strong {
+  font-size: 1.22rem;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+}
+
+.ch-veredito svg { flex: 0 0 auto; }
+
+.ch-veredito.is-valido {
+  background: var(--ch-neon);
+  border-color: var(--ch-neon);
+  color: #04140a;
+}
+
+.ch-veredito.is-invalido {
+  background: rgba(255, 107, 107, 0.14);
+  border-color: var(--ch-erro);
+  color: #ffc9c9;
+}
+
+.ch-veredito.is-atencao {
+  background: rgba(255, 107, 43, 0.12);
+  border-color: rgba(255, 107, 43, 0.5);
+  color: #ffd0b8;
+}
+
+.ch-validacao-linha {
+  margin: 0;
+  font-size: 0.95rem;
+  line-height: 1.55;
+  color: var(--ch-fumaca);
+}
+
+.ch-validacao-nome {
+  font-size: 1.5rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  color: var(--ch-osso);
+  overflow-wrap: anywhere;
+}
+
+.ch-validacao-nota {
+  margin: 0;
+  font-family: var(--ch-mono);
+  font-size: 0.66rem;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--ch-fumaca);
+}
+
 /* ─── RODAPÉ ─────────────────────────────────────────────── */
 .ch-footer {
   margin-top: 56px;
@@ -1092,6 +1194,9 @@
   .ch-footer { margin-top: 40px; }
 
   .ch-pix-titulo { font-size: 1.18rem; }
+  .ch-veredito { padding: 18px 16px; gap: 12px; }
+  .ch-veredito strong { font-size: 1.1rem; }
+  .ch-validacao-nome { font-size: 1.32rem; }
   /* O QR precisa caber inteiro na tela mesmo a 360px. */
   .ch-qr { padding: 12px; max-width: 300px; }
 }

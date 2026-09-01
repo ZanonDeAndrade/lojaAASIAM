@@ -13,6 +13,7 @@ import {
 import { useEffect, useRef, useState } from 'react';
 
 import { formatBRL } from '../../shared/churrasco.js';
+import BotaoComprovante from './BotaoComprovante.jsx';
 import Comanda from './Comanda.jsx';
 
 /**
@@ -145,6 +146,8 @@ function Cabecalho({ tom = 'neutro', icone, titulo, texto, tituloRef }) {
 }
 
 export default function PagamentoPix({
+	apiBase,
+	token,
 	inscricao,
 	carregando,
 	verificando,
@@ -233,6 +236,10 @@ export default function PagamentoPix({
 					pago
 				/>
 
+				{token && (
+					<BotaoComprovante apiBase={apiBase} orderId={orderId} token={token} />
+				)}
+
 				{receiptUrl && (
 					<a
 						className="ch-btn ch-btn-ghost"
@@ -241,7 +248,7 @@ export default function PagamentoPix({
 						rel="noopener noreferrer"
 					>
 						<ExternalLink size={17} aria-hidden="true" />
-						Abrir comprovante
+						Abrir comprovante do Mercado Pago
 					</a>
 				)}
 

@@ -7,13 +7,16 @@
     "start": "node index.js",
     "build": "for f in *.js shared/*.js; do node --check \"$f\" || exit 1; done",
     "dev": "node --watch index.js",
-    "test": "node _test_churrasco.mjs && node _test_loja.mjs",
+    "test": "node _test_churrasco.mjs && node _test_comprovante.mjs && node _test_loja.mjs",
     "test:churrasco": "node _test_churrasco.mjs",
-    "test:loja": "node _test_loja.mjs"
+    "test:loja": "node _test_loja.mjs",
+    "test:comprovante": "node _test_comprovante.mjs"
   },
   "dependencies": {
     "dotenv": "^17.2.3",
     "express": "^5.1.0",
-    "googleapis": "^166.0.0"
+    "googleapis": "^166.0.0",
+    "pdfkit": "^0.20.2",
+    "qrcode": "^1.5.4"
   }
 }
