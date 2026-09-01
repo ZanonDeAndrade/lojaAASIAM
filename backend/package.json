@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "start": "node index.js",
+    "build": "for f in *.js shared/*.js; do node --check \"$f\" || exit 1; done",
     "dev": "node --watch index.js",
     "test": "node _test_churrasco.mjs && node _test_loja.mjs",
     "test:churrasco": "node _test_churrasco.mjs",
