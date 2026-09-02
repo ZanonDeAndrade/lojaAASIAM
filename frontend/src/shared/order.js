@@ -16,6 +16,13 @@ export function calculateOrder(selection) {
       continue;
     }
 
+    /* Esgotado não entra no pedido. O `disabled` do card é só a aparência da
+       regra; quem monta a requisição na mão passa por cima dele. Sem linha,
+       o checkout devolve "Selecione pelo menos um produto" e nada é cobrado. */
+    if (product.soldOut === true) {
+      continue;
+    }
+
     if (product.kind === "sizedVariants") {
       for (const variant of product.variants) {
         for (const size of product.sizes) {

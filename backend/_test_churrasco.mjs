@@ -1097,13 +1097,20 @@ await test("a integração InfinitePay da loja continua intacta", async () => {
   assert.ok(!fonte.includes("infinitepay"), "churrasco.js não pode mais importar a InfinitePay");
 });
 
-await test("os preços e o cálculo de pedidos da loja não mudaram", async () => {
+await test("a loja está esgotada e os preços dela seguem guardados", async () => {
   const { calculateOrder, sanitizeSelection } = await import("./shared/order.js?real");
+  const { PRODUCT_BY_ID } = await import("./shared/products.js?real");
 
+  // Esgotado não entra no pedido, nem por uma requisição montada na mão.
   const pedido = calculateOrder(sanitizeSelection({ caneca: { quantity: 2 } }));
-  assert.equal(pedido.lines.length, 1);
-  assert.equal(pedido.totalCents, pedido.lines[0].unitPriceCents * 2);
-  assert.ok(pedido.totalCents > 0, "o preço da loja não pode ter zerado");
+  assert.equal(pedido.lines.length, 0, "produto esgotado entrou no pedido");
+  assert.equal(pedido.totalCents, 0);
+
+  // Esgotar é esconder da venda, não apagar o preço: quando a loja reabrir,
+  // basta tirar o `soldOut` e o valor volta como estava.
+  assert.ok(PRODUCT_BY_ID.caneca.priceCents > 0, "o preço da caneca foi zerado");
+  assert.ok(PRODUCT_BY_ID["moletom-verde"].priceCents > 0, "o preço do moletom foi zerado");
+  assert.ok(PRODUCT_BY_ID.caneca.costCents > 0, "o preço de custo do cupom sumiu");
 });
 
 server.close();

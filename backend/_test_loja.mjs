@@ -10,6 +10,10 @@
  * Rodar: node backend/_test_loja.mjs
  */
 import assert from "node:assert/strict";
+import path from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+
+const here = path.dirname(fileURLToPath(import.meta.url));
 
 const PORT = 3599;
 
@@ -131,6 +135,66 @@ await test("o checkout da loja continua validando antes de chamar a InfinitePay"
   });
   assert.equal(semItens.status, 400);
   assert.match((await semItens.json()).error, /produto/i);
+});
+
+await test("a loja está esgotada: nenhum produto pode ser comprado", async () => {
+  const { PRODUCTS } = await import("./shared/products.js");
+  const { calculateOrder, createEmptySelection } = await import("./shared/order.js");
+
+  const aVenda = PRODUCTS.filter((p) => p.soldOut !== true);
+  assert.deepEqual(aVenda.map((p) => p.id), [], "estes produtos ainda estão à venda");
+
+  // Um carrinho forjado com tudo, no talo: o cálculo não devolve linha nenhuma.
+  const selecao = createEmptySelection();
+  for (const produto of PRODUCTS) {
+    const item = selecao[produto.id];
+    if (item.variants) {
+      for (const variante of Object.keys(item.variants))
+        for (const tamanho of Object.keys(item.variants[variante]))
+          item.variants[variante][tamanho] = 5;
+    }
+    if (item.models) for (const modelo of Object.keys(item.models)) item.models[modelo] = 5;
+    if ("quantity" in item) item.quantity = 5;
+  }
+
+  const pedido = calculateOrder(selecao);
+  assert.equal(pedido.lines.length, 0, "produto esgotado entrou no pedido");
+  assert.equal(pedido.totalCents, 0);
+  assert.equal(pedido.totalQuantity, 0);
+
+  // E a rota recusa antes de falar com a InfinitePay — o fetch deste teste
+  // bloquearia a chamada externa, então um 400 prova que ela nem foi tentada.
+  const res = await post("/api/checkout", {
+    customer: { name: "Teste Loja", phone: "51999999999" },
+    selection: selecao,
+  });
+  assert.equal(res.status, 400);
+  assert.match((await res.json()).error, /produto/i);
+});
+
+await test("o cálculo do pedido é o mesmo no frontend e no backend", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const daqui = path.join(here, "shared");
+  const doFront = path.join(here, "..", "frontend", "src", "shared");
+
+  // order.js é a regra de dinheiro: as duas cópias precisam ser a mesma.
+  const [backend, frontend] = await Promise.all([
+    readFile(path.join(daqui, "order.js"), "utf8"),
+    readFile(path.join(doFront, "order.js"), "utf8"),
+  ]);
+  assert.equal(frontend, backend, "backend/shared/order.js e o do frontend divergiram");
+
+  // products.js diverge de propósito em nome e imagem, mas o que decide venda
+  // e preço tem de bater produto a produto.
+  const daquiP = await import("./shared/products.js");
+  const doFrontP = await import(
+    pathToFileURL(path.join(doFront, "products.js")).href
+  );
+  assert.deepEqual(
+    doFrontP.PRODUCTS.map((p) => [p.id, p.priceCents, p.soldOut === true]),
+    daquiP.PRODUCTS.map((p) => [p.id, p.priceCents, p.soldOut === true]),
+    "id, preço ou situação de venda divergem entre frontend e backend"
+  );
 });
 
 await test("o webhook da InfinitePay da loja continua no ar e no endereço antigo", async () => {
