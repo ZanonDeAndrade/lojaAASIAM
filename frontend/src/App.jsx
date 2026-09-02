@@ -8,6 +8,7 @@ import {
 	Copy,
 	CreditCard,
 	ExternalLink,
+	Flame,
 	Loader2,
 	Lock,
 	Minus,
@@ -40,13 +41,6 @@ const fmt = cents => currency.format(cents / 100);
 // Em dev o Vite proxy redireciona /api → localhost:3333.
 // Em produção (Vercel) VITE_API_URL aponta para o backend no Render.
 const API_BASE = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
-
-const BANNER_SLIDES = [
-	{ src: '/imgs/anuncio.png', alt: 'AASIAM – Nova Coleção' },
-	{ src: '/imgs/combo-alcateia.png', alt: 'Combo Alcateia' },
-	{ src: '/imgs/combo-alpha.png', alt: 'Combo Alpha' },
-	{ src: '/imgs/combo-essencial.png', alt: 'Combo Essencial' },
-];
 
 const CATEGORIES = [
 	{ id: 'moletom', label: 'Moletons' },
@@ -269,27 +263,33 @@ function AnimatedPage({ view, children }) {
 /* ══════════════════════════════════════════════════════
    APP
 ══════════════════════════════════════════════════════ */
-export default function App() {
-	const [view, setView] = useState(() => {
-		const path = window.location.pathname;
-		const params = new URLSearchParams(window.location.search);
-		// A validação do comprovante é aberta pela câmera na entrada do evento:
-		// é pública, não depende de nada guardado no navegador e por isso tem a
-		// própria tela, antes da página de inscrição.
-		if (path.startsWith('/churrasco/validar/')) return 'churrasco-validacao';
+/**
+ * Endereço → tela. Usado na montagem e de novo a cada botão voltar/avançar,
+ * para que as duas cheguem sempre à mesma conclusão.
+ */
+function viewFromLocation() {
+	const path = window.location.pathname;
+	const params = new URLSearchParams(window.location.search);
+	// A validação do comprovante é aberta pela câmera na entrada do evento:
+	// é pública, não depende de nada guardado no navegador e por isso tem a
+	// própria tela, antes da página de inscrição.
+	if (path.startsWith('/churrasco/validar/')) return 'churrasco-validacao';
 
-		// Tudo o mais sob /churrasco é a página do evento — inclusive o endereço
-		// antigo /churrasco/pagamento-concluido, que a própria página redireciona
-		// para /churrasco (o pagamento Pix acontece dentro dela, sem sair).
-		if (path === '/churrasco' || path.startsWith('/churrasco/')) return 'churrasco';
-		if (
-			path === '/pagamento-concluido' ||
-			(params.has('pedido') && params.has('status'))
-		) {
-			return 'pagamento-concluido';
-		}
-		return 'catalog';
-	});
+	// Tudo o mais sob /churrasco é a página do evento — inclusive o endereço
+	// antigo /churrasco/pagamento-concluido, que a própria página redireciona
+	// para /churrasco (o pagamento Pix acontece dentro dela, sem sair).
+	if (path === '/churrasco' || path.startsWith('/churrasco/')) return 'churrasco';
+	if (
+		path === '/pagamento-concluido' ||
+		(params.has('pedido') && params.has('status'))
+	) {
+		return 'pagamento-concluido';
+	}
+	return 'catalog';
+}
+
+export default function App() {
+	const [view, setView] = useState(viewFromLocation);
 	const [selectedProduct, setProduct] = useState(null);
 	const [cart, setCart] = useState([]);
 	const [paymentResult, setResult] = useState(null);
@@ -314,6 +314,26 @@ export default function App() {
 			setTimeout(() => splash.remove(), 400);
 		}
 	}, []);
+
+	/* A loja e o churrasco moram em endereços diferentes, mas no mesmo bundle:
+	   trocar de um para o outro é só estado. O `popstate` faz o botão voltar
+	   desfazer isso — sem ele, voltar do churrasco sairia do site. */
+	useEffect(() => {
+		function aoVoltar() {
+			setView(viewFromLocation());
+		}
+		window.addEventListener('popstate', aoVoltar);
+		return () => window.removeEventListener('popstate', aoVoltar);
+	}, []);
+
+	/** Navega para um endereço do próprio site, sem recarregar a página. */
+	function irPara(path) {
+		if (window.location.pathname !== path) {
+			window.history.pushState({}, '', path);
+		}
+		setView(viewFromLocation());
+		window.scrollTo({ top: 0 });
+	}
 
 	function toggleTheme() {
 		setTheme(t => (t === 'dark' ? 'light' : 'dark'));
@@ -391,13 +411,18 @@ export default function App() {
 				onScrollTo={scrollToCategory}
 				onHome={() => go('catalog')}
 				onCart={() => go('cart')}
+				onChurrasco={() => irPara('/churrasco')}
 				onToggleTheme={toggleTheme}
 			/>
 
 			<main style={{ flex: 1 }}>
 				<AnimatedPage view={view}>
 					{view === 'catalog' && (
-						<CatalogView onOpen={openProduct} className="fade-in" />
+						<CatalogView
+							onOpen={openProduct}
+							onChurrasco={() => irPara('/churrasco')}
+							className="fade-in"
+						/>
 					)}
 					{view === 'detail' && selectedProduct && (
 						<DetailView
@@ -464,6 +489,40 @@ export default function App() {
 /* ══════════════════════════════════════════════════════
    HEADER
 ══════════════════════════════════════════════════════ */
+/**
+ * Acesso ao churrasco. É um link de verdade — abre em outra aba, copia o
+ * endereço, responde ao teclado —, mas o clique comum troca a tela sem
+ * recarregar. Aparece duas vezes no header e o CSS mostra só a do momento:
+ * no desktop ao lado do carrinho, no celular na barra de cima, porque a
+ * barra de baixo já divide o espaço entre as quatro categorias.
+ */
+function ChurrascoLink({ onAbrir, className = '' }) {
+	return (
+		<a
+			className={`churrasco-link ${className}`.trim()}
+			href="/churrasco"
+			onClick={evento => {
+				// Clique com modificador ou botão do meio: deixa o navegador
+				// abrir em outra aba, como qualquer link.
+				if (
+					evento.metaKey ||
+					evento.ctrlKey ||
+					evento.shiftKey ||
+					evento.altKey ||
+					evento.button !== 0
+				) {
+					return;
+				}
+				evento.preventDefault();
+				onAbrir();
+			}}
+		>
+			<Flame size={15} aria-hidden="true" />
+			<span>Churrasco</span>
+		</a>
+	);
+}
+
 function SiteHeader({
 	view,
 	cartCount,
@@ -471,6 +530,7 @@ function SiteHeader({
 	onScrollTo,
 	onHome,
 	onCart,
+	onChurrasco,
 	onToggleTheme,
 }) {
 	const [brokenDesktop, setBrokenDesktop] = useState(false);
@@ -518,6 +578,8 @@ function SiteHeader({
 					)}
 					<span className="wordmark">AASIAM</span>
 				</button>
+
+				<ChurrascoLink onAbrir={onChurrasco} className="churrasco-link-topo" />
 			</div>
 
 			<header className="site-header">
@@ -561,6 +623,11 @@ function SiteHeader({
 
 						{/* Theme toggle + cart */}
 						<div className="header-actions">
+							<ChurrascoLink
+								onAbrir={onChurrasco}
+								className="churrasco-link-barra"
+							/>
+
 							<button
 								type="button"
 								className="theme-btn"
@@ -593,125 +660,43 @@ function SiteHeader({
    CATALOG VIEW — all categories on one page
 ══════════════════════════════════════════════════════ */
 /* ══════════════════════════════════════════════════════
-   HERO BANNER — auto-rotating promotional carousel
+   BANNER DO CHURRASCO — destaque único da home
 ══════════════════════════════════════════════════════ */
-const SLIDE_POS = {
-	center: {
-		transform: 'translateX(0) translateZ(0px)   rotateY(0deg)',
-		opacity: 1,
-		zIndex: 4,
-		filter: 'brightness(1)',
-	},
-	right: {
-		transform: 'translateX(54%) translateZ(-160px) rotateY(-52deg)',
-		opacity: 0.5,
-		zIndex: 3,
-		filter: 'brightness(0.5)',
-	},
-	left: {
-		transform: 'translateX(-54%) translateZ(-160px) rotateY(52deg)',
-		opacity: 0.5,
-		zIndex: 3,
-		filter: 'brightness(0.5)',
-	},
-	hidden: {
-		transform: 'translateX(0)   translateZ(-300px) rotateY(0deg)',
-		opacity: 0,
-		zIndex: 1,
-		filter: 'brightness(0)',
-	},
-};
 
-function HeroBanner() {
-	const [current, setCurrent] = useState(0);
-	const dragStartX = useRef(0);
-	const wasDrag = useRef(false);
-	const n = BANNER_SLIDES.length;
-
-	useEffect(() => {
-		const t = setInterval(() => setCurrent(c => (c + 1) % n), 4500);
-		return () => clearInterval(t);
-	}, [n]);
-
-	function go(dir) {
-		setCurrent(c => (c + dir + n) % n);
-	}
-
-	function onPointerDown(e) {
-		dragStartX.current = e.touches?.[0]?.clientX ?? e.clientX;
-		wasDrag.current = false;
-	}
-
-	function onPointerUp(e) {
-		const endX = e.changedTouches?.[0]?.clientX ?? e.clientX;
-		const delta = dragStartX.current - endX;
-		if (Math.abs(delta) > 40) {
-			go(delta > 0 ? 1 : -1);
-			wasDrag.current = true;
-		}
-	}
-
-	function slidePos(i) {
-		const off = (((i - current) % n) + n) % n;
-		const norm = off > Math.floor(n / 2) ? off - n : off;
-		if (norm === 0) return SLIDE_POS.center;
-		if (norm === 1) return SLIDE_POS.right;
-		if (norm === -1) return SLIDE_POS.left;
-		return SLIDE_POS.hidden;
-	}
-
+/* A arte já diz tudo: nome, data, horário e cardápio estão pintados nela.
+   Por isso nada é escrito por cima — o banner inteiro é o link, e a única
+   resposta ao mouse e ao teclado é a moldura verde. */
+function ChurrascoBanner({ onAbrir }) {
 	return (
-		<div
-			className="hero-carousel"
-			onMouseDown={onPointerDown}
-			onMouseUp={onPointerUp}
-			onTouchStart={onPointerDown}
-			onTouchEnd={onPointerUp}
+		<a
+			className="hero-banner"
+			href="/churrasco"
+			onClick={evento => {
+				// Clique com modificador ou botão do meio: deixa o navegador
+				// abrir em outra aba, como qualquer link.
+				if (
+					evento.metaKey ||
+					evento.ctrlKey ||
+					evento.shiftKey ||
+					evento.altKey ||
+					evento.button !== 0
+				) {
+					return;
+				}
+				evento.preventDefault();
+				onAbrir();
+			}}
 		>
-			<div className="hero-stage">
-				{BANNER_SLIDES.map((slide, i) => (
-					<div
-						key={slide.src}
-						className="hero-slide"
-						style={slidePos(i)}
-						onClick={() => {
-							if (!wasDrag.current) setCurrent(i);
-						}}
-					>
-						<SmartImage src={slide.src} alt={slide.alt} priority="high" />
-					</div>
-				))}
-			</div>
-
-			<button
-				type="button"
-				className="hero-arrow hero-prev"
-				onClick={() => go(-1)}
-				aria-label="Anterior"
+			<SmartImage
+				src="/imgs/banner-churrasco-amf-games.png"
+				alt="Churrasco da AASIAM durante o AMF Games, dia 12 de setembro ao meio-dia"
+				priority="high"
 			/>
-			<button
-				type="button"
-				className="hero-arrow hero-next"
-				onClick={() => go(1)}
-				aria-label="Próximo"
-			/>
-
-			<div className="hero-dots">
-				{BANNER_SLIDES.map((_, i) => (
-					<button
-						key={i}
-						type="button"
-						className={`hero-dot${i === current ? ' active' : ''}`}
-						onClick={() => setCurrent(i)}
-						aria-label={`Slide ${i + 1}`}
-					/>
-				))}
-			</div>
-		</div>
+		</a>
 	);
 }
 
-function CatalogView({ onOpen, className }) {
+function CatalogView({ onOpen, onChurrasco, className }) {
 	const [activeFilter, setActiveFilter] = useState('todos');
 	const visibleCats =
 		activeFilter === 'todos'
@@ -720,7 +705,7 @@ function CatalogView({ onOpen, className }) {
 
 	return (
 		<div className={`page content-pad ${className || ''}`}>
-			<HeroBanner />
+			<ChurrascoBanner onAbrir={onChurrasco} />
 
 			<div className="cat-filter">
 				<button

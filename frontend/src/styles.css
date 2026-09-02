@@ -186,6 +186,48 @@ a { color: inherit; }
 .nav-link:hover { color: var(--text); background: var(--panel-2); }
 .nav-link.active { color: var(--green-bright); }
 
+/* ── acesso ao churrasco ──
+   As categorias ao lado rolam a página; esta sai dela, então não se parece
+   com elas: é uma pílula preenchida no verde do sistema. Com a loja inteira
+   esgotada, é a única coisa viva do site — o destaque é honesto. */
+.churrasco-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  flex-shrink: 0;
+  height: 38px;
+  padding: 0 16px;
+  border-radius: var(--r-pill);
+  background: var(--green);
+  /* Tinta escura, não branca: branco sobre este verde dá 3:1 e o rótulo é
+     pequeno e em caixa alta. O quase-preto sobe para 6,3:1 e ainda repete a
+     relação verde/preto da própria arte do banner. */
+  color: #0b1110;
+  font-family: var(--font);
+  font-weight: 700;
+  font-size: 0.74rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  text-decoration: none;
+  white-space: nowrap;
+  outline-offset: 2px;
+  transition: background 0.15s, transform 0.15s;
+}
+
+.churrasco-link:hover { background: var(--green-hover); }
+.churrasco-link:active { transform: scale(0.97); }
+.churrasco-link:focus-visible { outline: 3px solid var(--green-bright); }
+
+.churrasco-link svg { flex: 0 0 auto; }
+
+/* Só uma das duas aparece por vez, então só uma entra na ordem de tabulação. */
+.churrasco-link-topo { display: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .churrasco-link { transition: none; }
+  .churrasco-link:active { transform: none; }
+}
+
 /* header right side: theme toggle + cart */
 .header-actions {
   display: flex;
@@ -255,60 +297,49 @@ a { color: inherit; }
 /* ─── PAGE CONTENT ─── */
 .content-pad { padding-top: 40px; padding-bottom: 96px; }
 
-/* ─── HERO 3D CAROUSEL ─── */
-.hero-carousel {
+/* ─── BANNER DO CHURRASCO ───
+   Um único banner, sem palco 3D e sem altura fixa: a altura vem da proporção
+   da arte (2076×758), então nada é cortado nem esticado em largura nenhuma. */
+.hero-banner {
+  display: block;
   position: relative;
-  height: 580px;
-  perspective: 1200px;
-  perspective-origin: 50% 46%;
-  overflow: hidden;
-  cursor: grab;
-  user-select: none;
-  margin: 0 auto 64px;
-}
-
-.hero-carousel:active { cursor: grabbing; }
-
-.hero-stage {
   width: 100%;
-  height: 100%;
-  position: relative;
-  transform-style: preserve-3d;
-}
-
-.hero-slide {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 370px;
-  height: 462px; /* 4:5 */
-  margin-top: -231px;
-  margin-left: -185px;
+  margin: 0 0 40px;
   border-radius: var(--r-lg);
   overflow: hidden;
-  cursor: pointer;
-  backface-visibility: hidden;
-  transition:
-    transform 0.65s cubic-bezier(0.25, 0.46, 0.45, 0.94),
-    opacity   0.65s ease,
-    filter    0.65s ease;
-  box-shadow: 0 28px 64px -18px rgba(0, 0, 0, 0.7);
-  will-change: transform, opacity;
+  /* Reserva o espaço antes da imagem chegar: sem isso a página pula. */
+  aspect-ratio: 2076 / 758;
+  background: var(--panel-2);
+  box-shadow: var(--shadow-sm);
+  outline-offset: 3px;
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
 }
 
-.hero-slide img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
+.hero-banner img {
   display: block;
-  pointer-events: none;
+  width: 100%;
+  height: auto;
+}
+
+/* A arte é o conteúdo; a resposta ao ponteiro é só a moldura. */
+.hero-banner:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 22px 48px -20px rgba(0, 0, 0, 0.55);
+}
+
+.hero-banner:focus-visible {
+  outline: 3px solid var(--green-bright);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hero-banner { transition: none; }
+  .hero-banner:hover { transform: none; }
 }
 
 .smart-picture {
   display: block;
 }
 
-.hero-slide > .smart-picture,
 .tile-media > .smart-picture,
 .detail-media > .smart-picture,
 .cart-thumb > .smart-picture,
@@ -358,64 +389,6 @@ a { color: inherit; }
   .img-skeleton {
     animation: none;
   }
-}
-
-/* ── arrows ── */
-.hero-arrow {
-  position: absolute;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 42px;
-  height: 42px;
-  border-radius: 50%;
-  border: 1px solid var(--line-strong);
-  background: var(--panel);
-  color: var(--text-dim);
-  display: grid;
-  place-items: center;
-  cursor: pointer;
-  z-index: 20;
-  font-size: 1.5rem;
-  line-height: 1;
-  transition: all 0.15s;
-}
-
-.hero-arrow:hover { border-color: var(--green); color: var(--green-bright); background: var(--panel-2); }
-.hero-prev { left: 14px; }
-.hero-next { right: 14px; }
-.hero-prev::before { content: "‹"; }
-.hero-next::before { content: "›"; }
-
-/* ── dots ── */
-.hero-dots {
-  position: absolute;
-  bottom: 14px;
-  left: 50%;
-  transform: translateX(-50%);
-  display: flex;
-  gap: 8px;
-  z-index: 20;
-}
-
-.hero-dot {
-  width: 28px;
-  height: 4px;
-  padding: 0;
-  border: 0;
-  border-radius: 2px;
-  background: var(--line-strong);
-  cursor: pointer;
-  transition: background 0.25s, width 0.25s;
-}
-
-.hero-dot.active { background: var(--green-bright); width: 44px; }
-
-@media (max-width: 640px) {
-  .hero-carousel { height: 440px; margin-bottom: 52px; }
-  .hero-slide { width: 270px; height: 337px; margin-top: -168px; margin-left: -135px; }
-  .hero-arrow { width: 36px; height: 36px; font-size: 1.2rem; }
-  .hero-prev { left: 6px; }
-  .hero-next { right: 6px; }
 }
 
 /* ─── CATEGORY FILTER PILLS ─── */
@@ -1487,6 +1460,19 @@ a { color: inherit; }
     position: sticky;
     top: 0;
     z-index: 101;
+  }
+
+  /* A barra de baixo já reparte o espaço entre as quatro categorias: uma
+     quinta pílula ali espremeria todas. Aqui em cima sobra a linha inteira. */
+  .churrasco-link-barra { display: none; }
+
+  .churrasco-link-topo {
+    display: inline-flex;
+    margin-left: auto;
+    height: 34px;
+    padding: 0 14px;
+    font-size: 0.7rem;
+    letter-spacing: 0.08em;
   }
 
   /* ── header becomes floating pill bottom nav ── */
