@@ -62,7 +62,16 @@ const { registerChurrascoRoutes, CHURRASCO_WEBHOOK_PATH, inscricaoToken } = awai
   "./churrasco.js"
 );
 const { CHURRASCO_SHEET_HEADERS } = await import("./churrasco-inscricoes.js");
-const { PRICE_OTHER_CENTS, PRICE_SI_CENTS } = await import("./shared/churrasco.js");
+const {
+  CATEGORY_EXTERNAL,
+  CATEGORY_OTHER,
+  CATEGORY_SI,
+  COURSES,
+  OTHER_COURSE,
+  PRICE_OTHER_CENTS,
+  PRICE_SI_CENTS,
+  SI_COURSE,
+} = await import("./shared/churrasco.js");
 
 const app = express();
 app.use(express.json());
@@ -173,6 +182,77 @@ console.log("\nChurrasco — cobrança Pix pela API de Orders do Mercado Pago\n"
 
 /* ─── Preço, validação e referência ──────────────────────────────────── */
 
+/* ─── A lista de cursos ──────────────────────────────────────────────── */
+
+await test("a lista de cursos está na ordem exata que a tela mostra", () => {
+  assert.deepEqual(COURSES, [
+    "Administração",
+    "Ciências Contábeis",
+    "Direito",
+    "Sistemas de Informação",
+    "Pedagogia",
+    "Ontopsicologia",
+    "Hotelaria",
+    "Gastronomia",
+    "Outro",
+  ]);
+});
+
+await test("Ciências Contábeis e Outro estão na lista, com a grafia exata", () => {
+  assert.ok(COURSES.includes("Ciências Contábeis"), "Ciências Contábeis fora da lista");
+  assert.ok(COURSES.includes("Outro"), "Outro fora da lista");
+  // "Outro" é o último item: é a saída de quem não achou o próprio curso.
+  assert.equal(COURSES.at(-1), OTHER_COURSE);
+  assert.equal(new Set(COURSES).size, COURSES.length, "curso repetido na lista");
+});
+
+await test("o resumo da inscrição bate com o que o backend cobra", async () => {
+  const { buildRegistrationSummary } = await import("./shared/churrasco.js");
+
+  // É o card que aparece na tela assim que a pessoa escolhe o curso.
+  assert.deepEqual(buildRegistrationSummary("Ciências Contábeis"), {
+    course: "Ciências Contábeis",
+    category: CATEGORY_OTHER,
+    priceCents: PRICE_OTHER_CENTS,
+    price: buildRegistrationSummary("Ciências Contábeis").price,
+  });
+  assert.equal(reais(buildRegistrationSummary("Ciências Contábeis").price), "R$ 35,00");
+
+  const outro = buildRegistrationSummary("Outro");
+  assert.equal(outro.course, "Outro");
+  assert.equal(outro.category, CATEGORY_EXTERNAL);
+  assert.equal(outro.priceCents, PRICE_OTHER_CENTS);
+  assert.equal(reais(outro.price), "R$ 35,00");
+
+  assert.equal(buildRegistrationSummary(SI_COURSE).priceCents, PRICE_SI_CENTS);
+  assert.equal(reais(buildRegistrationSummary(SI_COURSE).price), "R$ 25,00");
+
+  // Sem curso não há resumo — a tela não mostra preço nenhum.
+  for (const invalido of ["", "Medicina", null, ["Outro"]]) {
+    assert.equal(buildRegistrationSummary(invalido), null, `${JSON.stringify(invalido)} virou resumo`);
+  }
+});
+
+await test("o arquivo compartilhado do frontend é idêntico ao do backend", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const daqui = path.join(here, "shared", "churrasco.js");
+  const doFront = path.join(here, "..", "frontend", "src", "shared", "churrasco.js");
+
+  const [backend, frontend] = await Promise.all([
+    readFile(daqui, "utf8"),
+    readFile(doFront, "utf8"),
+  ]);
+
+  assert.equal(
+    frontend,
+    backend,
+    "backend/shared/churrasco.js e frontend/src/shared/churrasco.js divergiram — " +
+      "as duas listas precisam ser a mesma."
+  );
+});
+
+/* ─── Preço, validação e referência ──────────────────────────────────── */
+
 await test("cria a cobrança e grava a linha pendente com as 20 colunas", async () => {
   const body = await inscrever();
 
@@ -199,7 +279,7 @@ await test("cria a cobrança e grava a linha pendente com as 20 colunas", async 
 });
 
 await test("Sistemas de Informação gera R$ 25,00", async () => {
-  const body = await inscrever({ course: "Sistemas de Informação" });
+  const body = await inscrever({ course: SI_COURSE });
 
   assert.equal(body.amountCents, PRICE_SI_CENTS);
   assert.equal(reais(body.amount), "R$ 25,00");
@@ -208,16 +288,119 @@ await test("Sistemas de Informação gera R$ 25,00", async () => {
   assert.equal(criacao.body.total_amount, "25.00");
   assert.equal(criacao.body.transactions.payments[0].amount, "25.00");
   assert.equal(reais(sheet.rows[0][COL.valor]), "R$ 25,00");
-  assert.equal(sheet.rows[0][COL.categoria], "Aluno de SI");
+  assert.equal(sheet.rows[0][COL.categoria], CATEGORY_SI);
 });
 
-await test("demais cursos geram R$ 35,00", async () => {
-  for (const curso of ["Administração", "Direito", "Pedagogia", "Ontopsicologia", "Hotelaria", "Gastronomia"]) {
+await test("todo curso que não é SI gera R$ 35,00", async () => {
+  // A lista inteira, menos SI — nenhum curso novo escapa deste teste.
+  for (const curso of COURSES.filter((c) => c !== SI_COURSE)) {
     resetSheet();
     resetMercadoPago();
     const body = await inscrever({ course: curso });
     assert.equal(body.amountCents, PRICE_OTHER_CENTS, `${curso} deveria custar R$ 35,00`);
+    assert.equal(reais(body.amount), "R$ 35,00", `${curso} deveria custar R$ 35,00`);
     assert.equal(requisicoesPara("POST", "/v1/orders")[0].body.total_amount, "35.00");
+    assert.equal(reais(sheet.rows[0][COL.valor]), "R$ 35,00");
+  }
+});
+
+await test("Administração continua em R$ 35,00 e na categoria de sempre", async () => {
+  const body = await inscrever({ course: "Administração" });
+
+  assert.equal(body.amountCents, PRICE_OTHER_CENTS);
+  assert.equal(reais(body.amount), "R$ 35,00");
+  assert.equal(sheet.rows[0][COL.curso], "Administração");
+  assert.equal(sheet.rows[0][COL.categoria], CATEGORY_OTHER);
+});
+
+await test("Ciências Contábeis é aceita, cobra R$ 35,00 e vai acentuada para a planilha", async () => {
+  const body = await inscrever({ course: "Ciências Contábeis" });
+
+  assert.equal(body.amountCents, PRICE_OTHER_CENTS);
+  assert.equal(reais(body.amount), "R$ 35,00");
+  assert.equal(body.curso, "Ciências Contábeis");
+  assert.equal(body.categoria, CATEGORY_OTHER);
+
+  const [criacao] = requisicoesPara("POST", "/v1/orders");
+  assert.equal(criacao.body.total_amount, "35.00");
+
+  assert.equal(sheet.rows.length, 1);
+  // Grafia exata: nenhuma normalização come o acento no registro final.
+  assert.equal(sheet.rows[0][COL.curso], "Ciências Contábeis");
+  assert.equal(sheet.rows[0][COL.categoria], CATEGORY_OTHER);
+  assert.equal(reais(sheet.rows[0][COL.valor]), "R$ 35,00");
+});
+
+await test("Outro é aceito, cobra R$ 35,00 e entra como participante externo", async () => {
+  const body = await inscrever({ course: "Outro" });
+
+  assert.equal(body.amountCents, PRICE_OTHER_CENTS);
+  assert.equal(reais(body.amount), "R$ 35,00");
+  assert.equal(body.curso, "Outro");
+  assert.equal(body.categoria, CATEGORY_EXTERNAL);
+
+  assert.equal(requisicoesPara("POST", "/v1/orders")[0].body.total_amount, "35.00");
+
+  assert.equal(sheet.rows.length, 1);
+  // "Outro" é um valor, não um vazio: a planilha registra a palavra.
+  assert.equal(sheet.rows[0][COL.curso], "Outro");
+  assert.equal(sheet.rows[0][COL.categoria], CATEGORY_EXTERNAL);
+  assert.equal(reais(sheet.rows[0][COL.valor]), "R$ 35,00");
+  // Nome, telefone e e-mail seguem intactos — "Outro" só muda o curso.
+  assert.equal(sheet.rows[0][COL.nome], "Ana Maria Souza");
+  assert.equal(sheet.rows[0][COL.telefone], "55999999999");
+  assert.ok(sheet.rows[0][COL.email].endsWith("@exemplo.com"));
+});
+
+await test("curso digitado sem acento é aceito e gravado na grafia da lista", async () => {
+  const body = await inscrever({ course: "ciencias contabeis" });
+
+  assert.equal(body.curso, "Ciências Contábeis");
+  assert.equal(body.amountCents, PRICE_OTHER_CENTS);
+  assert.equal(sheet.rows[0][COL.curso], "Ciências Contábeis");
+});
+
+await test("os cursos novos vão do formulário à confirmação em uma única linha", async () => {
+  for (const [curso, categoria] of [
+    ["Ciências Contábeis", CATEGORY_OTHER],
+    ["Outro", CATEGORY_EXTERNAL],
+  ]) {
+    resetSheet();
+    resetMercadoPago();
+
+    const dados = inscricao({ course: curso });
+
+    // Duplo clique: a segunda tentativa recai sobre a mesma cobrança.
+    const [primeira, segunda] = await Promise.all([criarCheckout(dados), criarCheckout(dados)]);
+    const body = await primeira.json();
+    const repetida = await segunda.json();
+
+    assert.equal(primeira.status, 201, JSON.stringify(body));
+    assert.equal(segunda.status, 201, JSON.stringify(repetida));
+    assert.equal(repetida.orderId, body.orderId, `${curso} duplicou a inscrição`);
+    assert.equal(sheet.rows.length, 1, `${curso} criou duas linhas`);
+    assert.equal(mp.orders.size, 1, `${curso} criou duas cobranças`);
+
+    // O webhook confirma na MESMA linha, sem mexer no curso gravado.
+    const order = orderDe(body.orderId);
+    creditar(order.id);
+    assert.equal((await notificar(order.id)).status, 200);
+
+    assert.equal(sheet.rows.length, 1, `${curso} ganhou uma linha no webhook`);
+    assert.equal(sheet.rows[0][COL.id], body.orderId);
+    assert.equal(sheet.rows[0][COL.status], "Pago");
+    assert.equal(sheet.rows[0][COL.curso], curso);
+    assert.equal(sheet.rows[0][COL.categoria], categoria);
+    assert.equal(reais(sheet.rows[0][COL.valorPago]), "R$ 35,00");
+
+    // A tela de pagamento confirmado lê daqui — e o curso continua o mesmo.
+    const confirmada = await (await consultarStatus(body.orderId, body.token)).json();
+    assert.equal(confirmada.paid, true, `${curso} não confirmou`);
+    assert.equal(confirmada.statusLabel, "Pago");
+    assert.equal(confirmada.curso, curso, "a confirmação mudou o curso");
+    assert.equal(confirmada.categoria, categoria);
+    assert.equal(reais(confirmada.amount), "R$ 35,00");
+    assert.equal(confirmada.amountCents, PRICE_OTHER_CENTS);
   }
 });
 
@@ -246,11 +429,28 @@ await test("preço forjado pelo navegador é ignorado", async () => {
 });
 
 await test("curso fora da lista é recusado e não cria linha nem cobrança", async () => {
-  const res = await criarCheckout(inscricao({ course: "Medicina" }));
-  assert.equal(res.status, 400);
-  assert.equal((await res.json()).field, "course");
-  assert.equal(sheet.rows.length, 0);
-  assert.equal(requisicoesPara("POST", "/v1/orders").length, 0);
+  // "Outro" abriu a inscrição para quem é de fora — sem abrir a allowlist.
+  for (const curso of ["Medicina", "Outros", "Ciências Contabilidade", "Engenharia"]) {
+    resetSheet();
+    resetMercadoPago();
+    const res = await criarCheckout(inscricao({ course: curso }));
+    assert.equal(res.status, 400, `"${curso}" deveria ser recusado`);
+    assert.equal((await res.json()).field, "course");
+    assert.equal(sheet.rows.length, 0);
+    assert.equal(requisicoesPara("POST", "/v1/orders").length, 0);
+  }
+});
+
+await test("curso vazio, ausente ou de outro tipo é recusado", async () => {
+  for (const curso of ["", "   ", null, undefined, 0, [], {}, ["Outro"]]) {
+    resetSheet();
+    resetMercadoPago();
+    const res = await criarCheckout(inscricao({ course: curso }));
+    assert.equal(res.status, 400, `${JSON.stringify(curso)} deveria ser recusado`);
+    assert.equal((await res.json()).field, "course");
+    assert.equal(sheet.rows.length, 0);
+    assert.equal(requisicoesPara("POST", "/v1/orders").length, 0);
+  }
 });
 
 await test("e-mail inválido é recusado", async () => {

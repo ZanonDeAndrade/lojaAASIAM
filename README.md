@@ -26,13 +26,17 @@ Abra `http://localhost:5173`. O proxy do Vite manda `/api` para a porta 3333.
 cd backend && npm test
 ```
 
-Roda as duas suites, sem credencial e sem chamada externa:
+Roda as tres suites, sem credencial e sem chamada externa:
 
 - `npm run test:churrasco` — sobe as rotas reais do churrasco com a planilha em
   memoria e um `fetch` falso no lugar de `api.mercadopago.com`. O cliente do
   Mercado Pago exercitado e o de verdade, entao os testes afirmam o que sai pela
   rede: o payload da order, o header `X-Idempotency-Key`, o tratamento de 429 e a
-  validacao da assinatura do webhook.
+  validacao da assinatura do webhook. Cobre tambem a lista de cursos: a ordem, o
+  preco de cada um e o espelhamento entre backend e frontend.
+- `npm run test:comprovante` — gera o PDF de producao e le o conteudo do arquivo
+  para provar o que aparece nele (curso, categoria, valor) e o que nunca aparece
+  (credencial, token, telefone). Cobre tambem a validacao pelo QR Code.
 - `npm run test:loja` — sobe o `index.js` de verdade e confere que as rotas do
   e-commerce continuam no ar (health, config, cupons, checkout, webhook da
   InfinitePay, consulta de pedido, CORS).
@@ -93,6 +97,34 @@ para nenhum checkout externo**.
 
 Nao ha produto cadastrado no Mercado Pago, nem cartao, boleto ou parcelamento:
 o unico meio de pagamento no payload e `pix` / `bank_transfer`.
+
+## Cursos e precos
+
+A lista vive em um lugar so, `backend/shared/churrasco.js`, espelhada byte a
+byte em `frontend/src/shared/churrasco.js` (um teste falha se as duas
+divergirem). Ela e ao mesmo tempo o que a tela mostra e a allowlist que o
+backend aceita — nao existe curso valido fora dela.
+
+```text
+1. Administracao              R$ 35,00    Outro curso
+2. Ciencias Contabeis         R$ 35,00    Outro curso
+3. Direito                    R$ 35,00    Outro curso
+4. Sistemas de Informacao     R$ 25,00    Aluno de SI
+5. Pedagogia                  R$ 35,00    Outro curso
+6. Ontopsicologia             R$ 35,00    Outro curso
+7. Hotelaria                  R$ 35,00    Outro curso
+8. Gastronomia                R$ 35,00    Outro curso
+9. Outro                      R$ 35,00    Participante externo
+```
+
+`Outro` e a opcao de quem nao estuda na faculdade — participante externo,
+convidado, egresso. Nao pede curso por escrito: e um valor como qualquer outro,
+gravado com essa palavra na planilha, no comprovante e na validacao.
+
+A comparacao ignora acento e caixa na entrada (`ciencias contabeis` e aceito),
+mas o registro final sai sempre na grafia da lista. O preco e calculado no
+servidor, em centavos inteiros — 2500 para Sistemas de Informacao, 3500 para
+todo o resto — e qualquer valor que o navegador mande e descartado.
 
 ## Como o dinheiro entra
 
@@ -304,7 +336,8 @@ G Valor                  N Última atualização
   numero gravado nunca vira regra de negocio.
 - **T** guarda a validade do Pix em ISO 8601, para o backend saber quando
   reaproveitar a cobranca em vez de criar outra.
-- Categorias: `Aluno de SI` e `Outro curso`.
+- Categorias: `Aluno de SI`, `Outro curso` e `Participante externo` (quem
+  escolheu `Outro`).
 - Status: `Pendente`, `Processando`, `Pago`, `Falhou`, `Cancelado`, `Expirado`,
   `Reembolsado`, `Erro`, `Revisão manual` (e `Recusado`, so lido, das inscricoes
   antigas).

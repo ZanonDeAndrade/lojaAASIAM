@@ -259,6 +259,31 @@ await test("o PDF traz os dados reais da inscrição, vindos da planilha", async
   }
 });
 
+await test("o PDF mostra Ciências Contábeis com a grafia acentuada", async () => {
+  const inscricao = await inscricaoPaga({ course: "Ciências Contábeis" });
+  const pdf = Buffer.from(await (await baixar(inscricao.orderId, inscricao.token)).arrayBuffer());
+  const texto = textoLegivel(pdf);
+
+  // O acento vai codificado no PDF; os dois pedaços em volta provam a palavra.
+  assert.ok(texto.includes(semEspacos("ncias Cont")), "o PDF não traz Ciências Contábeis");
+  assert.ok(texto.includes("Ci"), "o PDF não traz o começo do curso");
+  assert.ok(texto.includes(semEspacos("Outro curso")), "o PDF não traz a categoria");
+  assert.ok(texto.includes("35,00"), "o PDF não traz R$ 35,00");
+  assert.ok(texto.includes(semEspacos("PAGAMENTO CONFIRMADO")));
+});
+
+await test("o PDF mostra Outro e a categoria de participante externo", async () => {
+  const inscricao = await inscricaoPaga({ course: "Outro" });
+  const pdf = Buffer.from(await (await baixar(inscricao.orderId, inscricao.token)).arrayBuffer());
+  const texto = textoLegivel(pdf);
+
+  assert.ok(texto.includes("Outro"), "o PDF não traz o curso Outro");
+  assert.ok(texto.includes(semEspacos("Participante externo")), "o PDF não traz a categoria");
+  assert.ok(texto.includes("35,00"), "o PDF não traz R$ 35,00");
+  // "Outro" é uma escolha, não um vazio: o travessão de campo em branco não aparece no lugar dela.
+  assert.ok(!texto.includes(semEspacos("Curso—")), "o curso saiu vazio no PDF");
+});
+
 await test("o PDF não carrega credencial, token nem dado de contato", async () => {
   const inscricao = await inscricaoPaga({ email: "pessoa.secreta@exemplo.com" });
   const pdf = Buffer.from(await (await baixar(inscricao.orderId, inscricao.token)).arrayBuffer());
@@ -475,6 +500,26 @@ await test("a validação mostra o comprovante válido, sem tocar na inscrição
   assert.equal(sheet.calls.append, gravacoesAntes.append, "a validação criou linha");
   assert.equal(sheet.calls.update, gravacoesAntes.update, "a validação gravou na planilha");
   assert.equal(sheet.rows[0][COL.status], "Pago");
+});
+
+await test("a validação mostra os cursos novos exatamente como foram gravados", async () => {
+  const casos = [
+    { curso: "Ciências Contábeis", categoria: "Outro curso", valor: /35,00/ },
+    { curso: "Outro", categoria: "Participante externo", valor: /35,00/ },
+    { curso: "Sistemas de Informação", categoria: "Aluno de SI", valor: /25,00/ },
+  ];
+
+  for (const caso of casos) {
+    resetSheet();
+    resetMercadoPago();
+    const inscricao = await inscricaoPaga({ course: caso.curso });
+
+    const dados = await (await validar(criarTokenVerificacao(inscricao.orderId))).json();
+    assert.equal(dados.valido, true, `${caso.curso} deveria validar`);
+    assert.equal(dados.curso, caso.curso, "a validação mudou a grafia do curso");
+    assert.equal(dados.categoria, caso.categoria);
+    assert.match(dados.amount, caso.valor);
+  }
 });
 
 await test("quem perdeu o status Pago não aparece como válido", async () => {

@@ -443,7 +443,9 @@
   margin: 0;
   padding: 6px;
   list-style: none;
-  max-height: min(330px, 58vh);
+  /* Os nove cursos somam 388px. Cabendo na tela, a lista aparece inteira;
+     em tela baixa ela rola, e o item pela metade avisa que há mais. */
+  max-height: min(392px, 58vh);
   overflow-y: auto;
   overscroll-behavior: contain;
   background: var(--ch-lista);

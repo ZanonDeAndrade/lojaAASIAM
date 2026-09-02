@@ -12,15 +12,23 @@
 
 export const SI_COURSE = "Sistemas de Informação";
 
+/**
+ * "Outro" é a saída para quem não estuda na faculdade — participante externo,
+ * convidado, egresso. Não abre campo de texto: a pessoa escolhe e segue.
+ */
+export const OTHER_COURSE = "Outro";
+
 /** Ordem exata exibida na lista de cursos. */
 export const COURSES = [
   "Administração",
+  "Ciências Contábeis",
   "Direito",
   SI_COURSE,
   "Pedagogia",
   "Ontopsicologia",
   "Hotelaria",
   "Gastronomia",
+  OTHER_COURSE,
 ];
 
 export const PRICE_SI_CENTS = 2500;
@@ -28,6 +36,8 @@ export const PRICE_OTHER_CENTS = 3500;
 
 export const CATEGORY_SI = "Aluno de SI";
 export const CATEGORY_OTHER = "Outro curso";
+/** Quem escolheu "Outro" não tem curso na casa: a comanda diz isso. */
+export const CATEGORY_EXTERNAL = "Participante externo";
 
 export const REGISTRATION_SOURCE = "Formulário Churrasco AASIAM";
 
@@ -69,9 +79,16 @@ export function amountToCents(value) {
   return negativo ? -cents : cents;
 }
 
-/** Remove acentos e caixa para comparar cursos de forma tolerante. */
+/**
+ * Remove acentos e caixa para comparar cursos de forma tolerante.
+ *
+ * Só texto entra: `["Outro"]` vira "Outro" num `String()` e passaria pela
+ * allowlist como se fosse a palavra. Curso é campo de texto — o resto é
+ * entrada malformada e sai daqui vazio, que `normalizeCourse` recusa.
+ */
 function foldCourse(value) {
-  return String(value ?? "")
+  if (typeof value !== "string") return "";
+  return value
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/\s+/g, " ")
@@ -96,11 +113,16 @@ export function priceCentsForCourse(value) {
   return course === SI_COURSE ? PRICE_SI_CENTS : PRICE_OTHER_CENTS;
 }
 
-/** "Aluno de SI" ou "Outro curso". `null` para curso inválido. */
+/**
+ * "Aluno de SI", "Participante externo" ou "Outro curso".
+ * `null` para curso inválido. A categoria é rótulo: o preço não sai daqui.
+ */
 export function categoryForCourse(value) {
   const course = normalizeCourse(value);
   if (!course) return null;
-  return course === SI_COURSE ? CATEGORY_SI : CATEGORY_OTHER;
+  if (course === SI_COURSE) return CATEGORY_SI;
+  if (course === OTHER_COURSE) return CATEGORY_EXTERNAL;
+  return CATEGORY_OTHER;
 }
 
 /** Colapsa espaços duplicados, remove as pontas e limita o tamanho. */

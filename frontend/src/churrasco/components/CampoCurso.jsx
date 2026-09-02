@@ -43,7 +43,7 @@ export default function CampoCurso({
 
 	/** Altura máxima da lista, espelhando o CSS. */
 	function alturaDaLista() {
-		return Math.min(330, window.innerHeight * 0.58);
+		return Math.min(392, window.innerHeight * 0.58);
 	}
 
 	function abrir(indiceInicial = selecionado >= 0 ? selecionado : 0) {

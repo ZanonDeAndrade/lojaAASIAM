@@ -35,7 +35,7 @@ export default function EventoApresentacao() {
 						<span className="ch-tier-price">{formatBRL(PRICE_SI_CENTS)}</span>
 					</div>
 					<div className="ch-tier">
-						<span className="ch-tier-label">Demais cursos</span>
+						<span className="ch-tier-label">Demais participantes</span>
 						<span className="ch-tier-price">{formatBRL(PRICE_OTHER_CENTS)}</span>
 					</div>
 				</div>
