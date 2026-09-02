@@ -14,8 +14,11 @@ function imageOptimizerPlugin() {
     apply: "build",
     async closeBundle() {
       const distImgs = path.resolve(__dirname, "dist");
-      const compressed = await compressRaster(distImgs);
+      // WebP primeiro: recomprimir os PNG antes deixaria os .webp já
+      // versionados em public/ "desatualizados" e eles seriam regerados a
+      // partir do PNG comprimido, perdendo qualidade sem motivo.
       const webp = await generateWebp(distImgs);
+      const compressed = await compressRaster(distImgs);
       console.log(
         `[image-optimizer] ${compressed.done} imagem(ns) comprimida(s), ${webp.created} WebP no dist/.`
       );

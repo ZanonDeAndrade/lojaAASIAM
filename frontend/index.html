@@ -5,17 +5,48 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>AASIAM | Loja Oficial</title>
     <meta name="description" content="Loja oficial da Atlética de Sistemas de Informação" />
+    <!-- Sem este link o navegador pede /favicon.ico e recebe 404 no console. -->
+    <link rel="icon" href="/logo-aasiam.webp" type="image/webp" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <!-- Archivo: toda a loja · JetBrains Mono: códigos e valores da página /churrasco
+         (as fontes só são baixadas quando a página realmente as usa) -->
+    <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
 
-    <!-- Prioridade 1: imagens acima da dobra (logo, banner e primeiros cards) -->
+    <!-- Prioridade 1: imagens acima da dobra. O logo serve todas as rotas; os
+         cards do catálogo só são pré-carregados nas rotas da loja, já que a
+         página /churrasco não usa nenhum deles. -->
     <link rel="preload" as="image" href="/logo-aasiam.webp" type="image/webp" fetchpriority="high" />
-    <link rel="preload" as="image" href="/imgs/anuncio.webp" type="image/webp" fetchpriority="high" />
-    <link rel="preload" as="image" href="/imgs/moletom-verde.webp" type="image/webp" fetchpriority="high" />
-    <link rel="preload" as="image" href="/imgs/moletom-off-white.webp" type="image/webp" fetchpriority="high" />
-    <link rel="preload" as="image" href="/imgs/camiseta-aasiam.webp" type="image/webp" fetchpriority="high" />
-    <link rel="preload" as="image" href="/imgs/camiseta-aasiam-goleiro.webp" type="image/webp" fetchpriority="high" />
+    <script>
+      (function () {
+        if (location.pathname === "/churrasco") {
+          var lobo = document.createElement("link");
+          lobo.rel = "preload";
+          lobo.as = "image";
+          lobo.type = "image/webp";
+          lobo.href = "/imgs/lobo-churrasco-transparente.webp";
+          lobo.setAttribute("fetchpriority", "high");
+          document.head.appendChild(lobo);
+          return;
+        }
+        var imgs = [
+          "/imgs/anuncio.webp",
+          "/imgs/moletom-verde.webp",
+          "/imgs/moletom-off-white.webp",
+          "/imgs/camiseta-aasiam.webp",
+          "/imgs/camiseta-aasiam-goleiro.webp",
+        ];
+        for (var i = 0; i < imgs.length; i++) {
+          var l = document.createElement("link");
+          l.rel = "preload";
+          l.as = "image";
+          l.type = "image/webp";
+          l.href = imgs[i];
+          l.setAttribute("fetchpriority", "high");
+          document.head.appendChild(l);
+        }
+      })();
+    </script>
 
     <script>
       // Apply persisted theme before first paint — prevents flash
