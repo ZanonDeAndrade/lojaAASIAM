@@ -36,7 +36,7 @@ export const PRODUCTS = [
 			shortName: 'Moletom Verde',
 			description:
 				'Visual clássico e versátil, com a identidade da Alcateia estampada no peito. Conforto, estilo e orgulho de representar a AASIAM.',
-		priceCents: 15000,
+		priceCents: 16000,
 		tag: 'Escolha o tamanho',
 		accent: '#12c86b',
 		variants: [HOODIE_VARIANTS[0]],
@@ -50,7 +50,7 @@ export const PRODUCTS = [
 			shortName: 'Moletom Off-white',
 			description:
 				'Peça exclusiva com arte do lobo da Alcateia nas costas, representando força, união e pertencimento à AASIAM. Ideal para quem quer se destacar.',
-		priceCents: 15000,
+		priceCents: 16000,
 		tag: 'Escolha o tamanho',
 		accent: '#c9b789',
 		variants: [HOODIE_VARIANTS[1]],
@@ -64,7 +64,7 @@ export const PRODUCTS = [
 			shortName: 'Combo Essencial AASIAM',
 			description:
 				'O Combo Essencial reúne as duas peças principais da Coleção Alcateia: o moletom verde e o moletom off-white. Uma combinação perfeita para quem quer ter as duas versões da coleção e representar a AASIAM em diferentes ocasiões, unindo conforto, estilo e identidade em um único pacote.',
-		priceCents: 28000,
+		priceCents: 29000,
 			tag: 'Verde + Off-white',
 		accent: '#7fff8a',
 			includes: ['Moletom Verde', 'Moletom Off-white'],
@@ -108,7 +108,7 @@ export const PRODUCTS = [
 			shortName: 'Caneca',
 			description:
 				'Kit exclusivo da AASIAM que reúne uma caneca temática e um tirante personalizado, ideal para representar a Alcateia em qualquer momento.',
-		priceCents: 3500,
+		priceCents: 4000,
 		tag: 'Unitário',
 		accent: '#e8f7ef',
 		images: ['/imgs/copo.png'],
@@ -145,7 +145,7 @@ export const PRODUCTS = [
 			name: 'Camiseta AASIAM 2026',
 			shortName: 'Camiseta 2026',
 			description: 'Camiseta oficial AASIAM — Forfan, dry-tech.',
-			priceCents: 0,
+			priceCents: 9000,
 			tag: 'Unitário',
 			accent: '#12c86b',
 			images: ['/imgs/camiseta-aasiam.png'],
@@ -156,7 +156,7 @@ export const PRODUCTS = [
 			name: 'Camiseta Goleiro AASIAM 2026',
 			shortName: 'Camiseta Goleiro 2026',
 			description: 'Camiseta oficial de goleiro da Atlética de Sistemas da AMF 2026.',
-			priceCents: 0,
+			priceCents: 9000,
 			tag: 'Unitário',
 			accent: '#12c86b',
 			images: ['/imgs/camiseta-aasiam-goleiro.png'],
