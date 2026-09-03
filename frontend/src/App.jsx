@@ -27,9 +27,9 @@ import {
 import gsap from 'gsap';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { PRODUCTS } from './shared/products.js';
-import { createEmptySelection } from './shared/order.js';
 import ChurrascoPage from './churrasco/ChurrascoPage.jsx';
 import ValidacaoPage from './churrasco/ValidacaoPage.jsx';
+import CheckoutMercadoPago from './loja/CheckoutMercadoPago.jsx';
 
 /* ─── constants ─── */
 const currency = new Intl.NumberFormat('pt-BR', {
@@ -99,36 +99,6 @@ function cartTotals(cart, cupomAplicado = false) {
 	};
 }
 
-function cartToSelection(cart) {
-	const sel = createEmptySelection();
-	for (const item of cart) {
-		const { productId, _sel, qty } = item;
-		const product = PRODUCTS.find(p => p.id === productId);
-		if (!product) continue;
-
-		if (product.kind === 'sizedVariants') {
-			const v = product.variants[0];
-			sel[productId].variants[v.code][_sel.size] =
-				(sel[productId].variants[v.code][_sel.size] || 0) + qty;
-		} else if (product.kind === 'doubleHoodie') {
-			sel[productId].verdeSize = _sel.verde;
-			sel[productId].begeSize = _sel.bege;
-			sel[productId].quantity = (sel[productId].quantity || 0) + qty;
-		} else if (product.kind === 'modelQuantity') {
-			sel[productId].models[_sel.model] =
-				(sel[productId].models[_sel.model] || 0) + qty;
-		} else if (product.kind === 'configuredBundle') {
-			sel[productId].hoodieVariant = _sel.variant;
-			sel[productId].hoodieSize = _sel.size;
-			if (_sel.backpack) sel[productId].backpackModel = _sel.backpack;
-			sel[productId].quantity = (sel[productId].quantity || 0) + qty;
-		} else {
-			sel[productId].quantity = (sel[productId].quantity || 0) + qty;
-		}
-	}
-	return sel;
-}
-
 function buildCartItem(product, sel) {
 	const base = {
 		productId: product.id,
@@ -175,37 +145,6 @@ function buildCartItem(product, sel) {
 		};
 	}
 	return { ...base, key: product.id, meta: null };
-}
-
-function getStatusCopy(status) {
-	const map = {
-		approved: {
-			title: 'Pagamento aprovado!',
-			desc: 'Pedido registrado e pagamento confirmado.',
-		},
-		pending: {
-			title: 'Aguardando pagamento',
-			desc: 'Conclua o pagamento pelo QR Code Pix.',
-		},
-		in_process: {
-			title: 'Pagamento em análise',
-			desc: 'O Mercado Pago está processando.',
-		},
-		rejected: {
-			title: 'Pagamento recusado',
-			desc: 'Tente outra forma de pagamento.',
-		},
-		simulated: {
-			title: 'Pedido registrado',
-			desc: 'Modo de teste. Configure as credenciais para pagamentos reais.',
-		},
-	};
-	return (
-		map[status] || {
-			title: 'Pedido registrado',
-			desc: 'Acompanhe a confirmação pela planilha.',
-		}
-	);
 }
 
 /* ─── fly-to-cart animation ─── */
@@ -292,7 +231,6 @@ export default function App() {
 	const [view, setView] = useState(viewFromLocation);
 	const [selectedProduct, setProduct] = useState(null);
 	const [cart, setCart] = useState([]);
-	const [paymentResult, setResult] = useState(null);
 	const [theme, setTheme] = useState(
 		() => localStorage.getItem('aasiam-theme') || 'dark',
 	);
@@ -391,7 +329,7 @@ export default function App() {
 
 	function resetAll() {
 		setCart([]);
-		setResult(null);
+		setAppliedCupom(null);
 		go('catalog');
 	}
 
@@ -449,23 +387,14 @@ export default function App() {
 						/>
 					)}
 					{view === 'checkout' && (
-						<CheckoutView
-							cart={cart}
-							onBack={() => go('cart')}
-							onResult={r => {
-								setResult(r);
-								go('confirmation');
-							}}
-							appliedCupom={appliedCupom}
-							className="fade-in"
-						/>
-					)}
-					{view === 'confirmation' && (
-						<ConfirmationView
-							result={paymentResult}
-							onNew={resetAll}
-							className="fade-in"
-						/>
+						<div className="fade-in">
+							<CheckoutMercadoPago
+								cart={cart}
+								appliedCupom={appliedCupom}
+								onBack={() => go('cart')}
+								onDone={resetAll}
+							/>
+						</div>
 					)}
 					{view === 'pagamento-concluido' && (
 						<PagamentoConcluido
@@ -1507,342 +1436,6 @@ function Stepper({ qty, onDec, onInc }) {
 			<button type="button" aria-label="Aumentar" onClick={onInc}>
 				<Plus size={13} />
 			</button>
-		</div>
-	);
-}
-
-/* ══════════════════════════════════════════════════════
-   CHECKOUT VIEW
-   Form: Nome, Sobrenome, E-mail, Telefone
-══════════════════════════════════════════════════════ */
-function CheckoutView({ cart, onBack, onResult, appliedCupom, className }) {
-	const [loading, setLoading] = useState(false);
-	const [error, setError] = useState('');
-	const [submitAttempted, setSubmitAttempted] = useState(false);
-	const [form, setForm] = useState({
-		nome: '',
-		sobrenome: '',
-		email: '',
-		telefone: '',
-	});
-
-	const t = cartTotals(cart, !!appliedCupom);
-	const emailValue = form.email.trim();
-	const fieldStatus = {
-		nome: form.nome.trim().length > 0,
-		sobrenome: form.sobrenome.trim().length > 0,
-		email:
-			emailValue.length > 0 &&
-			emailValue.includes('@') &&
-			emailValue.includes('.'),
-		telefone: form.telefone.trim().length > 0,
-	};
-	const isFormValid = Object.values(fieldStatus).every(Boolean);
-	const isPaymentDisabled = loading || !isFormValid;
-
-	const customer = useMemo(
-		() => ({
-			name: `${form.nome} ${form.sobrenome}`.trim(),
-			phone: form.telefone,
-			email: form.email,
-		}),
-		[form],
-	);
-
-	const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
-	const inputClass = field =>
-		`input${submitAttempted && !fieldStatus[field] ? ' input-error' : ''}`;
-
-	function markInvalidSubmit() {
-		if (!loading && !isFormValid) {
-			setSubmitAttempted(true);
-		}
-	}
-
-	async function handleCheckout() {
-		setError('');
-		setSubmitAttempted(true);
-		if (!isFormValid || loading) return;
-
-		setLoading(true);
-		try {
-			const selection = cartToSelection(cart);
-			const res = await fetch(`${API_BASE}/api/checkout`, {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					customer,
-					selection,
-					cupom: appliedCupom?.codigo || '',
-				}),
-			});
-			const data = await res.json();
-			if (!res.ok)
-				throw new Error(data.error || 'Erro ao gerar link de pagamento.');
-			if (data.url) {
-				window.location.href = data.url;
-			} else {
-				onResult(data);
-			}
-		} catch (err) {
-			console.error('Erro no checkout:', err);
-			setError(
-				'Não foi possível processar o pagamento. Tente novamente ou entre em contato com o suporte.',
-			);
-		} finally {
-			setLoading(false);
-		}
-	}
-
-	const CRUMBS = ['Carrinho', 'Informações', 'Pagamento', 'Confirmação'];
-
-	return (
-		<div className={`page content-pad ${className || ''}`}>
-			{/* breadcrumb */}
-			<nav className="breadcrumb" aria-label="Etapas">
-				{CRUMBS.map((s, i) => (
-					<span
-						key={s}
-						style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}
-					>
-						{i > 0 && <ChevronRight size={13} style={{ opacity: 0.4 }} />}
-						<span className={i === 1 ? 'crumb-active' : ''}>{s}</span>
-					</span>
-				))}
-			</nav>
-
-			<div className="checkout-grid">
-				{/* contact info */}
-				<section className="panel form-panel">
-					<h2>Informações de Contato</h2>
-					<div className="form-stack">
-						<div className="row-2">
-							<input
-								className={inputClass('nome')}
-								placeholder="Nome"
-								value={form.nome}
-								onChange={e => set('nome', e.target.value)}
-								autoComplete="given-name"
-							/>
-							<input
-								className={inputClass('sobrenome')}
-								placeholder="Sobrenome"
-								value={form.sobrenome}
-								onChange={e => set('sobrenome', e.target.value)}
-								autoComplete="family-name"
-							/>
-						</div>
-						<input
-							className={inputClass('email')}
-							placeholder="E-mail"
-							value={form.email}
-							onChange={e => set('email', e.target.value)}
-							inputMode="email"
-							autoComplete="email"
-						/>
-						<input
-							className={inputClass('telefone')}
-							placeholder="Telefone"
-							value={form.telefone}
-							onChange={e => set('telefone', e.target.value)}
-							inputMode="tel"
-							autoComplete="tel"
-						/>
-					</div>
-				</section>
-
-				{/* payment */}
-				<section className="panel form-panel">
-					<h2>Pagamento</h2>
-
-					{error && (
-						<div className="messages">
-							<span>{error}</span>
-						</div>
-					)}
-
-					<p
-						style={{
-							color: 'var(--text-dim)',
-							fontSize: '0.88rem',
-							lineHeight: 1.6,
-							margin: '0 0 16px',
-						}}
-					>
-						Você será redirecionado para a página de pagamento seguro da
-						InfinitePay (Pix, cartão de crédito e débito).
-					</p>
-
-					<div className="pay-badges" style={{ marginBottom: 20 }}>
-						<span>
-							<Lock size={12} /> Pagamento seguro
-						</span>
-						<span>
-							<QrCode size={12} /> Pix
-						</span>
-						<span>
-							<CreditCard size={12} /> Cartão
-						</span>
-					</div>
-
-					<div
-						className={`checkout-submit-wrap${isPaymentDisabled ? ' disabled' : ''}`}
-						onClick={markInvalidSubmit}
-						role="presentation"
-					>
-						<button
-							type="button"
-							className="btn btn-primary btn-block"
-							onClick={handleCheckout}
-							disabled={isPaymentDisabled}
-						>
-							{loading ? (
-								'Aguarde...'
-							) : (
-								<>
-									<Zap size={16} /> Ir para pagamento — {fmt(t.total)}
-								</>
-							)}
-						</button>
-					</div>
-
-					<button
-						type="button"
-						className="btn btn-ghost btn-block"
-						onClick={onBack}
-					>
-						Voltar ao carrinho
-					</button>
-				</section>
-
-				{/* summary sidebar */}
-				<aside className="panel summary checkout-summary">
-					<h2>Resumo</h2>
-					<div className="summary-mini">
-						{cart.map(item => (
-							<div className="summary-mini-item" key={item.key}>
-								<div className="summary-mini-thumb">
-									{item.image ? (
-										<SmartImage
-											src={item.image}
-											alt={item.name}
-											priority="low"
-											skeleton={false}
-										/>
-									) : (
-										<div className="summary-mini-ph">
-											<PackageCheck size={18} />
-										</div>
-									)}
-								</div>
-								<div className="summary-mini-info">
-									<div className="nm">{item.name}</div>
-									<div className="px">{fmt(item.unitCents)}</div>
-								</div>
-								<span className="summary-mini-qty">x{item.qty}</span>
-							</div>
-						))}
-					</div>
-					<div className="summary-divider" />
-					<div className="summary-rows">
-						<div className="summary-row">
-							<span>Subtotal</span>
-							{appliedCupom ? (
-								<strong className="cupom-strike">{fmt(t.subtotal)}</strong>
-							) : (
-								<strong>{fmt(t.subtotal)}</strong>
-							)}
-						</div>
-						{appliedCupom && t.discount > 0 && (
-							<div className="summary-row cupom-discount-row">
-								<span>Desconto</span>
-								<strong>- {fmt(t.discount)}</strong>
-							</div>
-						)}
-					</div>
-					<div className="summary-divider" />
-					<div className="summary-total">
-						<span className="lbl">Total</span>
-						<span className="val">{fmt(t.total)}</span>
-					</div>
-				</aside>
-			</div>
-		</div>
-	);
-}
-
-/* ══════════════════════════════════════════════════════
-   CONFIRMATION VIEW
-══════════════════════════════════════════════════════ */
-function ConfirmationView({ result, onNew, className }) {
-	const payment = result?.payment || {};
-	const pixData = payment.point_of_interaction?.transaction_data || {};
-	const copy = getStatusCopy(payment.status);
-	const total = result?.order?.totalAmount || 0;
-
-	return (
-		<div className={`page content-pad ${className || ''}`}>
-			<div className="panel confirm-panel">
-				<div className="confirm-icon">
-					<CheckCircle2 size={32} />
-				</div>
-
-				{result?.orderId && (
-					<span className="confirm-eyebrow">Pedido #{result.orderId}</span>
-				)}
-
-				<h1>{copy.title}</h1>
-				<p>{copy.desc}</p>
-				<p className="confirm-total">
-					Total: <span>{currency.format(total)}</span>
-				</p>
-
-				{pixData.qr_code_base64 && (
-					<img
-						className="pix-image"
-						src={`data:image/png;base64,${pixData.qr_code_base64}`}
-						alt="QR Code Pix"
-					/>
-				)}
-
-				{pixData.qr_code && (
-					<div className="pix-copy" style={{ maxWidth: 460 }}>
-						<textarea
-							value={pixData.qr_code}
-							readOnly
-							aria-label="Código Pix"
-						/>
-						<button
-							type="button"
-							className="btn btn-ghost btn-sm"
-							onClick={() => navigator.clipboard?.writeText(pixData.qr_code)}
-						>
-							<Copy size={14} /> Copiar código Pix
-						</button>
-					</div>
-				)}
-
-				{pixData.ticket_url && (
-					<a
-						className="ticket-link"
-						href={pixData.ticket_url}
-						target="_blank"
-						rel="noreferrer"
-					>
-						Abrir instrução de pagamento
-					</a>
-				)}
-
-				<div className="confirm-actions">
-					<button
-						type="button"
-						className="btn btn-primary btn-sm"
-						onClick={onNew}
-					>
-						<PackageCheck size={16} /> Novo pedido
-					</button>
-				</div>
-			</div>
 		</div>
 	);
 }

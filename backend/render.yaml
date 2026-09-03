@@ -15,15 +15,22 @@ services:
       - key: API_URL
         sync: false   # URL do próprio backend no Render (ex: https://seu-app.onrender.com)
 
-      # ── Loja: InfinitePay ──
+      # ── Loja: InfinitePay (legado — webhook antigo / rollback) ──
       - key: INFINITEPAY_HANDLE
-        sync: false   # Slug da conta InfinitePay (só a loja usa)
+        sync: false   # Slug da conta InfinitePay
 
-      # ── Churrasco: Mercado Pago, só Pix ──
+      # ── Mercado Pago (churrasco + loja) ──
       - key: MERCADO_PAGO_ACCESS_TOKEN
         sync: false   # Access Token (TEST-... ou APP_USR-...). Só no backend.
       - key: MERCADO_PAGO_WEBHOOK_SECRET
         sync: false   # Chave secreta da assinatura do webhook
+      - key: MERCADO_PAGO_PUBLIC_KEY
+        sync: false   # Public Key — servida ao front por /api/loja/config
+      - key: LOJA_SHEET_NAME
+        value: Pedidos Loja
+      - key: LOJA_FEE_PIX_BPS
+        sync: false   # Taxa do Pix da loja em pontos-base (vazio = 0)
+      # LOJA_FEE_CARD_2X_BPS / _1X_ / _3X_ ... — só para sobrepor a tabela padrão
       - key: CHURRASCO_SHEET_NAME
         value: Inscrições Churrasco
       - key: CHURRASCO_TOKEN_SECRET

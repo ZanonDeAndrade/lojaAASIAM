@@ -6,7 +6,7 @@ import "dotenv/config";
 
 import express from "express";
 import { google } from "googleapis";
-import { calculateOrder, sanitizeSelection, getProduct, centsToAmount } from "./shared/order.js";
+import { calculateOrder, sanitizeSelection } from "./shared/order.js";
 import { criarLinkPagamento, verificarPagamento } from "./infinitepay.js";
 import {
   createGoogleAuth,
@@ -19,6 +19,8 @@ import {
 } from "./google-sheets.js";
 import { CHURRASCO_WEBHOOK_PATH, registerChurrascoRoutes } from "./churrasco.js";
 import { ambienteMercadoPago, isMercadoPagoConfigured, isWebhookSecretConfigured } from "./mercadopago.js";
+import { checkCoupon, marcarCupomUsado, aplicarPrecoCusto } from "./cupons.js";
+import { LOJA_WEBHOOK_PATH, registerLojaRoutes } from "./loja-pagamento.js";
 
 const app = express();
 const port = process.env.PORT || 3333;
@@ -29,61 +31,8 @@ const defaultGoogleSheetName = process.env.GOOGLE_SHEETS_SHEET_NAME || "Pedidos"
 const orderCache = new Map();
 
 /* ─── CUPONS DE DESCONTO (preço de custo) ───
-   Map em memória com controle de uso. A lista nunca é exposta nas respostas. */
-function normalizeCoupon(codigo) {
-  return String(codigo || "").trim().toLowerCase().replace(/\s+/g, " ");
-}
-
-// Cupons de uso único (só podem ser usados uma vez)
-const COUPONS = new Map(
-  [
-    "Milton Roberto",
-    "Marcelo Telles",
-    "Samuel Watthier",
-    "Guilherme William",
-    "Jessika Rodrigues",
-    "Vinicius Schmidt",
-    "Gabriel Telles",
-    "Amanda Roos",
-    "Vinícios Dotto",
-  ].map((nome) => [normalizeCoupon(nome), { unlimited: false, used: false }])
-);
-// Cupom ilimitado (pode ser usado sem restrição)
-COUPONS.set(normalizeCoupon("Gabriela Minuzzi"), { unlimited: true, used: false });
-
-// Verifica disponibilidade do cupom (case-insensitive, ignora espaços extras)
-function checkCoupon(codigo) {
-  const key = normalizeCoupon(codigo);
-  if (!key || !COUPONS.has(key)) return { valido: false, motivo: "invalido" };
-  const c = COUPONS.get(key);
-  if (!c.unlimited && c.used) return { valido: false, motivo: "ja_utilizado" };
-  return { valido: true, tipo: "custo" };
-}
-
-// Marca um cupom de uso único como usado (idempotente; ilimitado nunca trava)
-function marcarCupomUsado(codigo, orderId) {
-  const key = normalizeCoupon(codigo);
-  const c = COUPONS.get(key);
-  if (!c) return false;
-  if (!c.unlimited) c.used = true;
-  console.log(`[Cupom] "${key}" marcado como usado (pedido ${orderId || "?"}).`);
-  return true;
-}
-
-// Aplica o preço de custo (costCents) a todas as linhas do pedido
-function aplicarPrecoCusto(order) {
-  for (const line of order.lines) {
-    const product = getProduct(line.productId);
-    const custo =
-      product && Number.isFinite(product.costCents)
-        ? product.costCents
-        : line.unitPriceCents;
-    line.unitPriceCents = custo;
-    line.totalCents = custo * line.quantity;
-  }
-  order.totalCents = order.lines.reduce((s, l) => s + l.totalCents, 0);
-  order.totalAmount = centsToAmount(order.totalCents);
-}
+   A regra e a lista vivem em `cupons.js`, compartilhadas com o checkout do
+   Mercado Pago da loja. */
 
 // Colunas A-N (14 colunas)
 // J=Pagamento (Pix/Cartão), K=Parcelas, L=Status — atualizados pelo webhook
@@ -147,6 +96,14 @@ app.use(express.json({ limit: "1mb" }));
 // aba de planilha própria. O checkout da loja continua na InfinitePay.
 registerChurrascoRoutes(app);
 
+/* ─── LOJA — checkout pelo Mercado Pago ─── */
+// POST /api/loja/checkout/quote · POST /api/loja/checkout
+// GET  /api/loja/pedidos/:orderId/status · POST /api/loja/webhook/mercadopago
+// Cobra cartão (com repasse da taxa ao cliente) e Pix no Checkout Transparente
+// do Mercado Pago, com aba de planilha própria e webhook próprio. Compartilha
+// só o cliente HTTP e a validação de assinatura com o churrasco.
+registerLojaRoutes(app);
+
 app.get("/api/health", (_req, res) => {
   res.json({
     ok: true,
@@ -155,7 +112,10 @@ app.get("/api/health", (_req, res) => {
     // Só diz se está configurado — nunca a credencial em si.
     churrascoConfigured: isMercadoPagoConfigured(),
     churrascoWebhookConfigured: isWebhookSecretConfigured(),
-    churrascoAmbiente: ambienteMercadoPago()
+    churrascoAmbiente: ambienteMercadoPago(),
+    // A loja usa a mesma credencial do Mercado Pago; muda só a Public Key.
+    lojaMercadoPagoConfigured: isMercadoPagoConfigured(),
+    lojaPublicKeyConfigured: Boolean(process.env.MERCADO_PAGO_PUBLIC_KEY),
   });
 });
 

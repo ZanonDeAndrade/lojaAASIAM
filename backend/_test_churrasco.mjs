@@ -1102,13 +1102,13 @@ await test("a loja está esgotada e os preços dela seguem guardados", async () 
   const { PRODUCT_BY_ID } = await import("./shared/products.js?real");
 
   // Esgotado não entra no pedido, nem por uma requisição montada na mão.
-  const pedido = calculateOrder(sanitizeSelection({ caneca: { quantity: 2 } }));
+  const pedido = calculateOrder(sanitizeSelection({ manta: { quantity: 2 } }));
   assert.equal(pedido.lines.length, 0, "produto esgotado entrou no pedido");
   assert.equal(pedido.totalCents, 0);
 
   // Esgotar é esconder da venda, não apagar o preço: quando a loja reabrir,
   // basta tirar o `soldOut` e o valor volta como estava.
-  assert.ok(PRODUCT_BY_ID.caneca.priceCents > 0, "o preço da caneca foi zerado");
+  assert.ok(PRODUCT_BY_ID.manta.priceCents > 0, "o preço da manta foi zerado");
   assert.ok(PRODUCT_BY_ID["moletom-verde"].priceCents > 0, "o preço do moletom foi zerado");
   assert.ok(PRODUCT_BY_ID.caneca.costCents > 0, "o preço de custo do cupom sumiu");
 });
