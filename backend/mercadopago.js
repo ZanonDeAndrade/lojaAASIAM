@@ -152,11 +152,63 @@ async function chamar(caminho, { method = "GET", body = null, idempotencyKey = "
 /* ─── Orders ─────────────────────────────────────────────────────────── */
 
 /**
- * Cria a order Pix.
+ * Cria uma order na API de Orders (Checkout Transparente).
  *
- * O payload é montado aqui inteiro, do zero: nada vindo do navegador entra
- * nele. Só existe um pagamento, e ele é sempre `pix` / `bank_transfer` — não
- * há caminho de código que produza cartão, boleto ou parcelamento.
+ * O payload é montado aqui inteiro, do zero — nada vindo do navegador entra
+ * nele além do `token` do cartão (que já é opaco). `metadata` e
+ * `notification_url` só entram quando quem chama os fornece: a cobrança Pix do
+ * churrasco continua produzindo exatamente o mesmo corpo de antes.
+ *
+ * @param {object}   params
+ * @param {string}   params.externalReference  - referência imutável do pedido/inscrição
+ * @param {number}   params.totalAmountCents   - inteiro, calculado no servidor
+ * @param {Array}    params.payments           - [{ amountCents, payment_method, expiration_time? }]
+ * @param {string}   [params.payerEmail]       - atalho para `payer: { email }`
+ * @param {object}   [params.payer]            - objeto payer completo (tem prioridade)
+ * @param {object}   [params.metadata]         - dados livres (ex: { source, orderId })
+ * @param {string}   [params.notificationUrl]  - webhook desta order (HTTPS)
+ * @param {string}   params.idempotencyKey     - estável para a mesma tentativa
+ * @param {string}   [params.processingMode]   - "automatic" por padrão
+ */
+export async function criarOrder({
+  externalReference,
+  totalAmountCents,
+  payments,
+  payerEmail,
+  payer,
+  metadata,
+  notificationUrl,
+  idempotencyKey,
+  processingMode = "automatic",
+}) {
+  const payload = {
+    type: "online",
+    total_amount: centsToAmountString(totalAmountCents),
+    external_reference: externalReference,
+    processing_mode: processingMode,
+    transactions: {
+      payments: (payments || []).map((pagamento) => {
+        const item = {
+          amount: centsToAmountString(pagamento.amountCents),
+          payment_method: pagamento.payment_method,
+        };
+        if (pagamento.expiration_time) item.expiration_time = pagamento.expiration_time;
+        return item;
+      }),
+    },
+    payer: payer || { email: payerEmail },
+  };
+
+  if (metadata && typeof metadata === "object") payload.metadata = metadata;
+  if (notificationUrl) payload.notification_url = notificationUrl;
+
+  return chamar("/v1/orders", { method: "POST", body: payload, idempotencyKey });
+}
+
+/**
+ * Cria a order Pix do churrasco. Só existe um pagamento, e ele é sempre
+ * `pix` / `bank_transfer` — não há caminho de código que produza cartão,
+ * boleto ou parcelamento a partir daqui.
  *
  * @param {object}  params
  * @param {string}  params.externalReference - CHURRASCO-...
@@ -171,29 +223,22 @@ export async function criarOrderPix({
   idempotencyKey,
   expiracao = PIX_EXPIRACAO,
 }) {
-  const valor = centsToAmountString(amountCents);
-
-  const payload = {
-    type: "online",
-    total_amount: valor,
-    external_reference: externalReference,
-    processing_mode: "automatic",
-    transactions: {
-      payments: [
-        {
-          amount: valor,
-          payment_method: {
-            id: METODO_PERMITIDO,
-            type: TIPO_METODO_PERMITIDO,
-          },
-          expiration_time: expiracao,
+  return criarOrder({
+    externalReference,
+    totalAmountCents: amountCents,
+    payerEmail,
+    idempotencyKey,
+    payments: [
+      {
+        amountCents,
+        payment_method: {
+          id: METODO_PERMITIDO,
+          type: TIPO_METODO_PERMITIDO,
         },
-      ],
-    },
-    payer: { email: payerEmail },
-  };
-
-  return chamar("/v1/orders", { method: "POST", body: payload, idempotencyKey });
+        expiration_time: expiracao,
+      },
+    ],
+  });
 }
 
 /** Consulta a order. É a única fonte de verdade sobre o pagamento. */
@@ -229,12 +274,15 @@ export function lerOrder(order) {
     order?.expiration_time,
   ].find((valor) => typeof valor === "string" && !Number.isNaN(Date.parse(valor)));
 
+  const parcelas = Number(metodo.installments ?? pagamento.installments);
+
   return {
     orderId: order?.id ? String(order.id) : "",
     externalReference: order?.external_reference ? String(order.external_reference) : "",
     status: String(order?.status || ""),
     statusDetail: String(order?.status_detail || ""),
     totalAmountCents: amountToCents(order?.total_amount),
+    metadata: order?.metadata && typeof order.metadata === "object" ? order.metadata : {},
 
     paymentId: pagamento.id ? String(pagamento.id) : "",
     paymentStatus: String(pagamento.status || ""),
@@ -244,6 +292,7 @@ export function lerOrder(order) {
 
     metodoId: String(metodo.id || "").toLowerCase(),
     metodoTipo: String(metodo.type || "").toLowerCase(),
+    installments: Number.isInteger(parcelas) && parcelas > 0 ? parcelas : null,
     qrCode: typeof metodo.qr_code === "string" ? metodo.qr_code : "",
     qrCodeBase64: typeof metodo.qr_code_base64 === "string" ? metodo.qr_code_base64 : "",
     ticketUrl: /^https:\/\//i.test(metodo.ticket_url || "") ? String(metodo.ticket_url) : "",
