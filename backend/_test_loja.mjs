@@ -182,11 +182,11 @@ await test("os novos uniformes preservam tamanhos, preço e combinações", asyn
   const { calculateOrder, sanitizeSelection, validateSelection } = await import("./shared/order.js");
 
   assert.deepEqual(
-    PRODUCTS.filter((p) => ["conjunto-chumbo", "conjunto-verde", "jersey"].includes(p.id)).map((p) => [p.id, p.kind, p.priceCents]),
+    PRODUCTS.filter((p) => ["conjunto-chumbo", "conjunto-verde", "jersey"].includes(p.id)).map((p) => [p.id, p.name, p.kind, p.priceCents]),
     [
-      ["conjunto-chumbo", "twoPieceSet", 14000],
-      ["conjunto-verde", "twoPieceSet", 14000],
-      ["jersey", "sizedProduct", 15000],
+      ["conjunto-chumbo", "Conjunto Chumbo AASIAM", "twoPieceSet", 14000],
+      ["conjunto-verde", "Conjunto Verde AASIAM", "twoPieceSet", 14000],
+      ["jersey", "Jersey AASIAM", "sizedProduct", 15000],
     ],
   );
 

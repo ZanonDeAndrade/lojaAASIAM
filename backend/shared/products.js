@@ -164,8 +164,8 @@ export const PRODUCTS = [
 		{
 			id: 'conjunto-chumbo',
 			kind: 'twoPieceSet',
-			name: 'Conjunto Chumbo',
-			shortName: 'Conjunto Chumbo',
+			name: 'Conjunto Chumbo AASIAM',
+			shortName: 'Conjunto Chumbo AASIAM',
 			description: 'Conjunto oficial AASIAM com camiseta e calção.',
 			priceCents: 14000,
 			tag: 'Camiseta + calção',
@@ -179,8 +179,8 @@ export const PRODUCTS = [
 		{
 			id: 'conjunto-verde',
 			kind: 'twoPieceSet',
-			name: 'Conjunto Verde',
-			shortName: 'Conjunto Verde',
+			name: 'Conjunto Verde AASIAM',
+			shortName: 'Conjunto Verde AASIAM',
 			description: 'Conjunto oficial AASIAM com camiseta e calção.',
 			priceCents: 14000,
 			tag: 'Camiseta + calção',
@@ -194,8 +194,8 @@ export const PRODUCTS = [
 		{
 			id: 'jersey',
 			kind: 'sizedProduct',
-			name: 'Jersey',
-			shortName: 'Jersey',
+			name: 'Jersey AASIAM',
+			shortName: 'Jersey AASIAM',
 			description: 'Jersey oficial AASIAM.',
 			priceCents: 15000,
 			tag: 'Escolha o tamanho',
