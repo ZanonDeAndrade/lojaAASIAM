@@ -23,6 +23,35 @@ export function calculateOrder(selection) {
       continue;
     }
 
+    if (product.kind === "sizedProduct") {
+      const quantity = normalizeQuantity(selected.quantity);
+      const size = product.sizes.includes(selected.size) ? selected.size : null;
+      if (quantity > 0 && size) {
+        lines.push(buildLine(product, quantity, `Tam. ${size}`, size, { size }));
+      }
+      continue;
+    }
+
+    if (product.kind === "twoPieceSet") {
+      for (const shirtSize of product.shirtSizes) {
+        for (const shortsSize of product.shortsSizes) {
+          const quantity = normalizeQuantity(selected.combinations?.[shirtSize]?.[shortsSize]);
+          if (quantity > 0) {
+            lines.push(
+              buildLine(
+                product,
+                quantity,
+                `Camiseta Tam. ${shirtSize} / Calção Tam. ${shortsSize}`,
+                `camiseta-${shirtSize}-calcao-${shortsSize}`,
+                { shirtSize, shortsSize }
+              )
+            );
+          }
+        }
+      }
+      continue;
+    }
+
     if (product.kind === "sizedVariants") {
       for (const variant of product.variants) {
         for (const size of product.sizes) {
@@ -122,6 +151,23 @@ export function sanitizeSelection(selection) {
       continue;
     }
 
+    if (product.kind === "sizedProduct") {
+      clean[product.id].quantity = normalizeQuantity(selected.quantity);
+      clean[product.id].size = product.sizes.includes(selected.size) ? selected.size : null;
+      continue;
+    }
+
+    if (product.kind === "twoPieceSet") {
+      for (const shirtSize of product.shirtSizes) {
+        for (const shortsSize of product.shortsSizes) {
+          clean[product.id].combinations[shirtSize][shortsSize] = normalizeQuantity(
+            selected.combinations?.[shirtSize]?.[shortsSize]
+          );
+        }
+      }
+      continue;
+    }
+
     if (product.kind === "sizedVariants") {
       for (const variant of product.variants) {
         for (const size of product.sizes) {
@@ -176,6 +222,46 @@ export function sanitizeSelection(selection) {
   return clean;
 }
 
+/** Valida os atributos obrigatórios dos produtos com tamanho explícito. */
+export function validateSelection(selection) {
+  if (selection == null || typeof selection !== "object" || Array.isArray(selection)) return null;
+
+  for (const productId of Object.keys(selection)) {
+    if (!PRODUCT_BY_ID[productId]) {
+      return { error: "Produto inválido.", field: "selection" };
+    }
+  }
+
+  for (const product of PRODUCTS) {
+    const selected = selection[product.id];
+    if (!selected) continue;
+
+    if (
+      product.kind === "sizedProduct" &&
+      normalizeQuantity(selected.quantity) > 0 &&
+      !product.sizes.includes(selected.size)
+    ) {
+      return { error: "Selecione um tamanho válido.", field: "selection" };
+    }
+
+    if (product.kind === "twoPieceSet") {
+      for (const [shirtSize, shorts] of Object.entries(selected.combinations || {})) {
+        for (const [shortsSize, quantity] of Object.entries(shorts || {})) {
+          if (normalizeQuantity(quantity) === 0) continue;
+          if (!product.shirtSizes.includes(shirtSize)) {
+            return { error: "Selecione o tamanho da camiseta.", field: "selection" };
+          }
+          if (!product.shortsSizes.includes(shortsSize)) {
+            return { error: "Selecione o tamanho do calção.", field: "selection" };
+          }
+        }
+      }
+    }
+  }
+
+  return null;
+}
+
 export function getProduct(productId) {
   return PRODUCT_BY_ID[productId];
 }
@@ -185,6 +271,21 @@ export function centsToAmount(cents) {
 }
 
 function createEmptyProductSelection(product) {
+  if (product.kind === "sizedProduct") {
+    return { quantity: 0, size: null };
+  }
+
+  if (product.kind === "twoPieceSet") {
+    return {
+      combinations: Object.fromEntries(
+        product.shirtSizes.map((shirtSize) => [
+          shirtSize,
+          Object.fromEntries(product.shortsSizes.map((shortsSize) => [shortsSize, 0]))
+        ])
+      )
+    };
+  }
+
   if (product.kind === "sizedVariants") {
     return {
       variants: Object.fromEntries(
@@ -250,7 +351,7 @@ function findByCode(options = [], code) {
   return options.find((option) => option.code === code);
 }
 
-function buildLine(product, quantity, variant = "", variantCode = "") {
+function buildLine(product, quantity, variant = "", variantCode = "", attributes = {}) {
   return {
     productId: product.id,
     productName: product.name,
@@ -258,6 +359,7 @@ function buildLine(product, quantity, variant = "", variantCode = "") {
     variantCode,
     quantity,
     unitPriceCents: product.priceCents,
-    totalCents: product.priceCents * quantity
+    totalCents: product.priceCents * quantity,
+    ...attributes
   };
 }

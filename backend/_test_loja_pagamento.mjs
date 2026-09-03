@@ -202,6 +202,11 @@ const clienteValido = {
 };
 // 2x moletom-verde (16000) = 32000 de subtotal líquido.
 const selecaoMoletom = { "moletom-verde": { variants: { verde: { M: 2 } } } };
+const selecaoNovosUniformes = {
+  "conjunto-chumbo": { combinations: { M: { G: 1, M: 1 } } },
+  "conjunto-verde": { combinations: { G: { M: 1 } } },
+  jersey: { quantity: 1, size: "G" },
+};
 
 async function checkoutCartao(overrides = {}) {
   const attemptId = overrides.attemptId || novoAttempt();
@@ -328,10 +333,63 @@ await test("/quote aplica preço de custo com cupom válido", async () => {
   assert.ok(comCupom.subtotalCents < semCupom.subtotalCents, "cupom não baixou o subtotal");
 });
 
+await test("uniformes novos validam tamanhos e congelam o snapshot completo na planilha", async () => {
+  resetSheet();
+  const quote = await (
+    await post("/api/loja/checkout/quote", {
+      selection: selecaoNovosUniformes,
+      paymentMethod: "pix",
+    })
+  ).json();
+  // 2x Conjunto Chumbo + 1x Conjunto Verde + 1x Jersey = R$ 570,00.
+  assert.equal(quote.subtotalCents, 57000);
+
+  const semCamiseta = await post("/api/loja/checkout/quote", {
+    selection: { "conjunto-chumbo": { combinations: { XXXXXX: { G: 1 } } } },
+    paymentMethod: "pix",
+  });
+  assert.equal(semCamiseta.status, 400);
+
+  const semCalcao = await post("/api/loja/checkout/quote", {
+    selection: { "conjunto-chumbo": { combinations: { M: { XXXXXX: 1 } } } },
+    paymentMethod: "pix",
+  });
+  assert.equal(semCalcao.status, 400);
+
+  const jerseyInvalida = await post("/api/loja/checkout/quote", {
+    selection: { jersey: { quantity: 1, size: "XXXXXX" } },
+    paymentMethod: "pix",
+  });
+  assert.equal(jerseyInvalida.status, 400);
+
+  const attemptId = novoAttempt();
+  const criado = await (
+    await post("/api/loja/checkout", {
+      attemptId,
+      customer: clienteValido,
+      selection: selecaoNovosUniformes,
+      paymentMethod: "pix",
+    })
+  ).json();
+  assert.equal(criado.subtotalCents, 57000);
+  assert.equal(sheet.rows.length, 1);
+  assert.match(sheet.rows[0][5], /Conjunto Chumbo/);
+  assert.match(sheet.rows[0][5], /Conjunto Verde/);
+  assert.match(sheet.rows[0][5], /Jersey/);
+  assert.match(sheet.rows[0][5], /140,00/);
+  assert.match(sheet.rows[0][5], /150,00/);
+  assert.match(sheet.rows[0][19], /Conjunto Chumbo: M/);
+  assert.match(sheet.rows[0][19], /Conjunto Verde: G/);
+  assert.match(sheet.rows[0][19], /Jersey: G/);
+  assert.match(sheet.rows[0][20], /Conjunto Chumbo: G/);
+  assert.match(sheet.rows[0][20], /Conjunto Verde: M/);
+});
+
 /* ── Checkout com cartão ── */
 
 await test("cartão aprovado: cria a linha, cobra o total certo e grava Pago", async () => {
   resetSheet();
+  mp.requisicoes = [];
   const { res, body, attemptId } = await checkoutCartao({ installments: 3 });
   assert.equal(res.status, 201, JSON.stringify(body));
   assert.equal(body.paid, true);

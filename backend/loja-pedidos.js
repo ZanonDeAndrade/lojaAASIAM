@@ -38,7 +38,7 @@ export const LOJA_SHEET_NAME = process.env.LOJA_SHEET_NAME || "Pedidos Loja";
 const METODO_LABEL = { credit_card: "Cartão de crédito", pix: "Pix" };
 
 /**
- * Colunas A–S. Uma linha por pedido, criada como "Pendente" e atualizada no
+ * Colunas A–U. Uma linha por pedido, criada como "Pendente" e atualizada no
  * lugar. As colunas de dinheiro guardam BRL formatado (para a organização ler)
  * e os centavos são recuperados por texto — nunca por ponto flutuante.
  */
@@ -62,6 +62,8 @@ export const LOJA_SHEET_HEADERS = [
   "Data do pagamento", // Q
   "Última atualização", // R
   "Observações", // S
+  "Tamanho da camiseta", // T — uma linha por item que tenha camiseta
+  "Tamanho do calção", // U — vazio para itens de uma peça
 ];
 
 const COL = {
@@ -84,6 +86,8 @@ const COL = {
   pagoEm: 16,
   atualizadoEm: 17,
   observacoes: 18,
+  shirtSizes: 19,
+  shortsSizes: 20,
 };
 
 const LAST_COLUMN = columnLetter(LOJA_SHEET_HEADERS.length);
@@ -174,6 +178,8 @@ function rowToPedido(row, rowNumber) {
     pagoEm: row[COL.pagoEm] || "",
     atualizadoEm: row[COL.atualizadoEm] || "",
     observacoes: row[COL.observacoes] || "",
+    shirtSizes: row[COL.shirtSizes] || "",
+    shortsSizes: row[COL.shortsSizes] || "",
   };
 }
 
@@ -198,6 +204,8 @@ function pedidoToRow(pedido) {
   row[COL.pagoEm] = sheetSafe(pedido.pagoEm, 40);
   row[COL.atualizadoEm] = sheetSafe(pedido.atualizadoEm, 40);
   row[COL.observacoes] = sheetSafe(pedido.observacoes, 300);
+  row[COL.shirtSizes] = sheetSafe(pedido.shirtSizes, 500);
+  row[COL.shortsSizes] = sheetSafe(pedido.shortsSizes, 500);
   return row;
 }
 
@@ -241,7 +249,8 @@ export async function findPedido(id, { fresh = false } = {}) {
  * Cria a linha pendente com o snapshot financeiro já congelado. Chamada ANTES
  * de criar a order no Mercado Pago, para o webhook sempre ter onde escrever.
  *
- * @param {object} dados - { id, nome, telefone, email, itens, subtotalCents,
+ * @param {object} dados - { id, nome, telefone, email, itens, shirtSizes,
+ *   shortsSizes, subtotalCents,
  *   paymentMethod, installments, feeBps, paymentFeeCents, totalChargedCents }
  */
 export async function criarPedidoPendente(dados) {
@@ -255,6 +264,8 @@ export async function criarPedidoPendente(dados) {
     telefone: dados.telefone,
     email: dados.email,
     itens: dados.itens,
+    shirtSizes: dados.shirtSizes || "",
+    shortsSizes: dados.shortsSizes || "",
     subtotalCents: dados.subtotalCents,
     paymentMethod: dados.paymentMethod,
     installments: dados.installments || 1,

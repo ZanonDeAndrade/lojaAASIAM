@@ -54,6 +54,9 @@ const CATEGORY_MAP = {
 	'moletom-bege': 'moletom',
 	'camiseta-aasiam': 'camiseta',
 	'camiseta-goleiro-aasiam': 'camiseta',
+	'conjunto-chumbo': 'camiseta',
+	'conjunto-verde': 'camiseta',
+	'jersey': 'camiseta',
 	'kit-2-moletons': 'kits',
 	'kit-moletom-caneca': 'kits',
 	'kit-completo': 'kits',
@@ -113,6 +116,20 @@ function buildCartItem(product, sel) {
 			...base,
 			key: `${product.id}-${sel.size}`,
 			meta: `Tamanho: ${sel.size}`,
+		};
+	}
+	if (product.kind === 'sizedProduct') {
+		return {
+			...base,
+			key: `${product.id}-${sel.size}`,
+			meta: `Tamanho: ${sel.size}`,
+		};
+	}
+	if (product.kind === 'twoPieceSet') {
+		return {
+			...base,
+			key: `${product.id}-${sel.shirtSize}-${sel.shortsSize}`,
+			meta: `Camiseta: ${sel.shirtSize} · Calção: ${sel.shortsSize}`,
 		};
 	}
 	if (product.kind === 'doubleHoodie') {
@@ -988,6 +1005,13 @@ function DetailView({ product, onBack, onAdd, onBuyNow, className }) {
 
 function buildInitialSel(product) {
 	if (product.kind === 'sizedVariants') return { size: 'M' };
+	if (product.kind === 'sizedProduct') return { size: product.defaultSize };
+	if (product.kind === 'twoPieceSet') {
+		return {
+			shirtSize: product.defaultShirtSize,
+			shortsSize: product.defaultShortsSize,
+		};
+	}
 	if (product.kind === 'doubleHoodie') return { verde: 'M', bege: 'M' };
 	if (product.kind === 'modelQuantity')
 		return { model: product.models[0].code };
@@ -1011,6 +1035,42 @@ function ProductSelectors({ product, sel, onChange }) {
 					value={sel.size}
 					onChange={v => onChange('size', v)}
 				/>
+			</div>
+		);
+	}
+
+	if (product.kind === 'sizedProduct') {
+		return (
+			<div className="field-group">
+				<span className="group-label">Tamanho</span>
+				<SizePills
+					sizes={product.sizes}
+					value={sel.size}
+					onChange={v => onChange('size', v)}
+				/>
+			</div>
+		);
+	}
+
+	if (product.kind === 'twoPieceSet') {
+		return (
+			<div className="kit-sizes">
+				<div className="field-group">
+					<span className="group-label">Tamanho da camiseta</span>
+					<SizePills
+						sizes={product.shirtSizes}
+						value={sel.shirtSize}
+						onChange={v => onChange('shirtSize', v)}
+					/>
+				</div>
+				<div className="field-group">
+					<span className="group-label">Tamanho do calção</span>
+					<SizePills
+						sizes={product.shortsSizes}
+						value={sel.shortsSize}
+						onChange={v => onChange('shortsSize', v)}
+					/>
+				</div>
 			</div>
 		);
 	}

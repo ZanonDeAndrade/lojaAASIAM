@@ -176,6 +176,53 @@ await test("somente mochilas, cachecol e Combo Alpha estão esgotados", async ()
   assert.match((await res.json()).error, /produto/i);
 });
 
+await test("os novos uniformes preservam tamanhos, preço e combinações", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const { PRODUCTS } = await import("./shared/products.js");
+  const { calculateOrder, sanitizeSelection, validateSelection } = await import("./shared/order.js");
+
+  assert.deepEqual(
+    PRODUCTS.filter((p) => ["conjunto-chumbo", "conjunto-verde", "jersey"].includes(p.id)).map((p) => [p.id, p.kind, p.priceCents]),
+    [
+      ["conjunto-chumbo", "twoPieceSet", 14000],
+      ["conjunto-verde", "twoPieceSet", 14000],
+      ["jersey", "sizedProduct", 15000],
+    ],
+  );
+
+  const selection = sanitizeSelection({
+    "conjunto-chumbo": { combinations: { M: { G: 1, M: 1 } } },
+    "conjunto-verde": { combinations: { G: { M: 1 } } },
+    jersey: { quantity: 1, size: "G" },
+  });
+  const order = calculateOrder(selection);
+  assert.deepEqual(
+    order.lines.map((line) => [line.productId, line.shirtSize || line.size, line.shortsSize || "", line.unitPriceCents]),
+    [
+      ["conjunto-chumbo", "M", "M", 14000],
+      ["conjunto-chumbo", "M", "G", 14000],
+      ["conjunto-verde", "G", "M", 14000],
+      ["jersey", "G", "", 15000],
+    ],
+    "combinações distintas do conjunto foram mescladas ou perderam tamanhos",
+  );
+  assert.equal(order.totalCents, 57000);
+  assert.match(
+    validateSelection({ "conjunto-chumbo": { combinations: { XXXXXX: { G: 1 } } } }).error,
+    /camiseta/i,
+  );
+  assert.match(
+    validateSelection({ "conjunto-chumbo": { combinations: { M: { XXXXXX: 1 } } } }).error,
+    /calção/i,
+  );
+  assert.match(validateSelection({ jersey: { quantity: 1, size: "XXXXXX" } }).error, /tamanho/i);
+
+  const app = await readFile(path.join(here, "..", "frontend", "src", "App.jsx"), "utf8");
+  for (const id of ["conjunto-chumbo", "conjunto-verde", "jersey"]) {
+    assert.match(app, new RegExp(`'${id}': 'camiseta'`), `${id} não está na seção Camisetas`);
+  }
+});
+
 await test("o cálculo do pedido é o mesmo no frontend e no backend", async () => {
   const { readFile } = await import("node:fs/promises");
   const daqui = path.join(here, "shared");

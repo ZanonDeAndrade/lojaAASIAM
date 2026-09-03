@@ -31,6 +31,11 @@ function cartToSelection(cart) {
 			const v = product.variants[0];
 			sel[productId].variants[v.code][_sel.size] =
 				(sel[productId].variants[v.code][_sel.size] || 0) + qty;
+		} else if (product.kind === 'sizedProduct') {
+			sel[productId].size = _sel.size;
+			sel[productId].quantity = (sel[productId].quantity || 0) + qty;
+		} else if (product.kind === 'twoPieceSet') {
+			sel[productId].combinations[_sel.shirtSize][_sel.shortsSize] += qty;
 		} else if (product.kind === 'doubleHoodie') {
 			sel[productId].verdeSize = _sel.verde;
 			sel[productId].begeSize = _sel.bege;

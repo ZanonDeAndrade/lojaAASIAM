@@ -32,7 +32,7 @@ import { apiBaseUrl } from "./infinitepay.js";
 import { checkCoupon, marcarCupomUsado, aplicarPrecoCusto } from "./cupons.js";
 import { clientIp, rateLimit } from "./rate-limit.js";
 import { formatDateTime } from "./google-sheets.js";
-import { calculateOrder, sanitizeSelection } from "./shared/order.js";
+import { calculateOrder, sanitizeSelection, validateSelection } from "./shared/order.js";
 import {
   FeeError,
   METODO_CARTAO,
@@ -220,6 +220,9 @@ export function parsePagamento(body) {
  * revalidado no servidor. Devolve `{ error }` ou `{ order, cupom, resumoItens }`.
  */
 function reconstruirPedido(body) {
+  const validation = validateSelection(body?.selection);
+  if (validation) return validation;
+
   const selection = sanitizeSelection(body?.selection);
   const order = calculateOrder(selection);
 
@@ -232,10 +235,29 @@ function reconstruirPedido(body) {
   if (cupomValido) aplicarPrecoCusto(order);
 
   const resumoItens = order.lines
-    .map((line) => `${line.quantity}x ${line.productName}${line.variant ? ` (${line.variant})` : ""}`)
+    .map(
+      (line) =>
+        `${line.quantity}x ${line.productName}${line.variant ? ` (${line.variant})` : ""} — ` +
+        `${formatBRL(line.unitPriceCents)} un.`
+    )
     .join(" · ");
 
-  return { order, cupom: cupomValido ? cupomBruto : null, resumoItens };
+  const shirtSizes = order.lines
+    .filter((line) => line.shirtSize || line.size)
+    .map((line) => `${line.quantity}x ${line.productName}: ${line.shirtSize || line.size}`)
+    .join(" · ");
+  const shortsSizes = order.lines
+    .filter((line) => line.shortsSize)
+    .map((line) => `${line.quantity}x ${line.productName}: ${line.shortsSize}`)
+    .join(" · ");
+
+  return {
+    order,
+    cupom: cupomValido ? cupomBruto : null,
+    resumoItens,
+    shirtSizes,
+    shortsSizes,
+  };
 }
 
 /* ─── Leitura da order ───────────────────────────────────────────────── */
@@ -539,6 +561,8 @@ export function registerLojaRoutes(app) {
           telefone: cliente.data.telefone,
           email: cliente.data.email,
           itens: reconstruido.resumoItens,
+          shirtSizes: reconstruido.shirtSizes,
+          shortsSizes: reconstruido.shortsSizes,
           subtotalCents,
           paymentMethod: cobranca.paymentMethod,
           installments: cobranca.installments,
