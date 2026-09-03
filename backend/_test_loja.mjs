@@ -137,16 +137,20 @@ await test("o checkout da loja continua validando antes de chamar a InfinitePay"
   assert.match((await semItens.json()).error, /produto/i);
 });
 
-await test("a loja está esgotada: nenhum produto pode ser comprado", async () => {
+await test("somente mochilas, cachecol e Combo Alpha estão esgotados", async () => {
   const { PRODUCTS } = await import("./shared/products.js");
   const { calculateOrder, createEmptySelection } = await import("./shared/order.js");
 
-  const aVenda = PRODUCTS.filter((p) => p.soldOut !== true);
-  assert.deepEqual(aVenda.map((p) => p.id), [], "estes produtos ainda estão à venda");
+  const esgotados = PRODUCTS.filter((p) => p.soldOut === true);
+  assert.deepEqual(
+    esgotados.map((p) => p.id),
+    ["mochila-listras", "mochila-estampa", "manta", "kit-completo"],
+    "a lista de produtos esgotados está incorreta",
+  );
 
-  // Um carrinho forjado com tudo, no talo: o cálculo não devolve linha nenhuma.
+  // Mesmo um carrinho forjado com produtos esgotados não devolve linha nenhuma.
   const selecao = createEmptySelection();
-  for (const produto of PRODUCTS) {
+  for (const produto of esgotados) {
     const item = selecao[produto.id];
     if (item.variants) {
       for (const variante of Object.keys(item.variants))
