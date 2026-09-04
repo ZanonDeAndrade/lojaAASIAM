@@ -27,6 +27,22 @@ export const JERSEY_VARIANTS = [
 	{ code: 'preta', name: 'Preta', swatch: '#252426' },
 ];
 
+/* Atributos reutilizáveis dos produtos personalizáveis — a regra vive em
+   order.js; aqui só a declaração. `chipLabel` monta a descrição curta do item. */
+const sizeAttribute = (key, label, chipLabel) => ({
+	key,
+	label,
+	options: HOODIE_SIZES,
+	chipLabel,
+});
+const colorAttribute = (options, label = 'Cor') => ({
+	key: 'color',
+	label,
+	options,
+	chipLabel: '{name}',
+});
+const SHIRT_PERSONALIZATION = { noun: 'camiseta' };
+
 export const BACKPACK_MODELS = [
 	{
 		code: 'listras',
@@ -155,7 +171,7 @@ export const PRODUCTS = [
 		},
 		{
 			id: 'camiseta-aasiam',
-			kind: 'personalizedSizedProduct',
+			kind: 'personalizedProduct',
 			name: 'Camiseta AASIAM 2026',
 			shortName: 'Camiseta 2026',
 			description: 'Camiseta oficial AASIAM — Forfan, dry-tech.',
@@ -163,12 +179,13 @@ export const PRODUCTS = [
 			tag: 'Escolha o tamanho',
 			accent: '#12c86b',
 			sizes: HOODIE_SIZES,
-			personalization: true,
+			attributes: [sizeAttribute('size', 'Tamanho', 'Tam. {value}')],
+			personalization: SHIRT_PERSONALIZATION,
 			images: ['/imgs/camiseta-aasiam.png'],
 		},
 		{
 			id: 'camiseta-goleiro-aasiam',
-			kind: 'personalizedSizedProduct',
+			kind: 'personalizedProduct',
 			name: 'Camiseta Goleiro AASIAM 2026',
 			shortName: 'Camiseta Goleiro 2026',
 			description: 'Camiseta oficial de goleiro da Atlética de Sistemas da AMF 2026.',
@@ -176,12 +193,13 @@ export const PRODUCTS = [
 			tag: 'Escolha o tamanho',
 			accent: '#12c86b',
 			sizes: HOODIE_SIZES,
-			personalization: true,
+			attributes: [sizeAttribute('size', 'Tamanho', 'Tam. {value}')],
+			personalization: SHIRT_PERSONALIZATION,
 			images: ['/imgs/camiseta-aasiam-goleiro.png'],
 		},
 		{
 			id: 'conjunto-chumbo',
-			kind: 'twoPieceSet',
+			kind: 'personalizedProduct',
 			name: 'Conjunto Chumbo AASIAM',
 			shortName: 'Conjunto Chumbo AASIAM',
 			description: 'Conjunto oficial AASIAM com camiseta e calção.',
@@ -190,13 +208,16 @@ export const PRODUCTS = [
 			accent: '#303438',
 			shirtSizes: HOODIE_SIZES,
 			shortsSizes: HOODIE_SIZES,
-			defaultShirtSize: 'M',
-			defaultShortsSize: 'M',
+			attributes: [
+				sizeAttribute('shirtSize', 'Tamanho da camiseta', 'Camiseta {value}'),
+				sizeAttribute('shortsSize', 'Tamanho do calção', 'Calção {value}'),
+			],
+			personalization: SHIRT_PERSONALIZATION,
 			images: ['/imgs/conjunto chumbo.png'],
 		},
 		{
 			id: 'conjunto-verde',
-			kind: 'twoPieceSet',
+			kind: 'personalizedProduct',
 			name: 'Conjunto Verde AASIAM',
 			shortName: 'Conjunto Verde AASIAM',
 			description: 'Conjunto oficial AASIAM com camiseta e calção.',
@@ -205,13 +226,16 @@ export const PRODUCTS = [
 			accent: '#12c86b',
 			shirtSizes: HOODIE_SIZES,
 			shortsSizes: HOODIE_SIZES,
-			defaultShirtSize: 'M',
-			defaultShortsSize: 'M',
+			attributes: [
+				sizeAttribute('shirtSize', 'Tamanho da camiseta', 'Camiseta {value}'),
+				sizeAttribute('shortsSize', 'Tamanho do calção', 'Calção {value}'),
+			],
+			personalization: SHIRT_PERSONALIZATION,
 			images: ['/imgs/conjunto verde.png'],
 		},
 		{
 			id: 'jersey',
-			kind: 'sizedVariants',
+			kind: 'personalizedProduct',
 			name: 'Jersey AASIAM',
 			shortName: 'Jersey AASIAM',
 			description: 'Jersey oficial AASIAM.',
@@ -220,6 +244,11 @@ export const PRODUCTS = [
 			accent: '#12c86b',
 			variants: JERSEY_VARIANTS,
 			sizes: HOODIE_SIZES,
+			attributes: [
+				colorAttribute(JERSEY_VARIANTS),
+				sizeAttribute('size', 'Tamanho', 'Tam. {value}'),
+			],
+			personalization: { noun: 'Jersey' },
 			images: ['/imgs/jerseys.png'],
 		},
 		{
@@ -248,7 +277,13 @@ export const PRODUCTS = [
 		includes: ['Moletom', 'Camiseta', 'Caneca com tirante', 'Jersey'],
 		pieces: [
 			{ key: 'hoodie', name: 'Moletom', colors: HOODIE_VARIANTS, sizes: HOODIE_SIZES },
-			{ key: 'shirt', name: 'Camiseta', colors: SHIRT_VARIANTS, sizes: HOODIE_SIZES },
+			{
+				key: 'shirt',
+				name: 'Camiseta',
+				colors: SHIRT_VARIANTS,
+				sizes: HOODIE_SIZES,
+				personalization: SHIRT_PERSONALIZATION,
+			},
 			{ key: 'jersey', name: 'Jersey', colors: JERSEY_VARIANTS, sizes: HOODIE_SIZES },
 		],
 		fixedItems: [{ name: 'Caneca com tirante', quantity: 1 }],

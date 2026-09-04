@@ -32,11 +32,13 @@ import {
 	personalizationKey,
 	normalizePersonalizationName,
 	normalizePersonalizationNumber,
-	PERSONALIZATION_NAME_MAX,
+	resolvePersonalizedAttributes,
+	attributeOption,
 } from './shared/order.js';
 import ChurrascoPage from './churrasco/ChurrascoPage.jsx';
 import ValidacaoPage from './churrasco/ValidacaoPage.jsx';
 import CheckoutMercadoPago from './loja/CheckoutMercadoPago.jsx';
+import PersonalizationFields from './loja/PersonalizationFields.jsx';
 
 /* ─── constants ─── */
 const currency = new Intl.NumberFormat('pt-BR', {
@@ -145,33 +147,37 @@ function buildCartItem(product, sel) {
 			meta: `Tamanho: ${sel.size}`,
 		};
 	}
-	if (product.kind === 'personalizedSizedProduct') {
-		const nome = normalizePersonalizationName(sel.name);
-		const numero = normalizePersonalizationNumber(sel.number);
-		const partes = [`Tamanho: ${sel.size}`];
+	if (product.kind === 'personalizedProduct') {
+		const resolved = resolvePersonalizedAttributes(product, sel) || {
+			chips: [],
+			keyParts: [],
+		};
+		const nome = normalizePersonalizationName(sel.personalizationName);
+		const numero = normalizePersonalizationNumber(sel.personalizationNumber);
+		const partes = [...resolved.chips];
 		if (nome) partes.push(`Nome: ${nome}`);
 		if (numero) partes.push(`Número: ${numero}`);
 		return {
 			...base,
-			key: `${product.id}-${personalizationKey({
-				size: sel.size,
-				personalizationName: sel.name,
-				personalizationNumber: sel.number,
-			})}`,
+			key: `${product.id}-${personalizationKey(
+				resolved.keyParts,
+				sel.personalizationName,
+				sel.personalizationNumber,
+			)}`,
 			meta: partes.join(' · '),
-		};
-	}
-	if (product.kind === 'twoPieceSet') {
-		return {
-			...base,
-			key: `${product.id}-${sel.shirtSize}-${sel.shortsSize}`,
-			meta: `Camiseta: ${sel.shirtSize} · Calção: ${sel.shortsSize}`,
 		};
 	}
 	if (product.kind === 'multiPieceBundle') {
 		const pieces = product.pieces.map(piece => {
 			const color = piece.colors.find(c => c.code === sel[`${piece.key}Color`]);
-			return `${piece.name}: ${color?.name || '—'} / ${sel[`${piece.key}Size`] || '—'}`;
+			let part = `${piece.name}: ${color?.name || '—'} / ${sel[`${piece.key}Size`] || '—'}`;
+			if (piece.personalization) {
+				const nome = normalizePersonalizationName(sel[`${piece.key}PersonalizationName`]);
+				const numero = normalizePersonalizationNumber(sel[`${piece.key}PersonalizationNumber`]);
+				if (nome) part += ` · Nome: ${nome}`;
+				if (numero) part += ` · Número: ${numero}`;
+			}
+			return part;
 		});
 		const fixedItems = product.fixedItems.map(item =>
 			`${item.name}: ${item.quantity} unidade${item.quantity === 1 ? '' : 's'}`,
@@ -1075,12 +1081,11 @@ function buildInitialSel(product) {
 	if (product.kind === 'sizedVariants')
 		return { variant: product.variants[0].code, size: 'M' };
 	if (product.kind === 'sizedProduct') return { size: product.defaultSize };
-	if (product.kind === 'personalizedSizedProduct')
-		return { size: null, name: '', number: '' };
-	if (product.kind === 'twoPieceSet') {
+	if (product.kind === 'personalizedProduct') {
 		return {
-			shirtSize: product.defaultShirtSize,
-			shortsSize: product.defaultShortsSize,
+			...Object.fromEntries((product.attributes || []).map(a => [a.key, null])),
+			personalizationName: '',
+			personalizationNumber: '',
 		};
 	}
 	if (product.kind === 'doubleHoodie') return { verde: 'M', bege: 'M' };
@@ -1098,6 +1103,12 @@ function buildInitialSel(product) {
 			product.pieces.flatMap(piece => [
 				[`${piece.key}Color`, null],
 				[`${piece.key}Size`, null],
+				...(piece.personalization
+					? [
+							[`${piece.key}PersonalizationName`, ''],
+							[`${piece.key}PersonalizationNumber`, ''],
+						]
+					: []),
 			]),
 		);
 	}
@@ -1105,8 +1116,8 @@ function buildInitialSel(product) {
 }
 
 function isProductSelectionComplete(product, sel) {
-	if (product.kind === 'personalizedSizedProduct') {
-		return product.sizes.includes(sel.size);
+	if (product.kind === 'personalizedProduct') {
+		return (product.attributes || []).every(a => attributeOption(a, sel[a.key]));
 	}
 	if (product.kind !== 'multiPieceBundle') return true;
 	return product.pieces.every(
@@ -1166,77 +1177,27 @@ function ProductSelectors({ product, sel, onChange }) {
 		);
 	}
 
-	if (product.kind === 'personalizedSizedProduct') {
+	if (product.kind === 'personalizedProduct') {
 		return (
 			<>
-				<div className="field-group">
-					<span className="group-label">
-						Tamanho <span className="req-mark" aria-hidden="true">*</span>
-					</span>
-					<SizePills
-						sizes={product.sizes}
-						value={sel.size}
-						onChange={v => onChange('size', v)}
+				{product.attributes.map(attr => (
+					<AttributeField
+						key={attr.key}
+						attribute={attr}
+						value={sel[attr.key]}
+						onChange={v => onChange(attr.key, v)}
 					/>
-				</div>
-				<div className="field-group">
-					<label className="group-label" htmlFor="camiseta-nome">
-						Nome na camiseta <span className="opt-mark">Opcional</span>
-					</label>
-					<input
-						id="camiseta-nome"
-						className="input input-uppercase"
-						type="text"
-						placeholder="Ex.: Arthur"
-						value={sel.name}
-						maxLength={PERSONALIZATION_NAME_MAX}
-						autoComplete="off"
-						onChange={e => onChange('name', e.target.value)}
+				))}
+				{product.personalization && (
+					<PersonalizationFields
+						noun={product.personalization.noun || 'camiseta'}
+						name={sel.personalizationName}
+						number={sel.personalizationNumber}
+						onNameChange={v => onChange('personalizationName', v)}
+						onNumberChange={v => onChange('personalizationNumber', v)}
 					/>
-				</div>
-				<div className="field-group">
-					<label className="group-label" htmlFor="camiseta-numero">
-						Número na camiseta <span className="opt-mark">Opcional</span>
-					</label>
-					<input
-						id="camiseta-numero"
-						className="input"
-						type="text"
-						inputMode="numeric"
-						pattern="\d*"
-						placeholder="Ex.: 23"
-						value={sel.number}
-						maxLength={2}
-						autoComplete="off"
-						onChange={e =>
-							onChange('number', normalizePersonalizationNumber(e.target.value))
-						}
-					/>
-				</div>
+				)}
 			</>
-		);
-	}
-
-	if (product.kind === 'twoPieceSet') {
-		return (
-			<div className="kit-sizes">
-				<div className="field-group">
-					<span className="group-label">Tamanho da camiseta</span>
-					<SizePills
-						sizes={product.shirtSizes}
-						value={sel.shirtSize}
-						onChange={v => onChange('shirtSize', v)}
-					/>
-				</div>
-				<div className="field-group">
-					<span className="group-label">Tamanho do calção</span>
-					<SizePills
-						sizes={product.shortsSizes}
-						value={sel.shortsSize}
-						onChange={v => onChange('shortsSize', v)}
-					/>
-				</div>
-			</div>
 		);
 	}
 
@@ -1335,6 +1296,15 @@ function ProductSelectors({ product, sel, onChange }) {
 								onChange={value => onChange(`${piece.key}Size`, value)}
 							/>
 						</div>
+						{piece.personalization && (
+							<PersonalizationFields
+								noun={piece.personalization.noun || 'camiseta'}
+								name={sel[`${piece.key}PersonalizationName`]}
+								number={sel[`${piece.key}PersonalizationNumber`]}
+								onNameChange={v => onChange(`${piece.key}PersonalizationName`, v)}
+								onNumberChange={v => onChange(`${piece.key}PersonalizationNumber`, v)}
+							/>
+						)}
 					</div>
 				))}
 			</div>
@@ -1394,6 +1364,45 @@ function ProductSelectors({ product, sel, onChange }) {
 	}
 
 	return null;
+}
+
+/**
+ * Um atributo estrutural declarado em `product.attributes`: pílulas de cor
+ * (opções são objetos com swatch) ou de tamanho (opções são strings). Sempre
+ * obrigatório — daí o `*`.
+ */
+function AttributeField({ attribute, value, onChange }) {
+	const isColor = typeof attribute.options[0] === 'object';
+	return (
+		<div className="field-group">
+			<span className="group-label">
+				{attribute.label}{' '}
+				<span className="req-mark" aria-hidden="true">
+					*
+				</span>
+			</span>
+			{isColor ? (
+				<div className="pill-row">
+					{attribute.options.map(opt => (
+						<button
+							key={opt.code}
+							type="button"
+							className={`variant-pill${value === opt.code ? ' active' : ''}`}
+							onClick={() => onChange(opt.code)}
+						>
+							<span
+								className="color-swatch"
+								style={{ background: opt.swatch, borderColor: opt.border }}
+							/>
+							{opt.name}
+						</button>
+					))}
+				</div>
+			) : (
+				<SizePills sizes={attribute.options} value={value} onChange={onChange} />
+			)}
+		</div>
+	);
 }
 
 function SizePills({ sizes, value, onChange }) {

@@ -1,10 +1,11 @@
 import { PRODUCT_BY_ID, PRODUCTS } from "./products.js";
 
-/* ─── Personalização da camiseta (nome + número) ──────────────────────────
-   Opcional. O valor salvo preserva a capitalização do cliente; só o cálculo
-   da CHAVE do carrinho normaliza (trim + minúsculas) para não duplicar
-   "Arthur" e " arthur " como itens diferentes. Nada de HTML: o charset abaixo
-   nem começa com "<". */
+/* ─── Personalização: nome + número ───────────────────────────────────────
+   REGRA ÚNICA, usada por toda peça personalizável — camiseta avulsa, Jersey,
+   a camiseta do conjunto e a camiseta do Combo Wolf. Os dois campos são
+   opcionais. O valor salvo preserva a capitalização do cliente; só a CHAVE do
+   carrinho normaliza (trim + minúsculas), para não separar "Arthur" de
+   " arthur ". O charset nem começa com "<": nada de HTML entra. */
 export const PERSONALIZATION_NAME_MAX = 20;
 const PERSONALIZATION_NAME_RE = /^[\p{L}][\p{L} '.\-]*$/u;
 
@@ -18,29 +19,55 @@ export function normalizePersonalizationNumber(value) {
   return String(value ?? "").replace(/\D/g, "").slice(0, 2);
 }
 
-/** Mensagem de erro do nome/número, ou `null` se estiverem ok (ou vazios). */
-function personalizationError(rawName, rawNumber) {
+/** Nome + número já normalizados. `undefined`/`null` viram `""`, nunca escapam. */
+export function normalizePersonalization(rawName, rawNumber) {
+  return {
+    personalizationName: normalizePersonalizationName(rawName),
+    personalizationNumber: normalizePersonalizationNumber(rawNumber),
+  };
+}
+
+/** Mensagem de erro do nome/número, ou `null` se ok (ou ambos vazios). */
+export function personalizationError(rawName, rawNumber) {
   const nome = String(rawName ?? "").trim();
   if (nome.length > PERSONALIZATION_NAME_MAX) {
-    return "O nome na camiseta passa de 20 caracteres.";
+    return `O nome passa de ${PERSONALIZATION_NAME_MAX} caracteres.`;
   }
   if (nome && !PERSONALIZATION_NAME_RE.test(nome)) {
-    return "Use só letras, espaços, hífen e apóstrofo no nome da camiseta.";
+    return "Use só letras, espaços, hífen e apóstrofo no nome.";
   }
   const numero = String(rawNumber ?? "").trim();
   if (numero && !/^\d{1,2}$/.test(numero)) {
-    return "O número da camiseta deve ter 1 ou 2 dígitos.";
+    return "O número deve ter 1 ou 2 dígitos.";
   }
   return null;
 }
 
-/** Identidade de uma camiseta personalizada no carrinho: tamanho + nome + número. */
-export function personalizationKey({ size, personalizationName, personalizationNumber } = {}) {
-  return [
-    size || "",
-    normalizePersonalizationName(personalizationName).toLowerCase(),
-    normalizePersonalizationNumber(personalizationNumber),
-  ].join("--");
+/** Trecho da chave do carrinho que representa a personalização. */
+export function personalizationKeyPart(rawName, rawNumber) {
+  return `${normalizePersonalizationName(rawName).toLowerCase()}--${normalizePersonalizationNumber(rawNumber)}`;
+}
+
+/**
+ * Chave de identidade de uma configuração personalizável no carrinho: os
+ * valores estruturais na ordem (tamanho, cor, tamanho do calção, ...) seguidos
+ * do nome e do número. Dois pedidos só se agrupam se tudo bater.
+ */
+export function personalizationKey(structuralParts = [], rawName, rawNumber) {
+  const parts = Array.isArray(structuralParts) ? structuralParts : [structuralParts];
+  return [...parts.map((p) => String(p ?? "")), personalizationKeyPart(rawName, rawNumber)].join("--");
+}
+
+/** A opção (`"M"` ou `{ code, name }`) que casa com `value`, ou `null`. */
+export function attributeOption(attribute, value) {
+  return (attribute?.options || []).find((option) => (option.code ?? option) === value) || null;
+}
+
+/** Rótulo curto de um atributo para a descrição do item ("Tam. M", "Preta"). */
+export function attributeChip(attribute, option) {
+  const code = option.code ?? option;
+  const template = attribute.chipLabel || "{value}";
+  return template.replace("{value}", code).replace("{name}", option.name ?? code);
 }
 
 export function createEmptySelection() {
@@ -75,16 +102,20 @@ export function calculateOrder(selection) {
       continue;
     }
 
-    if (product.kind === "personalizedSizedProduct") {
+    if (product.kind === "personalizedProduct") {
       for (const configuration of configurationsOf(selected)) {
         const quantity = normalizeQuantity(configuration.quantity);
-        const size = product.sizes.includes(configuration.size) ? configuration.size : null;
-        if (quantity === 0 || !size) continue;
+        if (quantity === 0) continue;
 
-        const personalizationName = normalizePersonalizationName(configuration.personalizationName);
-        const personalizationNumber = normalizePersonalizationNumber(configuration.personalizationNumber);
+        const resolved = resolvePersonalizedAttributes(product, configuration);
+        if (!resolved) continue; // faltou um atributo estrutural (tamanho, cor…)
 
-        const partes = [`Tam. ${size}`];
+        const { personalizationName, personalizationNumber } = normalizePersonalization(
+          configuration.personalizationName,
+          configuration.personalizationNumber
+        );
+
+        const partes = [...resolved.chips];
         if (personalizationName) partes.push(`Nome: ${personalizationName}`);
         if (personalizationNumber) partes.push(`Número: ${personalizationNumber}`);
 
@@ -93,30 +124,10 @@ export function calculateOrder(selection) {
             product,
             quantity,
             partes.join(" · "),
-            personalizationKey({ size, personalizationName, personalizationNumber }),
-            { size, personalizationName, personalizationNumber }
+            personalizationKey(resolved.keyParts, personalizationName, personalizationNumber),
+            { ...resolved.values, personalizationName, personalizationNumber }
           )
         );
-      }
-      continue;
-    }
-
-    if (product.kind === "twoPieceSet") {
-      for (const shirtSize of product.shirtSizes) {
-        for (const shortsSize of product.shortsSizes) {
-          const quantity = normalizeQuantity(selected.combinations?.[shirtSize]?.[shortsSize]);
-          if (quantity > 0) {
-            lines.push(
-              buildLine(
-                product,
-                quantity,
-                `Camiseta Tam. ${shirtSize} / Calção Tam. ${shortsSize}`,
-                `camiseta-${shirtSize}-calcao-${shortsSize}`,
-                { shirtSize, shortsSize }
-              )
-            );
-          }
-        }
       }
       continue;
     }
@@ -140,17 +151,48 @@ export function calculateOrder(selection) {
             [`${piece.key}Size`, piece.size]
           ])
         );
+
+        // Personalização por peça (hoje só a camiseta a declara).
+        const personalizations = {};
+        for (const piece of pieces) {
+          if (!piece.personalization) continue;
+          const norm = normalizePersonalization(
+            configuration[`${piece.key}PersonalizationName`],
+            configuration[`${piece.key}PersonalizationNumber`]
+          );
+          personalizations[`${piece.key}PersonalizationName`] = norm.personalizationName;
+          personalizations[`${piece.key}PersonalizationNumber`] = norm.personalizationNumber;
+        }
+        // A peça personalizável espelha nome/número no topo da linha, para a
+        // planilha ler igual a todos os outros produtos.
+        const personalizedPiece = pieces.find((piece) => piece.personalization);
+        const flat = personalizedPiece
+          ? {
+              personalizationName: personalizations[`${personalizedPiece.key}PersonalizationName`] || "",
+              personalizationNumber: personalizations[`${personalizedPiece.key}PersonalizationNumber`] || "",
+            }
+          : {};
+
         const fixedItems = product.fixedItems?.map((item) => ({ ...item })) || [];
         const variantParts = [
-          ...pieces.map((piece) => `${piece.name}: ${piece.color.name} / ${piece.size}`),
+          ...pieces.map((piece) => {
+            let part = `${piece.name}: ${piece.color.name} / ${piece.size}`;
+            if (piece.personalization) {
+              const nome = personalizations[`${piece.key}PersonalizationName`];
+              const numero = personalizations[`${piece.key}PersonalizationNumber`];
+              if (nome) part += ` · Nome: ${nome}`;
+              if (numero) part += ` · Número: ${numero}`;
+            }
+            return part;
+          }),
           ...fixedItems.map((item) => `${item.name}: ${item.quantity} unidade${item.quantity === 1 ? "" : "s"}`)
         ];
-        const code = pieces
-          .map((piece) => `${piece.key}-${piece.color.code}-${piece.size}`)
-          .join("--");
+        const code = multiPieceBundleConfigurationKey(product, { ...attributes, ...personalizations });
 
         lines.push(buildLine(product, quantity, variantParts.join(" · "), code, {
           ...attributes,
+          ...personalizations,
+          ...flat,
           fixedItems
         }));
       }
@@ -263,34 +305,32 @@ export function sanitizeSelection(selection) {
       continue;
     }
 
-    if (product.kind === "personalizedSizedProduct") {
+    if (product.kind === "personalizedProduct") {
       for (const configuration of configurationsOf(selected)) {
         const quantity = normalizeQuantity(configuration.quantity);
         if (quantity === 0) continue;
 
-        const cleanConfiguration = {
-          quantity,
-          size: product.sizes.includes(configuration.size) ? configuration.size : null,
-          personalizationName: normalizePersonalizationName(configuration.personalizationName),
-          personalizationNumber: normalizePersonalizationNumber(configuration.personalizationNumber),
-        };
-        const key = personalizationKey(cleanConfiguration);
+        const cleanConfiguration = { quantity };
+        for (const attribute of product.attributes || []) {
+          const option = attributeOption(attribute, configuration[attribute.key]);
+          cleanConfiguration[attribute.key] = option ? option.code ?? option : null;
+        }
+        Object.assign(
+          cleanConfiguration,
+          normalizePersonalization(configuration.personalizationName, configuration.personalizationNumber)
+        );
+
+        const keyParts = (product.attributes || []).map((a) => cleanConfiguration[a.key]);
+        const key = personalizationKey(
+          keyParts,
+          cleanConfiguration.personalizationName,
+          cleanConfiguration.personalizationNumber
+        );
         const current = clean[product.id].configurations[key];
         clean[product.id].configurations[key] = {
           ...cleanConfiguration,
           quantity: (current?.quantity || 0) + quantity,
         };
-      }
-      continue;
-    }
-
-    if (product.kind === "twoPieceSet") {
-      for (const shirtSize of product.shirtSizes) {
-        for (const shortsSize of product.shortsSizes) {
-          clean[product.id].combinations[shirtSize][shortsSize] = normalizeQuantity(
-            selected.combinations?.[shirtSize]?.[shortsSize]
-          );
-        }
       }
       continue;
     }
@@ -307,6 +347,14 @@ export function sanitizeSelection(selection) {
           cleanConfiguration[`${piece.key}Size`] = piece.sizes.includes(configuration[`${piece.key}Size`])
             ? configuration[`${piece.key}Size`]
             : null;
+          if (piece.personalization) {
+            const norm = normalizePersonalization(
+              configuration[`${piece.key}PersonalizationName`],
+              configuration[`${piece.key}PersonalizationNumber`]
+            );
+            cleanConfiguration[`${piece.key}PersonalizationName`] = norm.personalizationName;
+            cleanConfiguration[`${piece.key}PersonalizationNumber`] = norm.personalizationNumber;
+          }
         }
 
         const key = multiPieceBundleConfigurationKey(product, cleanConfiguration);
@@ -395,11 +443,13 @@ export function validateSelection(selection) {
       return { error: "Selecione um tamanho válido.", field: "selection" };
     }
 
-    if (product.kind === "personalizedSizedProduct") {
+    if (product.kind === "personalizedProduct") {
       for (const configuration of configurationsOf(selected)) {
         if (normalizeQuantity(configuration.quantity) === 0) continue;
-        if (!product.sizes.includes(configuration.size)) {
-          return { error: "Selecione um tamanho válido.", field: "selection" };
+        for (const attribute of product.attributes || []) {
+          if (!attributeOption(attribute, configuration[attribute.key])) {
+            return { error: `Selecione ${attribute.label.toLowerCase()}.`, field: "selection" };
+          }
         }
         const erro = personalizationError(
           configuration.personalizationName,
@@ -426,20 +476,6 @@ export function validateSelection(selection) {
       }
     }
 
-    if (product.kind === "twoPieceSet") {
-      for (const [shirtSize, shorts] of Object.entries(selected.combinations || {})) {
-        for (const [shortsSize, quantity] of Object.entries(shorts || {})) {
-          if (normalizeQuantity(quantity) === 0) continue;
-          if (!product.shirtSizes.includes(shirtSize)) {
-            return { error: "Selecione o tamanho da camiseta.", field: "selection" };
-          }
-          if (!product.shortsSizes.includes(shortsSize)) {
-            return { error: "Selecione o tamanho do calção.", field: "selection" };
-          }
-        }
-      }
-    }
-
     if (product.kind === "multiPieceBundle") {
       for (const configuration of configurationsOf(selected)) {
         if (normalizeQuantity(configuration.quantity) === 0) continue;
@@ -449,6 +485,13 @@ export function validateSelection(selection) {
           }
           if (!piece.sizes.includes(configuration[`${piece.key}Size`])) {
             return { error: `Selecione um tamanho válido para ${piece.name}.`, field: "selection" };
+          }
+          if (piece.personalization) {
+            const erro = personalizationError(
+              configuration[`${piece.key}PersonalizationName`],
+              configuration[`${piece.key}PersonalizationNumber`]
+            );
+            if (erro) return { error: `${piece.name}: ${erro}`, field: "selection" };
           }
         }
       }
@@ -466,11 +509,43 @@ export function centsToAmount(cents) {
   return Number((Math.max(0, cents) / 100).toFixed(2));
 }
 
-/** Chave estável de cada configuração independente de um bundle com várias peças. */
+/**
+ * Chave estável de cada configuração independente de um bundle com várias
+ * peças. Inclui a personalização das peças que a declaram (a camiseta).
+ */
 export function multiPieceBundleConfigurationKey(product, selection = {}) {
   return product.pieces
-    .map((piece) => `${piece.key}-${selection[`${piece.key}Color`] || ""}-${selection[`${piece.key}Size`] || ""}`)
+    .map((piece) => {
+      let chave = `${piece.key}-${selection[`${piece.key}Color`] || ""}-${selection[`${piece.key}Size`] || ""}`;
+      if (piece.personalization) {
+        chave += `-${personalizationKeyPart(
+          selection[`${piece.key}PersonalizationName`],
+          selection[`${piece.key}PersonalizationNumber`]
+        )}`;
+      }
+      return chave;
+    })
     .join("--");
+}
+
+/**
+ * Resolve os `attributes` declarados de um produto personalizável contra uma
+ * configuração: valida cada um e devolve `{ values, chips, keyParts }`, ou
+ * `null` se qualquer atributo estrutural faltou.
+ */
+export function resolvePersonalizedAttributes(product, configuration) {
+  const values = {};
+  const chips = [];
+  const keyParts = [];
+  for (const attribute of product.attributes || []) {
+    const option = attributeOption(attribute, configuration[attribute.key]);
+    if (!option) return null;
+    const code = option.code ?? option;
+    values[attribute.key] = code;
+    keyParts.push(code);
+    chips.push(attributeChip(attribute, option));
+  }
+  return { values, chips, keyParts };
 }
 
 function createEmptyProductSelection(product) {
@@ -478,22 +553,7 @@ function createEmptyProductSelection(product) {
     return { quantity: 0, size: null };
   }
 
-  if (product.kind === "personalizedSizedProduct") {
-    return { configurations: {} };
-  }
-
-  if (product.kind === "twoPieceSet") {
-    return {
-      combinations: Object.fromEntries(
-        product.shirtSizes.map((shirtSize) => [
-          shirtSize,
-          Object.fromEntries(product.shortsSizes.map((shortsSize) => [shortsSize, 0]))
-        ])
-      )
-    };
-  }
-
-  if (product.kind === "multiPieceBundle") {
+  if (product.kind === "personalizedProduct" || product.kind === "multiPieceBundle") {
     return { configurations: {} };
   }
 

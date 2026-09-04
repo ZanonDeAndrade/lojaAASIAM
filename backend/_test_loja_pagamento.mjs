@@ -223,9 +223,14 @@ const clienteValido = {
 // 2x moletom-verde (16000) = 32000 de subtotal líquido.
 const selecaoMoletom = { "moletom-verde": { variants: { verde: { M: 2 } } } };
 const selecaoNovosUniformes = {
-  "conjunto-chumbo": { combinations: { M: { G: 1, M: 1 } } },
-  "conjunto-verde": { combinations: { G: { M: 1 } } },
-  jersey: { variants: { branca: { G: 1 } } },
+  "conjunto-chumbo": {
+    configurations: {
+      a: { quantity: 1, shirtSize: "M", shortsSize: "G" },
+      b: { quantity: 1, shirtSize: "M", shortsSize: "M" },
+    },
+  },
+  "conjunto-verde": { configurations: { a: { quantity: 1, shirtSize: "G", shortsSize: "M" } } },
+  jersey: { configurations: { a: { quantity: 1, color: "branca", size: "G" } } },
 };
 const selecaoComboWolf = {
   "combo-wolf": {
@@ -428,29 +433,17 @@ await test("uniformes novos validam tamanhos e congelam o snapshot completo na p
   // 2x Conjunto Chumbo + 1x Conjunto Verde + 1x Jersey = R$ 570,00.
   assert.equal(quote.subtotalCents, 57000);
 
-  const semCamiseta = await post("/api/loja/checkout/quote", {
-    selection: { "conjunto-chumbo": { combinations: { XXXXXX: { G: 1 } } } },
-    paymentMethod: "pix",
-  });
-  assert.equal(semCamiseta.status, 400);
-
-  const semCalcao = await post("/api/loja/checkout/quote", {
-    selection: { "conjunto-chumbo": { combinations: { M: { XXXXXX: 1 } } } },
-    paymentMethod: "pix",
-  });
-  assert.equal(semCalcao.status, 400);
-
-  const jerseyInvalida = await post("/api/loja/checkout/quote", {
-    selection: { jersey: { variants: { azul: { M: 1 } } } },
-    paymentMethod: "pix",
-  });
-  assert.equal(jerseyInvalida.status, 400);
-
-  const tamanhoJerseyInvalido = await post("/api/loja/checkout/quote", {
-    selection: { jersey: { variants: { branca: { XXXXXX: 1 } } } },
-    paymentMethod: "pix",
-  });
-  assert.equal(tamanhoJerseyInvalido.status, 400);
+  const invalidas = [
+    { "conjunto-chumbo": { configurations: { a: { quantity: 1, shortsSize: "G" } } } }, // sem camiseta
+    { "conjunto-chumbo": { configurations: { a: { quantity: 1, shirtSize: "M" } } } }, // sem calção
+    { jersey: { configurations: { a: { quantity: 1, color: "azul", size: "M" } } } }, // cor inválida
+    { jersey: { configurations: { a: { quantity: 1, color: "branca", size: "XXXXXX" } } } }, // tamanho inválido
+    { jersey: { configurations: { a: { quantity: 1, color: "branca", size: "M", personalizationNumber: "999" } } } }, // número inválido
+  ];
+  for (const selection of invalidas) {
+    const res = await post("/api/loja/checkout/quote", { selection, paymentMethod: "pix" });
+    assert.equal(res.status, 400, `deveria recusar: ${JSON.stringify(selection)}`);
+  }
 
   const attemptId = novoAttempt();
   const criado = await (
@@ -463,44 +456,134 @@ await test("uniformes novos validam tamanhos e congelam o snapshot completo na p
   ).json();
   assert.equal(criado.subtotalCents, 57000);
   assert.equal(sheet.rows.length, 1);
-  assert.match(sheet.rows[0][5], /Conjunto Chumbo/);
-  assert.match(sheet.rows[0][5], /Conjunto Verde/);
-  assert.match(sheet.rows[0][5], /Jersey/);
-  assert.match(sheet.rows[0][5], /140,00/);
-  assert.match(sheet.rows[0][5], /150,00/);
-  assert.match(sheet.rows[0][19], /Conjunto Chumbo[^:]*: M/);
-  assert.match(sheet.rows[0][19], /Conjunto Verde[^:]*: G/);
-  assert.match(sheet.rows[0][19], /Jersey[^:]*: G/);
-  assert.match(sheet.rows[0][20], /Conjunto Chumbo[^:]*: G/);
-  assert.match(sheet.rows[0][20], /Conjunto Verde[^:]*: M/);
+  const linha = sheet.rows[0];
+  assert.match(linha[5], /Conjunto Chumbo/);
+  assert.match(linha[5], /Conjunto Verde/);
+  assert.match(linha[5], /Jersey/);
+  assert.match(linha[5], /140,00/);
+  assert.match(linha[5], /150,00/);
+  assert.match(linha[19], /Conjunto Chumbo[^:]*: M/); // coluna T — tamanho da camiseta
+  assert.match(linha[19], /Conjunto Verde[^:]*: G/);
+  assert.match(linha[19], /Jersey[^:]*: G/);
+  assert.match(linha[20], /Conjunto Chumbo[^:]*: G/); // coluna U — tamanho do calção
+  assert.match(linha[20], /Conjunto Verde[^:]*: M/);
 });
 
-await test("Jersey avulsa mantém cor e tamanho distintos no pedido e na planilha", async () => {
+await test("Jersey avulsa: cor + tamanho + nome + número distintos, e tudo na planilha", async () => {
   resetSheet();
-  const branca = { jersey: { variants: { branca: { M: 1 } } } };
-  const preta = { jersey: { variants: { preta: { GG: 1 } } } };
-
-  const quoteBranca = await (
-    await post("/api/loja/checkout/quote", { selection: branca, paymentMethod: "pix" })
-  ).json();
-  const quotePreta = await (
-    await post("/api/loja/checkout/quote", { selection: preta, paymentMethod: "pix" })
-  ).json();
-  assert.equal(quoteBranca.subtotalCents, 15000);
-  assert.equal(quotePreta.subtotalCents, 15000);
-
   const criado = await (
     await post("/api/loja/checkout", {
       attemptId: novoAttempt(),
       customer: clienteValido,
-      selection: { jersey: { variants: { branca: { M: 1 }, preta: { M: 1 } } } },
+      selection: {
+        jersey: {
+          configurations: {
+            a: { quantity: 1, color: "preta", size: "M", personalizationName: "ARTHUR", personalizationNumber: "23" },
+            b: { quantity: 1, color: "preta", size: "M", personalizationName: "PEDRO", personalizationNumber: "23" },
+            c: { quantity: 1, color: "branca", size: "M" },
+          },
+        },
+      },
       paymentMethod: "pix",
     })
   ).json();
-  assert.equal(criado.subtotalCents, 30000);
+  assert.equal(criado.subtotalCents, 45000, "3x Jersey deveriam somar R$ 450,00 (personalização não cobra)");
   assert.equal(sheet.rows.length, 1);
-  assert.match(sheet.rows[0][5], /Jersey AASIAM \(Branca - Tam\. M\)/);
-  assert.match(sheet.rows[0][5], /Jersey AASIAM \(Preta - Tam\. M\)/);
+
+  const linha = sheet.rows[0];
+  assert.match(linha[5], /Jersey AASIAM \(Preta · Tam\. M · Nome: ARTHUR · Número: 23\)/);
+  assert.match(linha[5], /Jersey AASIAM \(Preta · Tam\. M · Nome: PEDRO · Número: 23\)/);
+  assert.match(linha[5], /Jersey AASIAM \(Branca · Tam\. M\)/);
+  assert.match(linha[19], /Jersey AASIAM: M/); // coluna T
+  assert.match(linha[21], /Jersey AASIAM: ARTHUR/); // coluna V — nome
+  assert.match(linha[21], /Jersey AASIAM: PEDRO/);
+  assert.match(linha[22], /Jersey AASIAM: 23/); // coluna W — número
+  assert.ok(!/undefined|null|\[object/.test(linha[21] + linha[22]));
+});
+
+await test("Conjunto: nome/número da camiseta na planilha; calção sem personalização", async () => {
+  resetSheet();
+  await post("/api/loja/checkout", {
+    attemptId: novoAttempt(),
+    customer: clienteValido,
+    selection: {
+      "conjunto-verde": {
+        configurations: {
+          a: { quantity: 1, shirtSize: "M", shortsSize: "G", personalizationName: "ARTHUR", personalizationNumber: "23" },
+          b: { quantity: 1, shirtSize: "M", shortsSize: "G", personalizationName: "PEDRO", personalizationNumber: "10" },
+        },
+      },
+    },
+    paymentMethod: "pix",
+  });
+  const linha = sheet.rows[0];
+  assert.match(linha[5], /Conjunto Verde AASIAM \(Camiseta M · Calção G · Nome: ARTHUR · Número: 23\)/);
+  assert.match(linha[19], /Conjunto Verde AASIAM: M/); // T — camiseta
+  assert.match(linha[20], /Conjunto Verde AASIAM: G/); // U — calção
+  assert.match(linha[21], /Conjunto Verde AASIAM: ARTHUR/); // V — nome (da camiseta)
+  assert.match(linha[22], /Conjunto Verde AASIAM: 23/); // W — número
+});
+
+await test("Combo Wolf: personalização SÓ da camiseta, na chave, no resumo e na planilha", async () => {
+  resetSheet();
+  const attemptId = novoAttempt();
+  const criado = await (
+    await post("/api/loja/checkout", {
+      attemptId,
+      customer: clienteValido,
+      selection: {
+        "combo-wolf": {
+          configurations: {
+            a: {
+              quantity: 1,
+              hoodieColor: "verde", hoodieSize: "G",
+              shirtColor: "chumbo", shirtSize: "M",
+              jerseyColor: "preta", jerseySize: "GG",
+              shirtPersonalizationName: "ARTHUR", shirtPersonalizationNumber: "23",
+            },
+            b: {
+              quantity: 1,
+              hoodieColor: "verde", hoodieSize: "G",
+              shirtColor: "chumbo", shirtSize: "M",
+              jerseyColor: "preta", jerseySize: "GG",
+              shirtPersonalizationName: "PEDRO", shirtPersonalizationNumber: "10",
+            },
+          },
+        },
+      },
+      paymentMethod: "pix",
+    })
+  ).json();
+  // Mesmas cores/tamanhos, personalização diferente → NÃO agrupa. Preço base intacto.
+  assert.equal(criado.subtotalCents, 2 * 41500);
+  const linha = sheet.rows[0];
+  assert.match(linha[5], /Camiseta: Chumbo \/ M · Nome: ARTHUR · Número: 23/);
+  assert.match(linha[5], /Camiseta: Chumbo \/ M · Nome: PEDRO · Número: 10/);
+  // A personalização não aparece grudada no moletom nem na jersey.
+  assert.ok(!/Moletom:[^·]*Nome:/.test(linha[5]), "personalização vazou para o moletom");
+  assert.ok(!/Jersey:[^·]*Nome:/.test(linha[5]), "personalização vazou para a jersey");
+  assert.match(linha[21], /Combo Wolf: ARTHUR/); // V — nome da camiseta
+  assert.match(linha[22], /Combo Wolf: 10/); // W — número da camiseta
+});
+
+await test("Combo Wolf sem personalização continua funcionando e custa R$ 415", async () => {
+  resetSheet();
+  const criado = await (
+    await post("/api/loja/checkout", {
+      attemptId: novoAttempt(),
+      customer: clienteValido,
+      selection: { "combo-wolf": { configurations: { a: {
+        quantity: 1,
+        hoodieColor: "verde", hoodieSize: "G",
+        shirtColor: "chumbo", shirtSize: "M",
+        jerseyColor: "preta", jerseySize: "GG",
+      } } } },
+      paymentMethod: "pix",
+    })
+  ).json();
+  assert.equal(criado.subtotalCents, 41500);
+  assert.equal(sheet.rows[0][21], "", "coluna Nome deveria estar vazia");
+  assert.equal(sheet.rows[0][22], "", "coluna Número deveria estar vazia");
 });
 
 await test("Camiseta personalizada: tamanho, nome e número chegam à planilha (e vazios ficam vazios)", async () => {

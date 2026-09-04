@@ -254,6 +254,29 @@ await test("Combo Wolf usa peças configuráveis, preço base e snapshot estrutu
   );
   assert.equal(validateSelection({ "combo-wolf": wolfM }), null);
 
+  // Só a camiseta é personalizável, e o nome/número entram na chave do carrinho.
+  assert.deepEqual(
+    wolf.pieces.map((p) => [p.key, Boolean(p.personalization)]),
+    [["hoodie", false], ["shirt", true], ["jersey", false]],
+  );
+  const wolfArthur = { ...wolfM, shirtPersonalizationName: "ARTHUR", shirtPersonalizationNumber: "23" };
+  const wolfPedro = { ...wolfM, shirtPersonalizationName: "PEDRO", shirtPersonalizationNumber: "10" };
+  assert.notEqual(
+    multiPieceBundleConfigurationKey(wolf, wolfArthur),
+    multiPieceBundleConfigurationKey(wolf, wolfPedro),
+    "personalizações diferentes da camiseta não separaram o Combo Wolf no carrinho",
+  );
+  assert.notEqual(
+    multiPieceBundleConfigurationKey(wolf, wolfArthur),
+    multiPieceBundleConfigurationKey(wolf, wolfM),
+    "com × sem personalização deveriam ser itens diferentes",
+  );
+  assert.equal(validateSelection({ "combo-wolf": wolfArthur }), null, "personalização válida foi recusada");
+  assert.match(
+    validateSelection({ "combo-wolf": { ...wolfM, shirtPersonalizationName: "x".repeat(30) } }).error,
+    /Camiseta/,
+  );
+
   const selection = sanitizeSelection({
     "combo-wolf": {
       configurations: {
@@ -292,55 +315,101 @@ await test("Combo Wolf usa peças configuráveis, preço base e snapshot estrutu
   assert.match(app, /disabled=\{!selectionComplete\}/);
 });
 
-await test("os novos uniformes preservam tamanhos, preço e combinações", async () => {
+await test("Jersey e conjuntos: kind unificado, tamanhos, cor e personalização da camiseta", async () => {
   const { readFile } = await import("node:fs/promises");
   const { PRODUCTS } = await import("./shared/products.js");
   const { calculateOrder, sanitizeSelection, validateSelection } = await import("./shared/order.js");
 
+  // Os três (mais as camisetas avulsas) agora usam UM kind só.
   assert.deepEqual(
-    PRODUCTS.filter((p) => ["conjunto-chumbo", "conjunto-verde", "jersey"].includes(p.id)).map((p) => [p.id, p.name, p.kind, p.priceCents]),
+    PRODUCTS.filter((p) => ["conjunto-chumbo", "conjunto-verde", "jersey"].includes(p.id)).map((p) => [
+      p.id,
+      p.name,
+      p.kind,
+      p.priceCents,
+      p.attributes.map((a) => a.key),
+      Boolean(p.personalization),
+    ]),
     [
-      ["conjunto-chumbo", "Conjunto Chumbo AASIAM", "twoPieceSet", 14000],
-      ["conjunto-verde", "Conjunto Verde AASIAM", "twoPieceSet", 14000],
-      ["jersey", "Jersey AASIAM", "sizedVariants", 15000],
+      ["conjunto-chumbo", "Conjunto Chumbo AASIAM", "personalizedProduct", 14000, ["shirtSize", "shortsSize"], true],
+      ["conjunto-verde", "Conjunto Verde AASIAM", "personalizedProduct", 14000, ["shirtSize", "shortsSize"], true],
+      ["jersey", "Jersey AASIAM", "personalizedProduct", 15000, ["color", "size"], true],
     ],
+  );
+  assert.deepEqual(
+    PRODUCTS.find((p) => p.id === "jersey").attributes[0].options.map((o) => o.code),
+    ["branca", "preta"],
+    "a Jersey perdeu as cores Branca/Preta",
   );
 
-  const selection = sanitizeSelection({
-    "conjunto-chumbo": { combinations: { M: { G: 1, M: 1 } } },
-    "conjunto-verde": { combinations: { G: { M: 1 } } },
-    jersey: { variants: { branca: { G: 1 }, preta: { G: 1 } } },
-  });
-  const order = calculateOrder(selection);
-  assert.deepEqual(
-    order.lines.map((line) => [line.productId, line.color || "", line.shirtSize || line.size, line.shortsSize || "", line.unitPriceCents]),
-    [
-      ["conjunto-chumbo", "", "M", "M", 14000],
-      ["conjunto-chumbo", "", "M", "G", 14000],
-      ["conjunto-verde", "", "G", "M", 14000],
-      ["jersey", "branca", "G", "", 15000],
-      ["jersey", "preta", "G", "", 15000],
-    ],
-    "combinações distintas do conjunto foram mescladas ou perderam tamanhos",
+  // Jersey: preço não muda; personalizações diferentes são itens diferentes.
+  const jerseySel = {
+    jersey: {
+      configurations: {
+        a: { quantity: 1, color: "preta", size: "M", personalizationName: " Arthur ", personalizationNumber: "23" },
+        b: { quantity: 1, color: "preta", size: "M", personalizationName: "PEDRO", personalizationNumber: "23" },
+        c: { quantity: 2, color: "preta", size: "M", personalizationName: "arthur", personalizationNumber: "23" },
+        d: { quantity: 1, color: "branca", size: "M", personalizationName: "Arthur", personalizationNumber: "23" },
+      },
+    },
+  };
+  const jerseyOrder = calculateOrder(sanitizeSelection(jerseySel));
+  assert.equal(jerseyOrder.lines.length, 3, "Arthur/23/preta/M deveria fundir; Pedro e Branca não");
+  const arthurPreta = jerseyOrder.lines.find(
+    (l) => l.color === "preta" && l.personalizationName.toLowerCase() === "arthur"
   );
-  assert.equal(order.totalCents, 72000);
+  assert.equal(arthurPreta.quantity, 3, "trim/caixa não fundiu 'Arthur' e ' arthur '");
+  assert.equal(arthurPreta.personalizationNumber, "23");
+  assert.equal(jerseyOrder.totalCents, 5 * 15000);
+
+  // O valor salvo preserva a caixa que o cliente digitou (aqui, um único item).
+  const soArthur = calculateOrder(
+    sanitizeSelection({
+      jersey: {
+        configurations: { a: { quantity: 1, color: "branca", size: "M", personalizationName: "  Arthur  " } },
+      },
+    })
+  ).lines[0];
+  assert.equal(soArthur.personalizationName, "Arthur", "trim manteve a caixa original");
+
+  // Conjunto: nome/número pertencem à CAMISETA; calção não tem personalização.
+  const conjSel = {
+    "conjunto-chumbo": {
+      configurations: {
+        a: { quantity: 1, shirtSize: "M", shortsSize: "G", personalizationName: "ARTHUR", personalizationNumber: "23" },
+        b: { quantity: 1, shirtSize: "M", shortsSize: "G", personalizationName: "PEDRO", personalizationNumber: "10" },
+        c: { quantity: 1, shirtSize: "M", shortsSize: "G" },
+      },
+    },
+  };
+  const conjOrder = calculateOrder(sanitizeSelection(conjSel));
+  assert.equal(conjOrder.lines.length, 3, "ARTHUR, PEDRO e sem personalização deveriam ser 3 itens");
+  assert.equal(conjOrder.totalCents, 3 * 14000);
+  const arthurConj = conjOrder.lines.find((l) => l.personalizationName === "ARTHUR");
+  assert.equal(arthurConj.shirtSize, "M");
+  assert.equal(arthurConj.shortsSize, "G");
+  assert.equal("shortsPersonalizationName" in arthurConj, false, "personalização vazou para o calção");
+  assert.match(arthurConj.variant, /Camiseta M · Calção G · Nome: ARTHUR · Número: 23/);
+
+  // Validação (backend é autoridade).
+  assert.match(validateSelection({ "conjunto-chumbo": { configurations: { a: { quantity: 1, shortsSize: "G" } } } }).error, /camiseta/i);
+  assert.match(validateSelection({ "conjunto-chumbo": { configurations: { a: { quantity: 1, shirtSize: "M" } } } }).error, /cal[çc]/i);
+  assert.match(validateSelection({ jersey: { configurations: { a: { quantity: 1, size: "M" } } } }).error, /cor/i);
+  assert.match(validateSelection({ jersey: { configurations: { a: { quantity: 1, color: "azul", size: "M" } } } }).error, /cor/i);
   assert.match(
-    validateSelection({ "conjunto-chumbo": { combinations: { XXXXXX: { G: 1 } } } }).error,
-    /camiseta/i,
+    validateSelection({ jersey: { configurations: { a: { quantity: 1, color: "preta", size: "M", personalizationName: "N".repeat(30) } } } }).error,
+    /20 caracteres/i
   );
   assert.match(
-    validateSelection({ "conjunto-chumbo": { combinations: { M: { XXXXXX: 1 } } } }).error,
-    /calção/i,
+    validateSelection({ jersey: { configurations: { a: { quantity: 1, color: "preta", size: "M", personalizationNumber: "999" } } } }).error,
+    /d[íi]gitos/i
   );
-  assert.equal(validateSelection({ jersey: { variants: { branca: { M: 1 }, preta: { GG: 1 } } } }), null);
-  assert.match(validateSelection({ jersey: { variants: { azul: { M: 1 } } } }).error, /cor/i);
-  assert.match(validateSelection({ jersey: { variants: { branca: { XXXXXX: 1 } } } }).error, /tamanho/i);
-  assert.match(validateSelection({ jersey: { quantity: 1, size: "M" } }).error, /cor/i);
 
   const app = await readFile(path.join(here, "..", "frontend", "src", "App.jsx"), "utf8");
-  for (const id of ["conjunto-chumbo", "conjunto-verde", "jersey"]) {
+  for (const id of ["conjunto-chumbo", "conjunto-verde", "jersey", "camiseta-aasiam"]) {
     assert.match(app, new RegExp(`'${id}': 'camiseta'`), `${id} não está na seção Camisetas`);
   }
+  assert.match(app, /PersonalizationFields/, "o componente compartilhado não é usado no App.jsx");
 });
 
 await test("o cálculo do pedido é o mesmo no frontend e no backend", async () => {
@@ -377,8 +446,9 @@ await test("Camisetas Verde e Chumbo: tamanho obrigatório, nome/número opciona
   const IDS = ["camiseta-aasiam", "camiseta-goleiro-aasiam"];
   for (const id of IDS) {
     const p = PRODUCTS.find((x) => x.id === id);
-    assert.equal(p.kind, "personalizedSizedProduct", `${id} não é personalizedSizedProduct`);
-    assert.deepEqual(p.sizes, ["PP", "P", "M", "G", "GG", "XG"], `${id} tem tamanhos errados`);
+    assert.equal(p.kind, "personalizedProduct", `${id} não é personalizedProduct`);
+    assert.deepEqual(p.attributes.map((a) => a.key), ["size"], `${id} tem atributos errados`);
+    assert.deepEqual(p.attributes[0].options, ["PP", "P", "M", "G", "GG", "XG"], `${id} tem tamanhos errados`);
     assert.equal(p.priceCents, 9000, `${id} teve o preço alterado`);
   }
 
@@ -440,8 +510,7 @@ await test("Camisetas Verde e Chumbo: tamanho obrigatório, nome/número opciona
   }
 
   // Chave do carrinho: diferencia nome, número e "com × sem personalização".
-  const k = (name, number) =>
-    personalizationKey({ size: "M", personalizationName: name, personalizationNumber: number });
+  const k = (name, number) => personalizationKey(["M"], name, number);
   assert.notEqual(k("ARTHUR", "23"), k("PEDRO", "23"));
   assert.notEqual(k("ARTHUR", "23"), k("ARTHUR", "10"));
   assert.notEqual(k("ARTHUR", "23"), k("", ""));

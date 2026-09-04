@@ -39,31 +39,38 @@ function cartToSelection(cart) {
 		} else if (product.kind === 'sizedProduct') {
 			sel[productId].size = _sel.size;
 			sel[productId].quantity = (sel[productId].quantity || 0) + qty;
-		} else if (product.kind === 'personalizedSizedProduct') {
+		} else if (product.kind === 'personalizedProduct') {
 			const configuration = {
 				quantity: qty,
-				size: _sel.size,
-				personalizationName: _sel.name,
-				personalizationNumber: _sel.number,
+				personalizationName: _sel.personalizationName,
+				personalizationNumber: _sel.personalizationNumber,
 			};
-			const key = personalizationKey({
-				size: _sel.size,
-				personalizationName: _sel.name,
-				personalizationNumber: _sel.number,
+			const keyParts = (product.attributes || []).map(attr => {
+				configuration[attr.key] = _sel[attr.key];
+				return _sel[attr.key];
 			});
+			const key = personalizationKey(
+				keyParts,
+				_sel.personalizationName,
+				_sel.personalizationNumber,
+			);
 			const current = sel[productId].configurations[key];
 			sel[productId].configurations[key] = {
 				...configuration,
 				quantity: (current?.quantity || 0) + qty,
 			};
-		} else if (product.kind === 'twoPieceSet') {
-			sel[productId].combinations[_sel.shirtSize][_sel.shortsSize] += qty;
 		} else if (product.kind === 'multiPieceBundle') {
 			const key = multiPieceBundleConfigurationKey(product, _sel);
 			const configuration = sel[productId].configurations[key] || { quantity: 0 };
 			for (const piece of product.pieces) {
 				configuration[`${piece.key}Color`] = _sel[`${piece.key}Color`];
 				configuration[`${piece.key}Size`] = _sel[`${piece.key}Size`];
+				if (piece.personalization) {
+					configuration[`${piece.key}PersonalizationName`] =
+						_sel[`${piece.key}PersonalizationName`];
+					configuration[`${piece.key}PersonalizationNumber`] =
+						_sel[`${piece.key}PersonalizationNumber`];
+				}
 			}
 			configuration.quantity += qty;
 			sel[productId].configurations[key] = configuration;
