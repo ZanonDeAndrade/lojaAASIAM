@@ -27,7 +27,13 @@ import {
 import gsap from 'gsap';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { PRODUCTS } from './shared/products.js';
-import { multiPieceBundleConfigurationKey } from './shared/order.js';
+import {
+	multiPieceBundleConfigurationKey,
+	personalizationKey,
+	normalizePersonalizationName,
+	normalizePersonalizationNumber,
+	PERSONALIZATION_NAME_MAX,
+} from './shared/order.js';
 import ChurrascoPage from './churrasco/ChurrascoPage.jsx';
 import ValidacaoPage from './churrasco/ValidacaoPage.jsx';
 import CheckoutMercadoPago from './loja/CheckoutMercadoPago.jsx';
@@ -137,6 +143,22 @@ function buildCartItem(product, sel) {
 			...base,
 			key: `${product.id}-${sel.size}`,
 			meta: `Tamanho: ${sel.size}`,
+		};
+	}
+	if (product.kind === 'personalizedSizedProduct') {
+		const nome = normalizePersonalizationName(sel.name);
+		const numero = normalizePersonalizationNumber(sel.number);
+		const partes = [`Tamanho: ${sel.size}`];
+		if (nome) partes.push(`Nome: ${nome}`);
+		if (numero) partes.push(`Número: ${numero}`);
+		return {
+			...base,
+			key: `${product.id}-${personalizationKey({
+				size: sel.size,
+				personalizationName: sel.name,
+				personalizationNumber: sel.number,
+			})}`,
+			meta: partes.join(' · '),
 		};
 	}
 	if (product.kind === 'twoPieceSet') {
@@ -1053,6 +1075,8 @@ function buildInitialSel(product) {
 	if (product.kind === 'sizedVariants')
 		return { variant: product.variants[0].code, size: 'M' };
 	if (product.kind === 'sizedProduct') return { size: product.defaultSize };
+	if (product.kind === 'personalizedSizedProduct')
+		return { size: null, name: '', number: '' };
 	if (product.kind === 'twoPieceSet') {
 		return {
 			shirtSize: product.defaultShirtSize,
@@ -1081,6 +1105,9 @@ function buildInitialSel(product) {
 }
 
 function isProductSelectionComplete(product, sel) {
+	if (product.kind === 'personalizedSizedProduct') {
+		return product.sizes.includes(sel.size);
+	}
 	if (product.kind !== 'multiPieceBundle') return true;
 	return product.pieces.every(
 		piece =>
@@ -1136,6 +1163,57 @@ function ProductSelectors({ product, sel, onChange }) {
 					onChange={v => onChange('size', v)}
 				/>
 			</div>
+		);
+	}
+
+	if (product.kind === 'personalizedSizedProduct') {
+		return (
+			<>
+				<div className="field-group">
+					<span className="group-label">
+						Tamanho <span className="req-mark" aria-hidden="true">*</span>
+					</span>
+					<SizePills
+						sizes={product.sizes}
+						value={sel.size}
+						onChange={v => onChange('size', v)}
+					/>
+				</div>
+				<div className="field-group">
+					<label className="group-label" htmlFor="camiseta-nome">
+						Nome na camiseta <span className="opt-mark">Opcional</span>
+					</label>
+					<input
+						id="camiseta-nome"
+						className="input input-uppercase"
+						type="text"
+						placeholder="Ex.: Arthur"
+						value={sel.name}
+						maxLength={PERSONALIZATION_NAME_MAX}
+						autoComplete="off"
+						onChange={e => onChange('name', e.target.value)}
+					/>
+				</div>
+				<div className="field-group">
+					<label className="group-label" htmlFor="camiseta-numero">
+						Número na camiseta <span className="opt-mark">Opcional</span>
+					</label>
+					<input
+						id="camiseta-numero"
+						className="input"
+						type="text"
+						inputMode="numeric"
+						pattern="\d*"
+						placeholder="Ex.: 23"
+						value={sel.number}
+						maxLength={2}
+						autoComplete="off"
+						onChange={e =>
+							onChange('number', normalizePersonalizationNumber(e.target.value))
+						}
+					/>
+				</div>
+			</>
 		);
 	}
 

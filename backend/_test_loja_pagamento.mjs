@@ -503,6 +503,101 @@ await test("Jersey avulsa mantém cor e tamanho distintos no pedido e na planilh
   assert.match(sheet.rows[0][5], /Jersey AASIAM \(Preta - Tam\. M\)/);
 });
 
+await test("Camiseta personalizada: tamanho, nome e número chegam à planilha (e vazios ficam vazios)", async () => {
+  resetSheet();
+
+  // Duas camisetas com personalizações diferentes + uma sem nada = 3 linhas de pedido.
+  const selection = {
+    "camiseta-aasiam": {
+      configurations: {
+        a: { quantity: 1, size: "M", personalizationName: "ARTHUR", personalizationNumber: "23" },
+        b: { quantity: 1, size: "M", personalizationName: "PEDRO", personalizationNumber: "10" },
+      },
+    },
+    "camiseta-goleiro-aasiam": {
+      configurations: { c: { quantity: 2, size: "GG" } },
+    },
+  };
+
+  const quote = await (
+    await post("/api/loja/checkout/quote", { selection, paymentMethod: "pix" })
+  ).json();
+  assert.equal(quote.subtotalCents, 4 * 9000, "personalização mexeu no preço");
+
+  const criado = await (
+    await post("/api/loja/checkout", {
+      attemptId: novoAttempt(),
+      customer: clienteValido,
+      selection,
+      paymentMethod: "pix",
+    })
+  ).json();
+  assert.equal(criado.subtotalCents, 36000);
+  assert.equal(sheet.rows.length, 1);
+
+  const linha = sheet.rows[0];
+  // Coluna F "Itens" carrega a descrição legível.
+  assert.match(linha[5], /Camiseta AASIAM 2026 \(Tam\. M · Nome: ARTHUR · Número: 23\)/);
+  assert.match(linha[5], /Camiseta AASIAM 2026 \(Tam\. M · Nome: PEDRO · Número: 10\)/);
+  assert.match(linha[5], /2x Camiseta Goleiro AASIAM 2026 \(Tam\. GG\)/);
+  // Coluna T "Tamanho da camiseta".
+  assert.match(linha[19], /Camiseta AASIAM 2026: M/);
+  assert.match(linha[19], /2x Camiseta Goleiro AASIAM 2026: GG/);
+  // Coluna V "Nome na camiseta" e W "Número na camiseta".
+  assert.match(linha[21], /Camiseta AASIAM 2026: ARTHUR/);
+  assert.match(linha[21], /Camiseta AASIAM 2026: PEDRO/);
+  assert.match(linha[22], /Camiseta AASIAM 2026: 23/);
+  assert.match(linha[22], /Camiseta AASIAM 2026: 10/);
+  // A goleiro sem personalização não polui as colunas V/W.
+  assert.ok(!linha[21].includes("Goleiro"), "goleiro sem nome apareceu na coluna Nome");
+  assert.ok(!linha[22].includes("Goleiro"), "goleiro sem número apareceu na coluna Número");
+  assert.ok(!/undefined|null|\[object/.test(linha[21] + linha[22]));
+});
+
+await test("Camiseta sem personalização deixa as colunas Nome/Número vazias", async () => {
+  resetSheet();
+  await post("/api/loja/checkout", {
+    attemptId: novoAttempt(),
+    customer: clienteValido,
+    selection: { "camiseta-aasiam": { configurations: { a: { quantity: 1, size: "P" } } } },
+    paymentMethod: "pix",
+  });
+  const linha = sheet.rows[0];
+  assert.match(linha[19], /Camiseta AASIAM 2026: P/);
+  assert.equal(linha[21], "", "coluna Nome deveria estar vazia");
+  assert.equal(linha[22], "", "coluna Número deveria estar vazia");
+});
+
+await test("Camiseta sem tamanho é recusada no checkout", async () => {
+  resetSheet();
+  const res = await post("/api/loja/checkout", {
+    attemptId: novoAttempt(),
+    customer: clienteValido,
+    selection: { "camiseta-aasiam": { configurations: { a: { quantity: 1, personalizationName: "ARTHUR" } } } },
+    paymentMethod: "pix",
+  });
+  assert.equal(res.status, 400);
+  assert.match((await res.json()).error, /tamanho|produto/i);
+  assert.equal(sheet.rows.length, 0, "criou linha para camiseta sem tamanho");
+});
+
+await test("Camiseta: frontend não força preço nem personalização inválida", async () => {
+  resetSheet();
+  // Nome gigante e número fora do formato — o backend recusa.
+  const res = await post("/api/loja/checkout", {
+    attemptId: novoAttempt(),
+    customer: clienteValido,
+    selection: {
+      "camiseta-aasiam": {
+        configurations: { a: { quantity: 1, size: "M", personalizationName: "N".repeat(40), personalizationNumber: "999" } },
+      },
+    },
+    paymentMethod: "pix",
+    subtotalCents: 1,
+  });
+  assert.equal(res.status, 400);
+});
+
 /* ── Checkout com cartão ── */
 
 await test("cartão aprovado: cria a linha, cobra o total certo e grava Pago", async () => {

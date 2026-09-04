@@ -368,6 +368,103 @@ await test("o cálculo do pedido é o mesmo no frontend e no backend", async () 
   );
 });
 
+await test("Camisetas Verde e Chumbo: tamanho obrigatório, nome/número opcionais e estruturados", async () => {
+  const { PRODUCTS } = await import("./shared/products.js");
+  const { calculateOrder, sanitizeSelection, validateSelection, personalizationKey } = await import(
+    "./shared/order.js"
+  );
+
+  const IDS = ["camiseta-aasiam", "camiseta-goleiro-aasiam"];
+  for (const id of IDS) {
+    const p = PRODUCTS.find((x) => x.id === id);
+    assert.equal(p.kind, "personalizedSizedProduct", `${id} não é personalizedSizedProduct`);
+    assert.deepEqual(p.sizes, ["PP", "P", "M", "G", "GG", "XG"], `${id} tem tamanhos errados`);
+    assert.equal(p.priceCents, 9000, `${id} teve o preço alterado`);
+  }
+
+  const sel = (cfg) => ({ "camiseta-aasiam": cfg });
+  const linhaUnica = (cfg) => {
+    const order = calculateOrder(sanitizeSelection(sel(cfg)));
+    return order.lines;
+  };
+
+  // Tamanho obrigatório — sem tamanho não entra no pedido e a validação recusa.
+  assert.equal(linhaUnica({ configurations: { a: { quantity: 1 } } }).length, 0, "camiseta sem tamanho entrou no pedido");
+  assert.match(
+    validateSelection(sel({ configurations: { a: { quantity: 1, size: "XXL" } } })).error,
+    /tamanho/i
+  );
+  for (const size of ["PP", "P", "M", "G", "GG", "XG"]) {
+    assert.equal(validateSelection(sel({ configurations: { a: { quantity: 1, size } } })), null, `${size} deveria valer`);
+  }
+
+  // Compra sem personalização é válida e a linha guarda os campos vazios.
+  const semPerso = linhaUnica({ configurations: { a: { quantity: 1, size: "M" } } });
+  assert.equal(semPerso.length, 1);
+  assert.equal(semPerso[0].size, "M");
+  assert.equal(semPerso[0].personalizationName, "");
+  assert.equal(semPerso[0].personalizationNumber, "");
+  assert.equal(semPerso[0].unitPriceCents, 9000);
+
+  // Nome sem número · número sem nome · nome + número — todos válidos e estruturados.
+  const soNome = linhaUnica({ configurations: { a: { quantity: 1, size: "G", personalizationName: "  Ana Clara  " } } })[0];
+  assert.equal(soNome.personalizationName, "Ana Clara", "trim/colapso de espaço do nome falhou");
+  assert.equal(soNome.personalizationNumber, "");
+
+  const soNumero = linhaUnica({ configurations: { a: { quantity: 1, size: "GG", personalizationNumber: "23" } } })[0];
+  assert.equal(soNumero.personalizationName, "");
+  assert.equal(soNumero.personalizationNumber, "23");
+
+  const nomeENumero = linhaUnica({
+    configurations: { a: { quantity: 1, size: "P", personalizationName: "D'Avila-Neto", personalizationNumber: "7" } },
+  })[0];
+  assert.equal(nomeENumero.personalizationName, "D'Avila-Neto");
+  assert.equal(nomeENumero.personalizationNumber, "7");
+  assert.match(nomeENumero.variant, /Tam\. P · Nome: D'Avila-Neto · Número: 7/);
+
+  // Rejeições.
+  assert.match(
+    validateSelection(sel({ configurations: { a: { quantity: 1, size: "M", personalizationName: "x".repeat(21) } } })).error,
+    /20 caracteres/i
+  );
+  assert.match(
+    validateSelection(sel({ configurations: { a: { quantity: 1, size: "M", personalizationName: "<script>" } } })).error,
+    /letras/i
+  );
+  for (const numeroRuim of ["-10", "1.5", "23abc", "100"]) {
+    assert.match(
+      validateSelection(sel({ configurations: { a: { quantity: 1, size: "M", personalizationNumber: numeroRuim } } })).error || "",
+      /\d+ d[íi]gitos|dígitos/i,
+      `número "${numeroRuim}" deveria ser recusado`
+    );
+  }
+
+  // Chave do carrinho: diferencia nome, número e "com × sem personalização".
+  const k = (name, number) =>
+    personalizationKey({ size: "M", personalizationName: name, personalizationNumber: number });
+  assert.notEqual(k("ARTHUR", "23"), k("PEDRO", "23"));
+  assert.notEqual(k("ARTHUR", "23"), k("ARTHUR", "10"));
+  assert.notEqual(k("ARTHUR", "23"), k("", ""));
+  assert.equal(k(" Arthur ", "23"), k("arthur", "23"), "trim/caixa não normalizou a chave");
+
+  // sanitizeSelection funde a MESMA personalização e mantém as diferentes.
+  const fundido = calculateOrder(
+    sanitizeSelection(
+      sel({
+        configurations: {
+          a: { quantity: 1, size: "M", personalizationName: "ARTHUR", personalizationNumber: "23" },
+          b: { quantity: 2, size: "M", personalizationName: " arthur ", personalizationNumber: "23" },
+          c: { quantity: 1, size: "M", personalizationName: "PEDRO", personalizationNumber: "10" },
+        },
+      })
+    )
+  );
+  assert.equal(fundido.lines.length, 2, "personalizações iguais não foram fundidas ou as diferentes sumiram");
+  const arthur = fundido.lines.find((l) => l.personalizationName.toLowerCase() === "arthur");
+  assert.equal(arthur.quantity, 3, "quantidades da mesma personalização não somaram");
+  assert.equal(fundido.totalCents, 4 * 9000, "preço da camiseta mudou com a personalização");
+});
+
 await test("o webhook da InfinitePay da loja continua no ar e no endereço antigo", async () => {
   const res = await post("/api/webhooks/infinitepay", {});
   assert.equal(res.status, 200, "a loja precisa continuar respondendo 200 rápido");

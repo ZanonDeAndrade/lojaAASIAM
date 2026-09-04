@@ -1,5 +1,48 @@
 import { PRODUCT_BY_ID, PRODUCTS } from "./products.js";
 
+/* ─── Personalização da camiseta (nome + número) ──────────────────────────
+   Opcional. O valor salvo preserva a capitalização do cliente; só o cálculo
+   da CHAVE do carrinho normaliza (trim + minúsculas) para não duplicar
+   "Arthur" e " arthur " como itens diferentes. Nada de HTML: o charset abaixo
+   nem começa com "<". */
+export const PERSONALIZATION_NAME_MAX = 20;
+const PERSONALIZATION_NAME_RE = /^[\p{L}][\p{L} '.\-]*$/u;
+
+/** Nome como fica salvo: sem pontas, sem espaço duplo, capitalização intacta. */
+export function normalizePersonalizationName(value) {
+  return String(value ?? "").replace(/\s+/g, " ").trim().slice(0, PERSONALIZATION_NAME_MAX);
+}
+
+/** Número da camisa: só dígitos, no máximo dois. "" quando vazio. */
+export function normalizePersonalizationNumber(value) {
+  return String(value ?? "").replace(/\D/g, "").slice(0, 2);
+}
+
+/** Mensagem de erro do nome/número, ou `null` se estiverem ok (ou vazios). */
+function personalizationError(rawName, rawNumber) {
+  const nome = String(rawName ?? "").trim();
+  if (nome.length > PERSONALIZATION_NAME_MAX) {
+    return "O nome na camiseta passa de 20 caracteres.";
+  }
+  if (nome && !PERSONALIZATION_NAME_RE.test(nome)) {
+    return "Use só letras, espaços, hífen e apóstrofo no nome da camiseta.";
+  }
+  const numero = String(rawNumber ?? "").trim();
+  if (numero && !/^\d{1,2}$/.test(numero)) {
+    return "O número da camiseta deve ter 1 ou 2 dígitos.";
+  }
+  return null;
+}
+
+/** Identidade de uma camiseta personalizada no carrinho: tamanho + nome + número. */
+export function personalizationKey({ size, personalizationName, personalizationNumber } = {}) {
+  return [
+    size || "",
+    normalizePersonalizationName(personalizationName).toLowerCase(),
+    normalizePersonalizationNumber(personalizationNumber),
+  ].join("--");
+}
+
 export function createEmptySelection() {
   return Object.fromEntries(
     PRODUCTS.map((product) => [product.id, createEmptyProductSelection(product)])
@@ -32,6 +75,32 @@ export function calculateOrder(selection) {
       continue;
     }
 
+    if (product.kind === "personalizedSizedProduct") {
+      for (const configuration of configurationsOf(selected)) {
+        const quantity = normalizeQuantity(configuration.quantity);
+        const size = product.sizes.includes(configuration.size) ? configuration.size : null;
+        if (quantity === 0 || !size) continue;
+
+        const personalizationName = normalizePersonalizationName(configuration.personalizationName);
+        const personalizationNumber = normalizePersonalizationNumber(configuration.personalizationNumber);
+
+        const partes = [`Tam. ${size}`];
+        if (personalizationName) partes.push(`Nome: ${personalizationName}`);
+        if (personalizationNumber) partes.push(`Número: ${personalizationNumber}`);
+
+        lines.push(
+          buildLine(
+            product,
+            quantity,
+            partes.join(" · "),
+            personalizationKey({ size, personalizationName, personalizationNumber }),
+            { size, personalizationName, personalizationNumber }
+          )
+        );
+      }
+      continue;
+    }
+
     if (product.kind === "twoPieceSet") {
       for (const shirtSize of product.shirtSizes) {
         for (const shortsSize of product.shortsSizes) {
@@ -53,7 +122,7 @@ export function calculateOrder(selection) {
     }
 
     if (product.kind === "multiPieceBundle") {
-      for (const configuration of getMultiPieceBundleConfigurations(selected)) {
+      for (const configuration of configurationsOf(selected)) {
         const quantity = normalizeQuantity(configuration.quantity);
         const pieces = product.pieces.map((piece) => ({
           ...piece,
@@ -194,6 +263,27 @@ export function sanitizeSelection(selection) {
       continue;
     }
 
+    if (product.kind === "personalizedSizedProduct") {
+      for (const configuration of configurationsOf(selected)) {
+        const quantity = normalizeQuantity(configuration.quantity);
+        if (quantity === 0) continue;
+
+        const cleanConfiguration = {
+          quantity,
+          size: product.sizes.includes(configuration.size) ? configuration.size : null,
+          personalizationName: normalizePersonalizationName(configuration.personalizationName),
+          personalizationNumber: normalizePersonalizationNumber(configuration.personalizationNumber),
+        };
+        const key = personalizationKey(cleanConfiguration);
+        const current = clean[product.id].configurations[key];
+        clean[product.id].configurations[key] = {
+          ...cleanConfiguration,
+          quantity: (current?.quantity || 0) + quantity,
+        };
+      }
+      continue;
+    }
+
     if (product.kind === "twoPieceSet") {
       for (const shirtSize of product.shirtSizes) {
         for (const shortsSize of product.shortsSizes) {
@@ -206,7 +296,7 @@ export function sanitizeSelection(selection) {
     }
 
     if (product.kind === "multiPieceBundle") {
-      for (const configuration of getMultiPieceBundleConfigurations(selected)) {
+      for (const configuration of configurationsOf(selected)) {
         const quantity = normalizeQuantity(configuration.quantity);
         if (quantity === 0) continue;
 
@@ -305,6 +395,20 @@ export function validateSelection(selection) {
       return { error: "Selecione um tamanho válido.", field: "selection" };
     }
 
+    if (product.kind === "personalizedSizedProduct") {
+      for (const configuration of configurationsOf(selected)) {
+        if (normalizeQuantity(configuration.quantity) === 0) continue;
+        if (!product.sizes.includes(configuration.size)) {
+          return { error: "Selecione um tamanho válido.", field: "selection" };
+        }
+        const erro = personalizationError(
+          configuration.personalizationName,
+          configuration.personalizationNumber
+        );
+        if (erro) return { error: erro, field: "selection" };
+      }
+    }
+
     if (product.kind === "sizedVariants") {
       if (normalizeQuantity(selected.quantity) > 0) {
         return { error: "Selecione uma cor válida.", field: "selection" };
@@ -337,7 +441,7 @@ export function validateSelection(selection) {
     }
 
     if (product.kind === "multiPieceBundle") {
-      for (const configuration of getMultiPieceBundleConfigurations(selected)) {
+      for (const configuration of configurationsOf(selected)) {
         if (normalizeQuantity(configuration.quantity) === 0) continue;
         for (const piece of product.pieces) {
           if (!findByCode(piece.colors, configuration[`${piece.key}Color`])) {
@@ -372,6 +476,10 @@ export function multiPieceBundleConfigurationKey(product, selection = {}) {
 function createEmptyProductSelection(product) {
   if (product.kind === "sizedProduct") {
     return { quantity: 0, size: null };
+  }
+
+  if (product.kind === "personalizedSizedProduct") {
+    return { configurations: {} };
   }
 
   if (product.kind === "twoPieceSet") {
@@ -436,7 +544,12 @@ function getConfiguredBundleOptions(product, selected) {
   };
 }
 
-function getMultiPieceBundleConfigurations(selected) {
+/**
+ * As configurações independentes de um produto (bundle de várias peças ou
+ * camiseta personalizada). Aceita o mapa `configurations` novo e cai numa
+ * única configuração quando o objeto vem "plano" (uma seleção só).
+ */
+function configurationsOf(selected) {
   const configurations = selected?.configurations;
   if (configurations && typeof configurations === "object" && !Array.isArray(configurations)) {
     const values = Object.values(configurations);

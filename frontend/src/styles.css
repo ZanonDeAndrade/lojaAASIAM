@@ -725,6 +725,18 @@ a { color: inherit; }
 
 .field-group { display: flex; flex-direction: column; gap: 10px; }
 .group-label { color: var(--text-dim); font-size: 0.82rem; font-weight: 500; margin: 0; }
+.req-mark { color: var(--green-bright); font-weight: 700; }
+.opt-mark {
+  color: var(--muted);
+  font-weight: 400;
+  font-size: 0.74rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+/* O nome impresso na camiseta aparece em caixa alta — só a exibição; o valor
+   salvo preserva o que o cliente digitou. */
+.input-uppercase { text-transform: uppercase; }
+.input-uppercase::placeholder { text-transform: none; }
 
 .bundle-includes {
   display: grid;

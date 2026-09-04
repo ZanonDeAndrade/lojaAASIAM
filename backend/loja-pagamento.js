@@ -244,6 +244,14 @@ function reconstruirPedido(body) {
     .filter((line) => line.shortsSize)
     .map((line) => `${line.quantity}x ${line.productName}: ${line.shortsSize}`)
     .join(" · ");
+  const personalizacaoNomes = order.lines
+    .filter((line) => line.personalizationName)
+    .map((line) => `${line.quantity}x ${line.productName}: ${line.personalizationName}`)
+    .join(" · ");
+  const personalizacaoNumeros = order.lines
+    .filter((line) => line.personalizationNumber)
+    .map((line) => `${line.quantity}x ${line.productName}: ${line.personalizationNumber}`)
+    .join(" · ");
 
   return {
     order,
@@ -251,6 +259,8 @@ function reconstruirPedido(body) {
     resumoItens,
     shirtSizes,
     shortsSizes,
+    personalizacaoNomes,
+    personalizacaoNumeros,
   };
 }
 
@@ -599,6 +609,8 @@ export function registerLojaRoutes(app) {
           itens: reconstruido.resumoItens,
           shirtSizes: reconstruido.shirtSizes,
           shortsSizes: reconstruido.shortsSizes,
+          personalizacaoNomes: reconstruido.personalizacaoNomes,
+          personalizacaoNumeros: reconstruido.personalizacaoNumeros,
           subtotalCents,
           paymentMethod: cobranca.paymentMethod,
           installments: cobranca.installments,
