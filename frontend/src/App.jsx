@@ -113,10 +113,15 @@ function buildCartItem(product, sel) {
 		_sel: sel,
 	};
 	if (product.kind === 'sizedVariants') {
+		const variant =
+			product.variants.find(v => v.code === sel.variant) || product.variants[0];
 		return {
 			...base,
-			key: `${product.id}-${sel.size}`,
-			meta: `Tamanho: ${sel.size}`,
+			key: `${product.id}-${variant.code}-${sel.size}`,
+			meta:
+				product.variants.length > 1
+					? `Cor: ${variant.name} · Tamanho: ${sel.size}`
+					: `Tamanho: ${sel.size}`,
 		};
 	}
 	if (product.kind === 'sizedProduct') {
@@ -1035,7 +1040,8 @@ function DetailView({ product, onBack, onAdd, onBuyNow, className }) {
 }
 
 function buildInitialSel(product) {
-	if (product.kind === 'sizedVariants') return { size: 'M' };
+	if (product.kind === 'sizedVariants')
+		return { variant: product.variants[0].code, size: 'M' };
 	if (product.kind === 'sizedProduct') return { size: product.defaultSize };
 	if (product.kind === 'twoPieceSet') {
 		return {
@@ -1076,14 +1082,37 @@ function isProductSelectionComplete(product, sel) {
 function ProductSelectors({ product, sel, onChange }) {
 	if (product.kind === 'sizedVariants') {
 		return (
-			<div className="field-group">
-				<span className="group-label">Tamanho</span>
-				<SizePills
-					sizes={product.sizes}
-					value={sel.size}
-					onChange={v => onChange('size', v)}
-				/>
-			</div>
+			<>
+				{product.variants.length > 1 && (
+					<div className="field-group">
+						<span className="group-label">Cor</span>
+						<div className="pill-row">
+							{product.variants.map(variant => (
+								<button
+									key={variant.code}
+									type="button"
+									className={`variant-pill${sel.variant === variant.code ? ' active' : ''}`}
+									onClick={() => onChange('variant', variant.code)}
+								>
+									<span
+										className="color-swatch"
+										style={{ background: variant.swatch, borderColor: variant.border }}
+									/>
+									{variant.name}
+								</button>
+							))}
+						</div>
+					</div>
+				)}
+				<div className="field-group">
+					<span className="group-label">Tamanho</span>
+					<SizePills
+						sizes={product.sizes}
+						value={sel.size}
+						onChange={v => onChange('size', v)}
+					/>
+				</div>
+			</>
 		);
 	}
 
@@ -1309,7 +1338,7 @@ const MEDIDAS_MOLETOM = [
 // Produtos que incluem moletom exibem o guia de medidas.
 function productHasHoodie(product) {
 	return (
-		product.kind === 'sizedVariants' ||
+		product.hasHoodie === true ||
 		product.kind === 'doubleHoodie' ||
 		(product.kind === 'multiPieceBundle' && product.pieces.some(piece => piece.key === 'hoodie')) ||
 		(product.kind === 'configuredBundle' && product.hasHoodie)

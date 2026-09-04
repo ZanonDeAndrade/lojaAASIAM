@@ -225,7 +225,7 @@ const selecaoMoletom = { "moletom-verde": { variants: { verde: { M: 2 } } } };
 const selecaoNovosUniformes = {
   "conjunto-chumbo": { combinations: { M: { G: 1, M: 1 } } },
   "conjunto-verde": { combinations: { G: { M: 1 } } },
-  jersey: { quantity: 1, size: "G" },
+  jersey: { variants: { branca: { G: 1 } } },
 };
 const selecaoComboWolf = {
   "combo-wolf": {
@@ -233,8 +233,8 @@ const selecaoComboWolf = {
       "verde-m": {
         quantity: 1,
         hoodieColor: "verde", hoodieSize: "M",
-        shirtColor: "preta", shirtSize: "G",
-        jerseyColor: "bicolor", jerseySize: "GG",
+        shirtColor: "chumbo", shirtSize: "G",
+        jerseyColor: "preta", jerseySize: "GG",
       },
     },
   },
@@ -389,8 +389,8 @@ await test("Combo Wolf mantém configurações, preço base e snapshot completo 
 
   for (const [field, value] of [
     ["hoodieColor", "hack"], ["hoodieSize", "XXXX"],
-    ["shirtColor", "hack"], ["shirtSize", "XXXX"],
-    ["jerseyColor", "hack"], ["jerseySize", "XXXX"],
+    ["shirtColor", "hack"], ["shirtColor", "off-white"], ["shirtColor", "preta"], ["shirtSize", "XXXX"],
+    ["jerseyColor", "hack"], ["jerseyColor", "bicolor"], ["jerseySize", "XXXX"],
   ]) {
     const selection = structuredClone(selecaoComboWolf);
     selection["combo-wolf"].configurations["verde-m"][field] = value;
@@ -410,8 +410,8 @@ await test("Combo Wolf mantém configurações, preço base e snapshot completo 
   assert.equal(sheet.rows.length, 1);
   const itens = sheet.rows[0][5];
   for (const detalhe of [
-    "Combo Wolf", "Moletom: Verde / M", "Camiseta: Preta / G",
-    "Jersey: Bicolor (Off-white/Preto) / GG", "Caneca com tirante: 1 unidade", "415,00",
+    "Combo Wolf", "Moletom: Verde / M", "Camiseta: Chumbo / G",
+    "Jersey: Preta / GG", "Caneca com tirante: 1 unidade", "415,00",
   ]) {
     assert.match(itens, new RegExp(detalhe.replace(/[()]/g, "\\$&")));
   }
@@ -441,10 +441,16 @@ await test("uniformes novos validam tamanhos e congelam o snapshot completo na p
   assert.equal(semCalcao.status, 400);
 
   const jerseyInvalida = await post("/api/loja/checkout/quote", {
-    selection: { jersey: { quantity: 1, size: "XXXXXX" } },
+    selection: { jersey: { variants: { azul: { M: 1 } } } },
     paymentMethod: "pix",
   });
   assert.equal(jerseyInvalida.status, 400);
+
+  const tamanhoJerseyInvalido = await post("/api/loja/checkout/quote", {
+    selection: { jersey: { variants: { branca: { XXXXXX: 1 } } } },
+    paymentMethod: "pix",
+  });
+  assert.equal(tamanhoJerseyInvalido.status, 400);
 
   const attemptId = novoAttempt();
   const criado = await (
@@ -467,6 +473,34 @@ await test("uniformes novos validam tamanhos e congelam o snapshot completo na p
   assert.match(sheet.rows[0][19], /Jersey[^:]*: G/);
   assert.match(sheet.rows[0][20], /Conjunto Chumbo[^:]*: G/);
   assert.match(sheet.rows[0][20], /Conjunto Verde[^:]*: M/);
+});
+
+await test("Jersey avulsa mantém cor e tamanho distintos no pedido e na planilha", async () => {
+  resetSheet();
+  const branca = { jersey: { variants: { branca: { M: 1 } } } };
+  const preta = { jersey: { variants: { preta: { GG: 1 } } } };
+
+  const quoteBranca = await (
+    await post("/api/loja/checkout/quote", { selection: branca, paymentMethod: "pix" })
+  ).json();
+  const quotePreta = await (
+    await post("/api/loja/checkout/quote", { selection: preta, paymentMethod: "pix" })
+  ).json();
+  assert.equal(quoteBranca.subtotalCents, 15000);
+  assert.equal(quotePreta.subtotalCents, 15000);
+
+  const criado = await (
+    await post("/api/loja/checkout", {
+      attemptId: novoAttempt(),
+      customer: clienteValido,
+      selection: { jersey: { variants: { branca: { M: 1 }, preta: { M: 1 } } } },
+      paymentMethod: "pix",
+    })
+  ).json();
+  assert.equal(criado.subtotalCents, 30000);
+  assert.equal(sheet.rows.length, 1);
+  assert.match(sheet.rows[0][5], /Jersey AASIAM \(Branca - Tam\. M\)/);
+  assert.match(sheet.rows[0][5], /Jersey AASIAM \(Preta - Tam\. M\)/);
 });
 
 /* ── Checkout com cartão ── */

@@ -176,6 +176,21 @@ await test("somente mochilas e cachecol estão esgotados", async () => {
   assert.match((await res.json()).error, /produto/i);
 });
 
+await test("Combo Alcateia mantém R$ 185,00 como preço-base no catálogo e no pedido", async () => {
+  const { PRODUCTS } = await import("./shared/products.js");
+  const { PRODUCTS: frontendProducts } = await import("../frontend/src/shared/products.js");
+  const { calculateOrder, sanitizeSelection } = await import("./shared/order.js");
+  const id = "kit-moletom-caneca";
+
+  assert.equal(PRODUCTS.find((product) => product.id === id)?.priceCents, 18500);
+  assert.equal(frontendProducts.find((product) => product.id === id)?.priceCents, 18500);
+
+  const order = calculateOrder(sanitizeSelection({
+    [id]: { quantity: 1, hoodieVariant: "verde", hoodieSize: "M" },
+  }));
+  assert.equal(order.totalCents, 18500);
+});
+
 await test("Combo Wolf usa peças configuráveis, preço base e snapshot estrutural", async () => {
   const { readFile } = await import("node:fs/promises");
   const { PRODUCTS } = await import("./shared/products.js");
@@ -194,6 +209,9 @@ await test("Combo Wolf usa peças configuráveis, preço base e snapshot estrutu
     ["Combo Wolf", "multiPieceBundle", 41500, undefined, undefined],
   );
   assert.deepEqual(wolf.includes, ["Moletom", "Camiseta", "Caneca com tirante", "Jersey"]);
+  assert.deepEqual(wolf.pieces.find((piece) => piece.key === "hoodie").colors.map((color) => color.code), ["verde", "bege"]);
+  assert.deepEqual(wolf.pieces.find((piece) => piece.key === "shirt").colors.map((color) => color.code), ["verde", "chumbo"]);
+  assert.deepEqual(wolf.pieces.find((piece) => piece.key === "jersey").colors.map((color) => color.code), ["branca", "preta"]);
   assert.equal(PRODUCTS.some((product) => product.id === "kit-completo" || product.name === "Combo Alpha"), false);
   assert.ok(wolf.images.includes("/imgs/combo-wolf.png"));
   assert.deepEqual(frontendWolf, wolf, "catálogo frontend diverge do catálogo autoritativo do backend");
@@ -201,8 +219,8 @@ await test("Combo Wolf usa peças configuráveis, preço base e snapshot estrutu
   const wolfM = {
     quantity: 1,
     hoodieColor: "verde", hoodieSize: "M",
-    shirtColor: "preta", shirtSize: "G",
-    jerseyColor: "bicolor", jerseySize: "GG",
+    shirtColor: "chumbo", shirtSize: "G",
+    jerseyColor: "preta", jerseySize: "GG",
   };
   const wolfG = { ...wolfM, hoodieSize: "G" };
   assert.notEqual(
@@ -231,15 +249,15 @@ await test("Combo Wolf usa peças configuráveis, preço base e snapshot estrutu
       line.fixedItems,
     ]),
     [
-      ["verde", "M", "preta", "G", "bicolor", "GG", [{ name: "Caneca com tirante", quantity: 1 }]],
-      ["verde", "G", "preta", "G", "bicolor", "GG", [{ name: "Caneca com tirante", quantity: 1 }]],
+      ["verde", "M", "chumbo", "G", "preta", "GG", [{ name: "Caneca com tirante", quantity: 1 }]],
+      ["verde", "G", "chumbo", "G", "preta", "GG", [{ name: "Caneca com tirante", quantity: 1 }]],
     ],
   );
 
   for (const [field, value] of [
     ["hoodieColor", "hack"], ["hoodieSize", "XXXX"],
-    ["shirtColor", "hack"], ["shirtSize", "XXXX"],
-    ["jerseyColor", "hack"], ["jerseySize", "XXXX"],
+    ["shirtColor", "hack"], ["shirtColor", "off-white"], ["shirtColor", "preta"], ["shirtSize", "XXXX"],
+    ["jerseyColor", "hack"], ["jerseyColor", "bicolor"], ["jerseySize", "XXXX"],
   ]) {
     assert.match(validateSelection({ "combo-wolf": { ...wolfM, [field]: value } }).error, /válid[ao]/i);
   }
@@ -260,27 +278,28 @@ await test("os novos uniformes preservam tamanhos, preço e combinações", asyn
     [
       ["conjunto-chumbo", "Conjunto Chumbo AASIAM", "twoPieceSet", 14000],
       ["conjunto-verde", "Conjunto Verde AASIAM", "twoPieceSet", 14000],
-      ["jersey", "Jersey AASIAM", "sizedProduct", 15000],
+      ["jersey", "Jersey AASIAM", "sizedVariants", 15000],
     ],
   );
 
   const selection = sanitizeSelection({
     "conjunto-chumbo": { combinations: { M: { G: 1, M: 1 } } },
     "conjunto-verde": { combinations: { G: { M: 1 } } },
-    jersey: { quantity: 1, size: "G" },
+    jersey: { variants: { branca: { G: 1 }, preta: { G: 1 } } },
   });
   const order = calculateOrder(selection);
   assert.deepEqual(
-    order.lines.map((line) => [line.productId, line.shirtSize || line.size, line.shortsSize || "", line.unitPriceCents]),
+    order.lines.map((line) => [line.productId, line.color || "", line.shirtSize || line.size, line.shortsSize || "", line.unitPriceCents]),
     [
-      ["conjunto-chumbo", "M", "M", 14000],
-      ["conjunto-chumbo", "M", "G", 14000],
-      ["conjunto-verde", "G", "M", 14000],
-      ["jersey", "G", "", 15000],
+      ["conjunto-chumbo", "", "M", "M", 14000],
+      ["conjunto-chumbo", "", "M", "G", 14000],
+      ["conjunto-verde", "", "G", "M", 14000],
+      ["jersey", "branca", "G", "", 15000],
+      ["jersey", "preta", "G", "", 15000],
     ],
     "combinações distintas do conjunto foram mescladas ou perderam tamanhos",
   );
-  assert.equal(order.totalCents, 57000);
+  assert.equal(order.totalCents, 72000);
   assert.match(
     validateSelection({ "conjunto-chumbo": { combinations: { XXXXXX: { G: 1 } } } }).error,
     /camiseta/i,
@@ -289,7 +308,10 @@ await test("os novos uniformes preservam tamanhos, preço e combinações", asyn
     validateSelection({ "conjunto-chumbo": { combinations: { M: { XXXXXX: 1 } } } }).error,
     /calção/i,
   );
-  assert.match(validateSelection({ jersey: { quantity: 1, size: "XXXXXX" } }).error, /tamanho/i);
+  assert.equal(validateSelection({ jersey: { variants: { branca: { M: 1 }, preta: { GG: 1 } } } }), null);
+  assert.match(validateSelection({ jersey: { variants: { azul: { M: 1 } } } }).error, /cor/i);
+  assert.match(validateSelection({ jersey: { variants: { branca: { XXXXXX: 1 } } } }).error, /tamanho/i);
+  assert.match(validateSelection({ jersey: { quantity: 1, size: "M" } }).error, /cor/i);
 
   const app = await readFile(path.join(here, "..", "frontend", "src", "App.jsx"), "utf8");
   for (const id of ["conjunto-chumbo", "conjunto-verde", "jersey"]) {

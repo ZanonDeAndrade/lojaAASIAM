@@ -99,7 +99,8 @@ export function calculateOrder(selection) {
                 product,
                 quantity,
                 `${variant.name} - Tam. ${size}`,
-                `${variant.code}-${size}`
+                `${variant.code}-${size}`,
+                { color: variant.code, size }
               )
             );
           }
@@ -302,6 +303,23 @@ export function validateSelection(selection) {
       !product.sizes.includes(selected.size)
     ) {
       return { error: "Selecione um tamanho válido.", field: "selection" };
+    }
+
+    if (product.kind === "sizedVariants") {
+      if (normalizeQuantity(selected.quantity) > 0) {
+        return { error: "Selecione uma cor válida.", field: "selection" };
+      }
+      for (const [variantCode, sizes] of Object.entries(selected.variants || {})) {
+        for (const [size, quantity] of Object.entries(sizes || {})) {
+          if (normalizeQuantity(quantity) === 0) continue;
+          if (!findByCode(product.variants, variantCode)) {
+            return { error: "Selecione uma cor válida.", field: "selection" };
+          }
+          if (!product.sizes.includes(size)) {
+            return { error: "Selecione um tamanho válido.", field: "selection" };
+          }
+        }
+      }
     }
 
     if (product.kind === "twoPieceSet") {

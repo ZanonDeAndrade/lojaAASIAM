@@ -28,9 +28,10 @@ function cartToSelection(cart) {
 		const product = PRODUCTS.find((p) => p.id === productId);
 		if (!product) continue;
 		if (product.kind === 'sizedVariants') {
-			const v = product.variants[0];
-			sel[productId].variants[v.code][_sel.size] =
-				(sel[productId].variants[v.code][_sel.size] || 0) + qty;
+			const variant =
+				product.variants.find(v => v.code === _sel.variant) || product.variants[0];
+			sel[productId].variants[variant.code][_sel.size] =
+				(sel[productId].variants[variant.code][_sel.size] || 0) + qty;
 		} else if (product.kind === 'sizedProduct') {
 			sel[productId].size = _sel.size;
 			sel[productId].quantity = (sel[productId].quantity || 0) + qty;

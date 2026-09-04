@@ -15,17 +15,16 @@ export const HOODIE_VARIANTS = [
 	},
 ];
 
-// Cores comprovadas pelos assets das camisetas individuais da coleção.
+// Cores da camiseta que compõe o Combo Wolf.
 export const SHIRT_VARIANTS = [
 	{ code: 'verde', name: 'Verde', swatch: '#0b5149' },
-	{ code: 'off-white', name: 'Off-white', swatch: '#e6e0cf' },
-	{ code: 'preta', name: 'Preta', swatch: '#252426' },
+	{ code: 'chumbo', name: 'Chumbo', swatch: '#303438' },
 ];
 
-// O asset atual da Jersey mostra uma única combinação de cores, frente
-// off-white e costas pretas; não há outra colorway cadastrada no projeto.
+// Colorways comercializadas da Jersey, independentes da imagem de referência.
 export const JERSEY_VARIANTS = [
-	{ code: 'bicolor', name: 'Bicolor (Off-white/Preto)', swatch: '#d9d4c5' },
+	{ code: 'branca', name: 'Branca', swatch: '#f4f1e8', border: '#b9b2a2' },
+	{ code: 'preta', name: 'Preta', swatch: '#252426' },
 ];
 
 export const BACKPACK_MODELS = [
@@ -52,6 +51,7 @@ export const PRODUCTS = [
 		priceCents: 16000,
 		tag: 'Escolha o tamanho',
 		accent: '#12c86b',
+		hasHoodie: true,
 		variants: [HOODIE_VARIANTS[0]],
 		sizes: HOODIE_SIZES,
 		images: ['imgs/moletom-verde.png'],
@@ -66,6 +66,7 @@ export const PRODUCTS = [
 		priceCents: 16000,
 		tag: 'Escolha o tamanho',
 		accent: '#c9b789',
+		hasHoodie: true,
 		variants: [HOODIE_VARIANTS[1]],
 		sizes: HOODIE_SIZES,
 		images: ['/imgs/moletom-off-white.png'],
@@ -98,7 +99,7 @@ export const PRODUCTS = [
 			shortName: 'Combo Alcateia',
 			description:
 				'O Combo Alcateia foi pensado para quem deseja levar a experiência completa da atlética para o dia a dia. Além do moletom de sua escolha, o kit acompanha a caneca temática e o tirante exclusivo da coleção, criando uma combinação prática e cheia de personalidade para representar a AASIAM dentro e fora da faculdade.',
-		priceCents: 17000,
+		priceCents: 18500,
 		tag: 'Combo',
 		accent: '#9ff34f',
 		includes: ['Moletom', 'Caneca'],
@@ -206,15 +207,15 @@ export const PRODUCTS = [
 		},
 		{
 			id: 'jersey',
-			kind: 'sizedProduct',
+			kind: 'sizedVariants',
 			name: 'Jersey AASIAM',
 			shortName: 'Jersey AASIAM',
 			description: 'Jersey oficial AASIAM.',
 			priceCents: 15000,
 			tag: 'Escolha o tamanho',
 			accent: '#12c86b',
+			variants: JERSEY_VARIANTS,
 			sizes: HOODIE_SIZES,
-			defaultSize: 'M',
 			images: ['/imgs/jerseys.png'],
 		},
 		{
