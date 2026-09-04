@@ -619,6 +619,119 @@ await test("Combo Wolf sem personalização continua funcionando e custa R$ 415"
   assert.equal(sheet.rows[0][22], "", "coluna Número deveria estar vazia");
 });
 
+await test("Combos novos: preço reconstruído, cores validadas e snapshot completo na planilha", async () => {
+  // ── Signature: preço fixo mesmo com valores forjados; as duas camisetas na planilha.
+  resetSheet();
+  const sigForjado = {
+    "combo-signature": {
+      configurations: {
+        a: {
+          quantity: 1,
+          greenShirtColor: "chumbo", // tentativa de trocar a cor fixa — ignorada
+          greenShirtSize: "M", greenShirtPersonalizationName: "ARTHUR", greenShirtPersonalizationNumber: "23",
+          charcoalShirtSize: "G", charcoalShirtPersonalizationName: "PEDRO", charcoalShirtPersonalizationNumber: "10",
+        },
+      },
+    },
+  };
+  const sigQuote = await (
+    await post("/api/loja/checkout/quote", { selection: sigForjado, paymentMethod: "pix", price: 1, total: 1 })
+  ).json();
+  assert.equal(sigQuote.subtotalCents, 16000, "Signature aceitou preço do navegador");
+
+  await post("/api/loja/checkout", {
+    attemptId: novoAttempt(),
+    customer: clienteValido,
+    selection: sigForjado,
+    paymentMethod: "pix",
+  });
+  let linha = sheet.rows[0];
+  assert.match(linha[5], /Combo Signature/);
+  assert.match(linha[5], /Camiseta Verde: Verde \/ M · Nome: ARTHUR · Número: 23/);
+  assert.match(linha[5], /Camiseta Chumbo: Chumbo \/ G · Nome: PEDRO · Número: 10/);
+  assert.match(linha[5], /R\$ 160,00 un\./);
+  assert.match(linha[21], /Combo Signature: ARTHUR \/ PEDRO/); // V — nomes das duas camisetas
+  assert.match(linha[22], /Combo Signature: 23 \/ 10/); // W — números das duas
+  assert.ok(!/undefined|null|\[object/.test(linha[21] + linha[22]));
+
+  for (const [campo, valor] of [["greenShirtSize", "XXXX"], ["charcoalShirtSize", ""]]) {
+    const s = structuredClone(sigForjado);
+    s["combo-signature"].configurations.a[campo] = valor;
+    const r = await post("/api/loja/checkout/quote", { selection: s, paymentMethod: "pix" });
+    assert.equal(r.status, 400, `${campo}=${valor} foi aceito`);
+  }
+
+  // ── Território: Jersey + caneca; cor inválida barrada; personalização opcional na planilha.
+  resetSheet();
+  await post("/api/loja/checkout", {
+    attemptId: novoAttempt(),
+    customer: clienteValido,
+    selection: {
+      "combo-territorio": {
+        configurations: { a: { quantity: 1, jerseyColor: "preta", jerseySize: "M", jerseyPersonalizationName: "ARTHUR", jerseyPersonalizationNumber: "23" } },
+      },
+    },
+    paymentMethod: "pix",
+  });
+  linha = sheet.rows[0];
+  assert.match(linha[5], /Combo Território \(Jersey: Preta \/ M · Nome: ARTHUR · Número: 23 · Caneca com tirante: 1 unidade\).*R\$ 180,00 un\./);
+  assert.match(linha[21], /Combo Território: ARTHUR/);
+  assert.match(linha[22], /Combo Território: 23/);
+
+  for (const [campo, valor] of [["jerseyColor", "azul"], ["jerseySize", "XXXX"], ["jerseyPersonalizationNumber", "999"]]) {
+    const r = await post("/api/loja/checkout/quote", {
+      selection: { "combo-territorio": { configurations: { a: { quantity: 1, jerseyColor: "preta", jerseySize: "M", [campo]: valor } } } },
+      paymentMethod: "pix",
+    });
+    assert.equal(r.status, 400, `Território ${campo}=${valor} foi aceito`);
+  }
+
+  // ── Domínio: moletom + camiseta; só a camiseta personaliza; cor de camiseta fora da lista barrada.
+  resetSheet();
+  await post("/api/loja/checkout", {
+    attemptId: novoAttempt(),
+    customer: clienteValido,
+    selection: {
+      "combo-dominio": {
+        configurations: { a: { quantity: 1, hoodieColor: "bege", hoodieSize: "G", shirtColor: "chumbo", shirtSize: "M", shirtPersonalizationName: "ARTHUR", shirtPersonalizationNumber: "23" } },
+      },
+    },
+    paymentMethod: "pix",
+  });
+  linha = sheet.rows[0];
+  assert.match(linha[5], /Combo Domínio \(Moletom: Off-white \/ G · Camiseta: Chumbo \/ M · Nome: ARTHUR · Número: 23\).*R\$ 230,00 un\./);
+  assert.match(linha[21], /Combo Domínio: ARTHUR/);
+  assert.match(linha[22], /Combo Domínio: 23/);
+  assert.ok(!/Moletom:[^·]*Nome:/.test(linha[5]), "personalização vazou para o moletom");
+
+  for (const [campo, valor] of [["shirtColor", "rosa"], ["shirtColor", "bege"], ["hoodieColor", "chumbo"], ["hoodieSize", "XXXX"]]) {
+    const r = await post("/api/loja/checkout/quote", {
+      selection: { "combo-dominio": { configurations: { a: { quantity: 1, hoodieColor: "bege", hoodieSize: "G", shirtColor: "chumbo", shirtSize: "M", [campo]: valor } } } },
+      paymentMethod: "pix",
+    });
+    assert.equal(r.status, 400, `Domínio ${campo}=${valor} foi aceito`);
+  }
+
+  // Configurações diferentes não se agrupam.
+  resetSheet();
+  const dominioDuplo = await (
+    await post("/api/loja/checkout", {
+      attemptId: novoAttempt(),
+      customer: clienteValido,
+      selection: {
+        "combo-dominio": {
+          configurations: {
+            a: { quantity: 1, hoodieColor: "bege", hoodieSize: "G", shirtColor: "chumbo", shirtSize: "M" },
+            b: { quantity: 1, hoodieColor: "verde", hoodieSize: "G", shirtColor: "chumbo", shirtSize: "M" },
+          },
+        },
+      },
+      paymentMethod: "pix",
+    })
+  ).json();
+  assert.equal(dominioDuplo.subtotalCents, 46000, "Domínio agrupou cores de moletom diferentes");
+});
+
 await test("Camiseta personalizada: tamanho, nome e número chegam à planilha (e vazios ficam vazios)", async () => {
   resetSheet();
 

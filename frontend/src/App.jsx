@@ -68,6 +68,9 @@ const CATEGORY_MAP = {
 	'jersey': 'camiseta',
 	'kit-2-moletons': 'kits',
 	'kit-moletom-caneca': 'kits',
+	'combo-signature': 'kits',
+	'combo-territorio': 'kits',
+	'combo-dominio': 'kits',
 	'combo-wolf': 'kits',
 	caneca: 'acessorios',
 	'mochila-listras': 'acessorios',
@@ -183,7 +186,7 @@ function buildCartItem(product, sel) {
 			}
 			return part;
 		});
-		const fixedItems = product.fixedItems.map(item =>
+		const fixedItems = (product.fixedItems || []).map(item =>
 			`${item.name}: ${item.quantity} unidade${item.quantity === 1 ? '' : 's'}`,
 		);
 		return {
@@ -1105,7 +1108,8 @@ function buildInitialSel(product) {
 	if (product.kind === 'multiPieceBundle') {
 		return Object.fromEntries(
 			product.pieces.flatMap(piece => [
-				[`${piece.key}Color`, null],
+				// Cor fixa (peça com uma única opção) já entra escolhida.
+				[`${piece.key}Color`, piece.colors.length === 1 ? piece.colors[0].code : null],
 				[`${piece.key}Size`, null],
 				...(piece.personalization
 					? [
@@ -1275,23 +1279,33 @@ function ProductSelectors({ product, sel, onChange }) {
 			<div className="kit-sizes">
 				{product.pieces.map(piece => (
 					<div className="kit-size-block" key={piece.key}>
-						<span className="kit-size-head">{piece.name}</span>
-						<div className="field-group">
-							<span className="group-label">Cor da {piece.name.toLowerCase()}</span>
-							<div className="pill-row">
-								{piece.colors.map(color => (
-									<button
-										key={color.code}
-										type="button"
-										className={`variant-pill${sel[`${piece.key}Color`] === color.code ? ' active' : ''}`}
-										onClick={() => onChange(`${piece.key}Color`, color.code)}
-									>
-										<span className="color-swatch" style={{ background: color.swatch }} />
-										{color.name}
-									</button>
-								))}
+						<span className="kit-size-head">
+							{piece.colors.length === 1 && (
+								<span
+									className="color-swatch"
+									style={{ background: piece.colors[0].swatch, borderColor: piece.colors[0].border }}
+								/>
+							)}
+							{piece.name}
+						</span>
+						{piece.colors.length > 1 && (
+							<div className="field-group">
+								<span className="group-label">Cor da {piece.name.toLowerCase()}</span>
+								<div className="pill-row">
+									{piece.colors.map(color => (
+										<button
+											key={color.code}
+											type="button"
+											className={`variant-pill${sel[`${piece.key}Color`] === color.code ? ' active' : ''}`}
+											onClick={() => onChange(`${piece.key}Color`, color.code)}
+										>
+											<span className="color-swatch" style={{ background: color.swatch }} />
+											{color.name}
+										</button>
+									))}
+								</div>
 							</div>
-						</div>
+						)}
 						<div className="field-group">
 							<span className="group-label">Tamanho da {piece.name.toLowerCase()}</span>
 							<SizePills

@@ -137,7 +137,7 @@ export function calculateOrder(selection) {
         const quantity = normalizeQuantity(configuration.quantity);
         const pieces = product.pieces.map((piece) => ({
           ...piece,
-          color: findByCode(piece.colors, configuration[`${piece.key}Color`]),
+          color: pieceColor(piece, configuration[`${piece.key}Color`]),
           size: piece.sizes.includes(configuration[`${piece.key}Size`])
             ? configuration[`${piece.key}Size`]
             : null
@@ -152,7 +152,7 @@ export function calculateOrder(selection) {
           ])
         );
 
-        // Personalização por peça (hoje só a camiseta a declara).
+        // Personalização por peça (camiseta, Jersey — cada peça que a declara).
         const personalizations = {};
         for (const piece of pieces) {
           if (!piece.personalization) continue;
@@ -163,13 +163,21 @@ export function calculateOrder(selection) {
           personalizations[`${piece.key}PersonalizationName`] = norm.personalizationName;
           personalizations[`${piece.key}PersonalizationNumber`] = norm.personalizationNumber;
         }
-        // A peça personalizável espelha nome/número no topo da linha, para a
-        // planilha ler igual a todos os outros produtos.
-        const personalizedPiece = pieces.find((piece) => piece.personalization);
-        const flat = personalizedPiece
+        // As peças personalizáveis espelham nome/número no topo da linha, para a
+        // planilha (colunas Nome/Número) ler igual aos outros produtos. Quando há
+        // mais de uma (Combo Signature), os valores preenchidos são unidos por
+        // " / " — a quebra por peça continua completa na coluna de Itens.
+        const personalizedPieces = pieces.filter((piece) => piece.personalization);
+        const flat = personalizedPieces.length
           ? {
-              personalizationName: personalizations[`${personalizedPiece.key}PersonalizationName`] || "",
-              personalizationNumber: personalizations[`${personalizedPiece.key}PersonalizationNumber`] || "",
+              personalizationName: personalizedPieces
+                .map((piece) => personalizations[`${piece.key}PersonalizationName`])
+                .filter(Boolean)
+                .join(" / "),
+              personalizationNumber: personalizedPieces
+                .map((piece) => personalizations[`${piece.key}PersonalizationNumber`])
+                .filter(Boolean)
+                .join(" / "),
             }
           : {};
 
@@ -342,7 +350,7 @@ export function sanitizeSelection(selection) {
 
         const cleanConfiguration = { quantity };
         for (const piece of product.pieces) {
-          const color = findByCode(piece.colors, configuration[`${piece.key}Color`]);
+          const color = pieceColor(piece, configuration[`${piece.key}Color`]);
           cleanConfiguration[`${piece.key}Color`] = color?.code || null;
           cleanConfiguration[`${piece.key}Size`] = piece.sizes.includes(configuration[`${piece.key}Size`])
             ? configuration[`${piece.key}Size`]
@@ -480,7 +488,7 @@ export function validateSelection(selection) {
       for (const configuration of configurationsOf(selected)) {
         if (normalizeQuantity(configuration.quantity) === 0) continue;
         for (const piece of product.pieces) {
-          if (!findByCode(piece.colors, configuration[`${piece.key}Color`])) {
+          if (!pieceColor(piece, configuration[`${piece.key}Color`])) {
             return { error: `Selecione uma cor válida para ${piece.name}.`, field: "selection" };
           }
           if (!piece.sizes.includes(configuration[`${piece.key}Size`])) {
@@ -516,7 +524,7 @@ export function centsToAmount(cents) {
 export function multiPieceBundleConfigurationKey(product, selection = {}) {
   return product.pieces
     .map((piece) => {
-      let chave = `${piece.key}-${selection[`${piece.key}Color`] || ""}-${selection[`${piece.key}Size`] || ""}`;
+      let chave = `${piece.key}-${pieceColor(piece, selection[`${piece.key}Color`])?.code || ""}-${selection[`${piece.key}Size`] || ""}`;
       if (piece.personalization) {
         chave += `-${personalizationKeyPart(
           selection[`${piece.key}PersonalizationName`],
@@ -634,6 +642,16 @@ function normalizeCode(value, options = [], fallback = "") {
 
 function findByCode(options = [], code) {
   return options.find((option) => option.code === code);
+}
+
+/**
+ * A cor de uma peça de bundle. Quando `piece.colors` traz uma única opção a cor
+ * é FIXA (Combo Signature: uma camiseta verde + uma chumbo) e o que o navegador
+ * mandar é ignorado; com duas ou mais, vale a escolhida — ou `undefined`.
+ */
+function pieceColor(piece, code) {
+  const colors = piece.colors || [];
+  return colors.length === 1 ? colors[0] : findByCode(colors, code);
 }
 
 function buildLine(product, quantity, variant = "", variantCode = "", attributes = {}) {

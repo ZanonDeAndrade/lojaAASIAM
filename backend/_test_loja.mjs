@@ -326,6 +326,140 @@ await test("Combo Wolf usa peças configuráveis, preço base e snapshot estrutu
   assert.match(app, /disabled=\{!selectionComplete\}/);
 });
 
+await test("Combos novos (Signature, Território, Domínio): modelagem, preço e validação reaproveitam multiPieceBundle", async () => {
+  const { PRODUCTS } = await import("./shared/products.js");
+  const {
+    calculateOrder,
+    multiPieceBundleConfigurationKey,
+    sanitizeSelection,
+    validateSelection,
+  } = await import("./shared/order.js");
+  const { PRODUCTS: frontendProducts } = await import("../frontend/src/shared/products.js");
+  const { readFile } = await import("node:fs/promises");
+
+  const back = (id) => PRODUCTS.find((p) => p.id === id);
+  const front = (id) => frontendProducts.find((p) => p.id === id);
+
+  // Todos são multiPieceBundle — nada de kind novo por combo.
+  for (const id of ["combo-signature", "combo-territorio", "combo-dominio"]) {
+    assert.equal(back(id)?.kind, "multiPieceBundle", `${id} não é multiPieceBundle`);
+    assert.equal(back(id)?.costCents, undefined, `${id} ganhou costCents sem autorização`);
+  }
+
+  // Preço oficial, igual no frontend e no backend.
+  assert.deepEqual(
+    ["combo-signature", "combo-territorio", "combo-dominio"].map((id) => [back(id).priceCents, front(id).priceCents]),
+    [[16000, 16000], [18000, 18000], [23000, 23000]],
+  );
+
+  // Paridade comercial/estrutural frontend × backend (fora imagem/capa/tag/accent).
+  const semApresentacao = (p) => {
+    const { images, coverImage, galleryFit, accent, tag, ...resto } = p;
+    return resto;
+  };
+  for (const id of ["combo-signature", "combo-territorio", "combo-dominio"]) {
+    assert.deepEqual(semApresentacao(front(id)), semApresentacao(back(id)), `${id}: catálogo diverge`);
+  }
+
+  // ── Signature: duas camisetas de cor FIXA (verde + chumbo), personalização por peça.
+  const signature = back("combo-signature");
+  assert.deepEqual(signature.includes, ["Camiseta Verde", "Camiseta Chumbo"]);
+  assert.deepEqual(
+    signature.pieces.map((p) => [p.key, p.colors.map((c) => c.code), Boolean(p.personalization)]),
+    [["greenShirt", ["verde"], true], ["charcoalShirt", ["chumbo"], true]],
+  );
+
+  const sigBase = {
+    quantity: 1,
+    greenShirtSize: "M", greenShirtPersonalizationName: "ARTHUR", greenShirtPersonalizationNumber: "23",
+    charcoalShirtSize: "G", charcoalShirtPersonalizationName: "PEDRO", charcoalShirtPersonalizationNumber: "10",
+  };
+  assert.equal(validateSelection({ "combo-signature": sigBase }), null, "config válida do Signature foi recusada");
+
+  // A cor não é escolhível: mandar "chumbo" na camiseta verde é ignorado, não vira erro.
+  const sigForjado = { ...sigBase, greenShirtColor: "chumbo", charcoalShirtColor: "verde" };
+  assert.equal(validateSelection({ "combo-signature": sigForjado }), null);
+  const linhaForjada = calculateOrder(sanitizeSelection({ "combo-signature": { configurations: { a: sigForjado } } })).lines[0];
+  assert.equal(linhaForjada.greenShirtColor, "verde", "camiseta verde aceitou virar chumbo");
+  assert.equal(linhaForjada.charcoalShirtColor, "chumbo", "camiseta chumbo aceitou virar verde");
+  assert.equal(linhaForjada.unitPriceCents, 16000);
+
+  // Tamanho obrigatório nas duas; tamanho inválido recusado.
+  assert.match(validateSelection({ "combo-signature": { ...sigBase, greenShirtSize: "XXXX" } }).error, /tamanho.*Camiseta Verde/i);
+  assert.match(validateSelection({ "combo-signature": { ...sigBase, charcoalShirtSize: "" } }).error, /tamanho.*Camiseta Chumbo/i);
+
+  // Personalizações independentes: chave distinta, sem agrupar.
+  assert.notEqual(
+    multiPieceBundleConfigurationKey(signature, sigBase),
+    multiPieceBundleConfigurationKey(signature, { ...sigBase, charcoalShirtPersonalizationName: "JOAO" }),
+  );
+  const sigOrder = calculateOrder(sanitizeSelection({
+    "combo-signature": { configurations: { a: sigBase, b: { ...sigBase, greenShirtSize: "P" } } },
+  }));
+  assert.equal(sigOrder.lines.length, 2, "configs diferentes do Signature foram fundidas");
+  assert.equal(sigOrder.totalCents, 32000);
+  // Espelho plano p/ planilha reúne as DUAS camisetas.
+  assert.equal(sigOrder.lines[0].personalizationName, "ARTHUR / PEDRO");
+  assert.equal(sigOrder.lines[0].personalizationNumber, "23 / 10");
+  assert.match(sigOrder.lines[0].variant, /Camiseta Verde: Verde \/ M · Nome: ARTHUR · Número: 23/);
+  assert.match(sigOrder.lines[0].variant, /Camiseta Chumbo: Chumbo \/ G · Nome: PEDRO · Número: 10/);
+
+  // ── Território: 1 Jersey (reusa JERSEY_VARIANTS) + caneca fixa.
+  const territorio = back("combo-territorio");
+  assert.deepEqual(territorio.pieces.map((p) => p.key), ["jersey"]);
+  assert.deepEqual(territorio.pieces[0].colors.map((c) => c.code), ["branca", "preta"]);
+  assert.deepEqual(territorio.fixedItems, [{ name: "Caneca com tirante", quantity: 1 }]);
+  const terrOk = { quantity: 1, jerseyColor: "preta", jerseySize: "M", jerseyPersonalizationName: "ARTHUR", jerseyPersonalizationNumber: "23" };
+  assert.equal(validateSelection({ "combo-territorio": terrOk }), null);
+  for (const color of ["branca", "preta"]) {
+    assert.equal(validateSelection({ "combo-territorio": { ...terrOk, jerseyColor: color } }), null, `Jersey ${color} recusada`);
+  }
+  assert.match(validateSelection({ "combo-territorio": { ...terrOk, jerseyColor: "azul" } }).error, /cor válida.*Jersey/i);
+  assert.match(validateSelection({ "combo-territorio": { ...terrOk, jerseySize: "XXXX" } }).error, /tamanho válido.*Jersey/i);
+  const terrLinha = calculateOrder(sanitizeSelection({ "combo-territorio": { configurations: { a: terrOk } } })).lines[0];
+  assert.equal(terrLinha.unitPriceCents, 18000);
+  assert.equal(terrLinha.jerseyColor, "preta");
+  assert.deepEqual(terrLinha.fixedItems, [{ name: "Caneca com tirante", quantity: 1 }]);
+  assert.match(terrLinha.variant, /Jersey: Preta \/ M · Nome: ARTHUR · Número: 23 · Caneca com tirante: 1 unidade/);
+  assert.equal(terrLinha.personalizationName, "ARTHUR");
+
+  // Nome e número são opcionais.
+  assert.equal(validateSelection({ "combo-territorio": { quantity: 1, jerseyColor: "branca", jerseySize: "P" } }), null);
+
+  // ── Domínio: moletom (HOODIE_VARIANTS) + camiseta (SHIRT_VARIANTS), só a camiseta personaliza.
+  const dominio = back("combo-dominio");
+  assert.deepEqual(
+    dominio.pieces.map((p) => [p.key, p.colors.map((c) => c.code), Boolean(p.personalization)]),
+    [["hoodie", ["verde", "bege"], false], ["shirt", ["verde", "chumbo"], true]],
+  );
+  const domOk = { quantity: 1, hoodieColor: "bege", hoodieSize: "G", shirtColor: "chumbo", shirtSize: "M", shirtPersonalizationName: "ARTHUR", shirtPersonalizationNumber: "23" };
+  assert.equal(validateSelection({ "combo-dominio": domOk }), null);
+  assert.match(validateSelection({ "combo-dominio": { ...domOk, shirtColor: "rosa" } }).error, /cor válida.*Camiseta/i);
+  assert.match(validateSelection({ "combo-dominio": { ...domOk, shirtColor: "bege" } }).error, /cor válida.*Camiseta/i);
+  assert.match(validateSelection({ "combo-dominio": { ...domOk, hoodieColor: "chumbo" } }).error, /cor válida.*Moletom/i);
+  assert.match(validateSelection({ "combo-dominio": { ...domOk, hoodieSize: "XXXX" } }).error, /tamanho válido.*Moletom/i);
+  const domLinha = calculateOrder(sanitizeSelection({ "combo-dominio": { configurations: { a: domOk } } })).lines[0];
+  assert.equal(domLinha.unitPriceCents, 23000);
+  assert.equal(domLinha.personalizationName, "ARTHUR");
+  assert.ok(!("hoodiePersonalizationName" in domLinha), "personalização vazou para o moletom");
+  assert.match(domLinha.variant, /Moletom: Off-white \/ G · Camiseta: Chumbo \/ M · Nome: ARTHUR · Número: 23/);
+
+  // Preço nunca vem do navegador.
+  assert.equal(
+    calculateOrder(sanitizeSelection({ "combo-dominio": { configurations: { a: { ...domOk, priceCents: 1, unitPriceCents: 1 } } } })).lines[0].unitPriceCents,
+    23000,
+  );
+
+  // Categoria e contador: os três entram em Combos, sem hardcode de quantidade.
+  const app = await readFile(path.join(here, "..", "frontend", "src", "App.jsx"), "utf8");
+  for (const id of ["combo-signature", "combo-territorio", "combo-dominio"]) {
+    assert.match(app, new RegExp(`'${id}': 'kits'`), `${id} não está na seção Combos`);
+  }
+  // O card/carrinho aguenta bundle SEM fixedItems (Signature/Domínio) e peça de cor fixa.
+  assert.match(app, /product\.fixedItems \|\| \[\]/, "buildCartItem quebra em bundle sem fixedItems");
+  assert.match(app, /piece\.colors\.length === 1/, "seletor de cor fixa do multiPieceBundle sumiu");
+});
+
 await test("Jersey e conjuntos: kind unificado, tamanhos, cor e personalização da camiseta", async () => {
   const { readFile } = await import("node:fs/promises");
   const { PRODUCTS } = await import("./shared/products.js");
