@@ -88,6 +88,14 @@ function normalizeQty(v) {
 	return !Number.isFinite(q) || q < 0 ? 0 : Math.min(q, 99);
 }
 
+/**
+ * Imagem de capa do produto — usada no card e no carrinho. `coverImage` é
+ * opcional; produtos sem ela caem no primeiro item da galeria, como antes.
+ */
+function productCover(product) {
+	return product.coverImage || product.images?.[0] || null;
+}
+
 function cartTotals(cart, cupomAplicado = false) {
 	const subtotal = cart.reduce((t, i) => t + i.unitCents * i.qty, 0);
 	if (!cupomAplicado) return { subtotal, total: subtotal, discount: 0 };
@@ -107,7 +115,7 @@ function buildCartItem(product, sel) {
 	const base = {
 		productId: product.id,
 		name: product.name,
-		image: product.images?.[0] || null,
+		image: productCover(product),
 		unitCents: product.priceCents,
 		qty: 1,
 		_sel: sel,
@@ -775,7 +783,7 @@ function SmartImage({
 }
 
 function ProductTile({ product, onOpen }) {
-	const img = product.images?.[0];
+	const img = productCover(product);
 	const soldOut = product.soldOut === true;
 	const priority = IMG_PRIORITY_BY_ID[product.id] || 'low';
 	// Combos (têm lista `includes`) não exibem badge de texto sobreposto na imagem
@@ -897,7 +905,9 @@ function DetailView({ product, onBack, onAdd, onBuyNow, className }) {
 			<div className="detail-grid">
 				{/* media */}
 				<div
-					className={`detail-media${isCombo ? ' is-combo' : ''}`}
+					className={`detail-media${isCombo ? ' is-combo' : ''}${
+						product.galleryFit === 'contain' ? ' gallery-contain' : ''
+					}`}
 					onMouseDown={onSwipeStart}
 					onMouseUp={onSwipeEnd}
 					onTouchStart={onSwipeStart}

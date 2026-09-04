@@ -213,8 +213,32 @@ await test("Combo Wolf usa peças configuráveis, preço base e snapshot estrutu
   assert.deepEqual(wolf.pieces.find((piece) => piece.key === "shirt").colors.map((color) => color.code), ["verde", "chumbo"]);
   assert.deepEqual(wolf.pieces.find((piece) => piece.key === "jersey").colors.map((color) => color.code), ["branca", "preta"]);
   assert.equal(PRODUCTS.some((product) => product.id === "kit-completo" || product.name === "Combo Alpha"), false);
-  assert.ok(wolf.images.includes("/imgs/combo-wolf.png"));
-  assert.deepEqual(frontendWolf, wolf, "catálogo frontend diverge do catálogo autoritativo do backend");
+
+  // As imagens são só do frontend (o backend não renderiza nada). A galeria do
+  // Combo Wolf mostra as peças soltas; a foto de composição e a capa ficam fora
+  // do carrossel.
+  assert.deepEqual(frontendWolf.images, [
+    "/imgs/moletom-verde.png",
+    "/imgs/camiseta-aasiam.png",
+    "/imgs/jerseys.png",
+    "/imgs/copo.png",
+  ]);
+  assert.ok(!frontendWolf.images.includes("/imgs/combo-wolf.png"));
+  assert.ok(!frontendWolf.images.includes(frontendWolf.coverImage), "a capa não pode estar na galeria");
+  assert.equal(frontendWolf.coverImage, "/imgs/wolfc.png");
+
+  // Fora das chaves de apresentação (imagens, capa, enquadramento, cor de
+  // destaque, tag), o catálogo do frontend TEM de bater com o do backend, que é
+  // quem manda no preço e na composição.
+  const semApresentacao = (p) => {
+    const { images, coverImage, galleryFit, accent, tag, ...resto } = p;
+    return resto;
+  };
+  assert.deepEqual(
+    semApresentacao(frontendWolf),
+    semApresentacao(wolf),
+    "catálogo do frontend diverge do backend em campo comercial/estrutural",
+  );
 
   const wolfM = {
     quantity: 1,

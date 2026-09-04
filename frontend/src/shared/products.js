@@ -248,8 +248,12 @@ export const PRODUCTS = [
 			{ key: 'jersey', name: 'Jersey', colors: JERSEY_VARIANTS, sizes: HOODIE_SIZES },
 		],
 		fixedItems: [{ name: 'Caneca com tirante', quantity: 1 }],
+		// Capa (card + carrinho) separada da galeria. Só o frontend renderiza:
+		// não vai para o backend nem para o teste de paridade comercial.
+		coverImage: '/imgs/wolfc.png',
+		// A galeria mostra as peças soltas — nada é cortado (ver `.gallery-contain`).
+		galleryFit: 'contain',
 		images: [
-			'/imgs/combo-wolf.png',
 			'/imgs/moletom-verde.png',
 			'/imgs/camiseta-aasiam.png',
 			'/imgs/jerseys.png',

@@ -614,6 +614,17 @@ a { color: inherit; }
   object-fit: cover;
 }
 
+/* Combos cuja galeria são fotos de peças soltas (ex: Combo Wolf): nada é
+   cortado. `contain` + respiro interno, mantendo o mesmo frame 4:5. Vem depois
+   de `.is-combo img` de propósito — mesma especificidade, ganha por ordem. */
+.detail-media.gallery-contain .smart-picture {
+  padding: clamp(14px, 2.4vw, 26px);
+}
+.detail-media.gallery-contain img {
+  object-fit: contain;
+  object-position: center;
+}
+
 .detail-placeholder {
   width: 100%;
   height: 100%;
