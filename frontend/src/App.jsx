@@ -104,10 +104,14 @@ function productCover(product) {
 	return product.coverImage || product.images?.[0] || null;
 }
 
-function cartTotals(cart, cupomAplicado = false) {
+// Preço unitário do cupom de teste — o backend é a autoridade (cupons.js).
+const PRECO_TESTE_CENTS = 100;
+
+function cartTotals(cart, cupom = null) {
 	const subtotal = cart.reduce((t, i) => t + i.unitCents * i.qty, 0);
-	if (!cupomAplicado) return { subtotal, total: subtotal, discount: 0 };
+	if (!cupom) return { subtotal, total: subtotal, discount: 0 };
 	const totalComDesconto = cart.reduce((t, i) => {
+		if (cupom.tipo === 'teste') return t + PRECO_TESTE_CENTS * i.qty;
 		const product = PRODUCTS.find(p => p.id === i.productId);
 		const custo = product?.costCents ?? i.unitCents;
 		return t + custo * i.qty;
@@ -1512,7 +1516,7 @@ function CartView({ cart, onQty, onRemove, onShop, onCheckout, appliedCupom, onA
 	const [cupomLoading, setCupomLoading] = useState(false);
 	const [cupomMsg, setCupomMsg] = useState(appliedCupom ? 'success' : '');
 
-	const t = cartTotals(cart, !!appliedCupom);
+	const t = cartTotals(cart, appliedCupom);
 
 	async function handleAplicarCupom() {
 		const codigo = cupomInput.trim();
@@ -1527,8 +1531,8 @@ function CartView({ cart, onQty, onRemove, onShop, onCheckout, appliedCupom, onA
 			});
 			const data = await res.json();
 			if (data.valido) {
-				onApplyCupom({ codigo });
-				setCupomMsg('success');
+				onApplyCupom({ codigo, tipo: data.tipo });
+				setCupomMsg(data.tipo === 'teste' ? 'teste' : 'success');
 			} else if (data.motivo === 'ja_utilizado') {
 				onApplyCupom(null);
 				setCupomMsg('used');
@@ -1604,6 +1608,11 @@ function CartView({ cart, onQty, onRemove, onShop, onCheckout, appliedCupom, onA
 							{cupomMsg === 'success' && (
 								<p className="cupom-msg cupom-msg-ok">
 									<Check size={14} /> Cupom aplicado! Preço de associado ativado.
+								</p>
+							)}
+							{cupomMsg === 'teste' && (
+								<p className="cupom-msg cupom-msg-ok">
+									<Check size={14} /> Cupom de teste: cada item sai por R$ 1,00.
 								</p>
 							)}
 							{cupomMsg === 'used' && (

@@ -28,7 +28,7 @@
  */
 import crypto from "node:crypto";
 
-import { checkCoupon, marcarCupomUsado, aplicarPrecoCusto } from "./cupons.js";
+import { checkCoupon, marcarCupomUsado, aplicarCupom } from "./cupons.js";
 import { clientIp, rateLimit } from "./rate-limit.js";
 import { formatDateTime } from "./google-sheets.js";
 import { calculateOrder, sanitizeSelection, validateSelection } from "./shared/order.js";
@@ -225,8 +225,8 @@ function reconstruirPedido(body) {
   }
 
   const cupomBruto = limpar(body?.cupom, 60);
-  const cupomValido = cupomBruto ? checkCoupon(cupomBruto).valido : false;
-  if (cupomValido) aplicarPrecoCusto(order);
+  const cupom = cupomBruto ? checkCoupon(cupomBruto) : { valido: false };
+  if (cupom.valido) aplicarCupom(order, cupom.tipo);
 
   const resumoItens = order.lines
     .map(
@@ -255,7 +255,7 @@ function reconstruirPedido(body) {
 
   return {
     order,
-    cupom: cupomValido ? cupomBruto : null,
+    cupom: cupom.valido ? cupomBruto : null,
     resumoItens,
     shirtSizes,
     shortsSizes,

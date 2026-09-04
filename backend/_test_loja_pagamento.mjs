@@ -370,6 +370,39 @@ await test("/quote aplica preço de custo com cupom válido", async () => {
   assert.ok(comCupom.subtotalCents < semCupom.subtotalCents, "cupom não baixou o subtotal");
 });
 
+await test("cupom de teste GabiMinuzzi100 deixa cada item por R$ 1,00, no quote e no pedido", async () => {
+  resetSheet();
+
+  const { checkCoupon } = await import("./cupons.js");
+  assert.deepEqual(checkCoupon("GabiMinuzzi100"), { valido: true, tipo: "teste" });
+  assert.deepEqual(checkCoupon("  gabiminuzzi100 "), { valido: true, tipo: "teste" });
+  assert.equal(checkCoupon("Gabriela Minuzzi").tipo, "custo", "cupom de associado mudou de tipo");
+
+  // 2x moletom (R$ 320) + 1x Jersey (R$ 150) = 3 unidades → R$ 3,00.
+  const selection = {
+    "moletom-verde": { variants: { verde: { M: 2 } } },
+    jersey: { configurations: { a: { quantity: 1, color: "preta", size: "M", personalizationName: "ARTHUR" } } },
+  };
+  const quote = await (
+    await post("/api/loja/checkout/quote", { selection, paymentMethod: "pix", cupom: "GabiMinuzzi100" })
+  ).json();
+  assert.equal(quote.subtotalCents, 300, "cupom de teste não zerou para R$ 1,00/unidade");
+  assert.equal(quote.cupomAplicado, true);
+
+  const criado = await (
+    await post("/api/loja/checkout", {
+      attemptId: novoAttempt(),
+      customer: clienteValido,
+      selection,
+      cupom: "GabiMinuzzi100",
+      paymentMethod: "pix",
+    })
+  ).json();
+  assert.equal(criado.subtotalCents, 300);
+  assert.match(sheet.rows[0][6], /R\$ 3,00/); // coluna G — subtotal
+  assert.match(sheet.rows[0][5], /Jersey AASIAM \(Preta · Tam\. M · Nome: ARTHUR\).*R\$ 1,00 un\./);
+});
+
 await test("Combo Wolf mantém configurações, preço base e snapshot completo na planilha", async () => {
   resetSheet();
   const quote = await (
