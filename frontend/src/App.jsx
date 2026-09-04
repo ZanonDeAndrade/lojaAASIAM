@@ -780,6 +780,7 @@ function SmartImage({
 	onLoad,
 	onError,
 	skeleton = true,
+	style,
 }) {
 	const [loaded, setLoaded] = useState(false);
 	function handleLoaded(e) {
@@ -805,6 +806,7 @@ function SmartImage({
 					src={src}
 					alt={alt}
 					className={className}
+					style={style}
 					draggable={false}
 					decoding="async"
 					loading={priority === 'high' ? 'eager' : 'lazy'}
@@ -823,6 +825,13 @@ function ProductTile({ product, onOpen }) {
 	const priority = IMG_PRIORITY_BY_ID[product.id] || 'low';
 	// Combos (têm lista `includes`) não exibem badge de texto sobreposto na imagem
 	const isCombo = Array.isArray(product.includes) && product.includes.length > 0;
+	// Enquadramento da capa no card. Padrão = `cover` (regra do .tile-media img).
+	// `coverFit`/`coverPosition` no produto ajustam capas cuja arte tem texto
+	// colado no topo (ex.: "COMBO …") sem mexer no card, no grid nem na imagem.
+	const coverStyle =
+		product.coverFit || product.coverPosition
+			? { objectFit: product.coverFit, objectPosition: product.coverPosition }
+			: undefined;
 	return (
 		<button
 			type="button"
@@ -833,7 +842,12 @@ function ProductTile({ product, onOpen }) {
 		>
 			<div className="tile-media">
 				{img ? (
-					<SmartImage src={img} alt={product.name} priority={priority} />
+					<SmartImage
+						src={img}
+						alt={product.name}
+						priority={priority}
+						style={coverStyle}
+					/>
 				) : (
 					<div className="tile-placeholder">
 						<ShoppingBag size={48} />
