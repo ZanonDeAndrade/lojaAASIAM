@@ -97,8 +97,9 @@ app.use((req, res, next) => {
   if (allowed) {
     res.setHeader("Access-Control-Allow-Origin", origin || "*");
     res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-    // X-Inscricao-Token: consulta de status da inscrição do churrasco.
-    res.setHeader("Access-Control-Allow-Headers", "Content-Type, X-Inscricao-Token");
+    // X-Inscricao-Token: status da inscrição do churrasco.
+    // X-Pedido-Token: status do pedido da loja (polling do Pix pós-pagamento).
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type, X-Inscricao-Token, X-Pedido-Token");
     res.setHeader("Access-Control-Max-Age", "86400");
   }
   if (req.method === "OPTIONS") return res.sendStatus(204);
