@@ -18,6 +18,7 @@ import {
 	personalizationKey,
 } from '../shared/order.js';
 import { montarCamposCartao } from './checkout-mp.js';
+import { cartItemGroups } from './cartSummary.js';
 
 const API_BASE = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
 const currency = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -540,13 +541,7 @@ export default function CheckoutMercadoPago({ cart, appliedCupom, onBack, onDone
 					<h2>Resumo</h2>
 					<div className="summary-mini">
 						{cart.map((item) => (
-							<div className="summary-mini-item" key={item.key}>
-								<div className="summary-mini-info">
-									<div className="nm">{item.name}</div>
-									{item.meta && <div className="px">{item.meta}</div>}
-								</div>
-								<span className="summary-mini-qty">x{item.qty}</span>
-							</div>
+							<SummaryItem item={item} key={item.key} />
 						))}
 					</div>
 					<div className="summary-divider" />
@@ -565,6 +560,47 @@ function Linha({ rotulo, valor }) {
 		<div className="mp-resumo-linha">
 			<span>{rotulo}</span>
 			<span>{valor}</span>
+		</div>
+	);
+}
+
+/* ── Resumo: um item, suas peças e a personalização ── */
+function SummaryPiece({ heading, rows }) {
+	return (
+		<div className="summary-piece">
+			{heading && <span className="summary-piece-head">{heading}</span>}
+			{rows.map((row, i) => (
+				<span className="summary-piece-row" key={i}>
+					{row.label ? (
+						<>
+							<span className="k">{row.label}:</span> {row.value}
+						</>
+					) : (
+						row.value
+					)}
+				</span>
+			))}
+		</div>
+	);
+}
+
+function SummaryItem({ item }) {
+	const { groups } = cartItemGroups(item);
+	return (
+		<div className="summary-mini-item">
+			<div className="summary-mini-head">
+				<span className="nm">{item.name}</span>
+				<span className="summary-mini-qty">x{item.qty}</span>
+			</div>
+			{groups.length > 0 ? (
+				<div className="summary-mini-groups">
+					{groups.map((group, i) => (
+						<SummaryPiece key={i} heading={group.heading} rows={group.rows} />
+					))}
+				</div>
+			) : (
+				item.meta && <div className="summary-mini-meta">{item.meta}</div>
+			)}
 		</div>
 	);
 }
