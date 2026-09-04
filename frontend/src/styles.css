@@ -715,6 +715,22 @@ a { color: inherit; }
 .field-group { display: flex; flex-direction: column; gap: 10px; }
 .group-label { color: var(--text-dim); font-size: 0.82rem; font-weight: 500; margin: 0; }
 
+.bundle-includes {
+  display: grid;
+  gap: 7px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+.bundle-includes > span:not(.group-label) {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--text-dim);
+  font-size: 0.88rem;
+}
+.bundle-includes svg { color: var(--accent); }
+
 .pill-row { display: flex; flex-wrap: wrap; gap: 8px; }
 
 .size-pill {

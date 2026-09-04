@@ -12,7 +12,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { PRODUCTS } from '../shared/products.js';
-import { createEmptySelection } from '../shared/order.js';
+import { createEmptySelection, multiPieceBundleConfigurationKey } from '../shared/order.js';
 import { montarCamposCartao } from './checkout-mp.js';
 
 const API_BASE = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
@@ -36,6 +36,15 @@ function cartToSelection(cart) {
 			sel[productId].quantity = (sel[productId].quantity || 0) + qty;
 		} else if (product.kind === 'twoPieceSet') {
 			sel[productId].combinations[_sel.shirtSize][_sel.shortsSize] += qty;
+		} else if (product.kind === 'multiPieceBundle') {
+			const key = multiPieceBundleConfigurationKey(product, _sel);
+			const configuration = sel[productId].configurations[key] || { quantity: 0 };
+			for (const piece of product.pieces) {
+				configuration[`${piece.key}Color`] = _sel[`${piece.key}Color`];
+				configuration[`${piece.key}Size`] = _sel[`${piece.key}Size`];
+			}
+			configuration.quantity += qty;
+			sel[productId].configurations[key] = configuration;
 		} else if (product.kind === 'doubleHoodie') {
 			sel[productId].verdeSize = _sel.verde;
 			sel[productId].begeSize = _sel.bege;

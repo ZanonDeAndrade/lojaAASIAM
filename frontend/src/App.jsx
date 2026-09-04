@@ -27,6 +27,7 @@ import {
 import gsap from 'gsap';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { PRODUCTS } from './shared/products.js';
+import { multiPieceBundleConfigurationKey } from './shared/order.js';
 import ChurrascoPage from './churrasco/ChurrascoPage.jsx';
 import ValidacaoPage from './churrasco/ValidacaoPage.jsx';
 import CheckoutMercadoPago from './loja/CheckoutMercadoPago.jsx';
@@ -59,7 +60,7 @@ const CATEGORY_MAP = {
 	'jersey': 'camiseta',
 	'kit-2-moletons': 'kits',
 	'kit-moletom-caneca': 'kits',
-	'kit-completo': 'kits',
+	'combo-wolf': 'kits',
 	caneca: 'acessorios',
 	'mochila-listras': 'acessorios',
 	'mochila-estampa': 'acessorios',
@@ -130,6 +131,20 @@ function buildCartItem(product, sel) {
 			...base,
 			key: `${product.id}-${sel.shirtSize}-${sel.shortsSize}`,
 			meta: `Camiseta: ${sel.shirtSize} · Calção: ${sel.shortsSize}`,
+		};
+	}
+	if (product.kind === 'multiPieceBundle') {
+		const pieces = product.pieces.map(piece => {
+			const color = piece.colors.find(c => c.code === sel[`${piece.key}Color`]);
+			return `${piece.name}: ${color?.name || '—'} / ${sel[`${piece.key}Size`] || '—'}`;
+		});
+		const fixedItems = product.fixedItems.map(item =>
+			`${item.name}: ${item.quantity} unidade${item.quantity === 1 ? '' : 's'}`,
+		);
+		return {
+			...base,
+			key: `${product.id}-${multiPieceBundleConfigurationKey(product, sel)}`,
+			meta: [...pieces, ...fixedItems].join(' · '),
 		};
 	}
 	if (product.kind === 'doubleHoodie') {
@@ -813,6 +828,7 @@ function DetailView({ product, onBack, onAdd, onBuyNow, className }) {
 	const cat = CATEGORY_MAP[product.id] || 'acessorios';
 	// Combos (têm lista `includes`) usam object-fit: cover para a imagem preencher o frame
 	const isCombo = Array.isArray(product.includes) && product.includes.length > 0;
+	const selectionComplete = isProductSelectionComplete(product, sel);
 
 	useEffect(() => {
 		setImgIndex(0);
@@ -839,6 +855,7 @@ function DetailView({ product, onBack, onAdd, onBuyNow, className }) {
 	}
 
 	function handleAdd() {
+		if (!selectionComplete) return;
 		onAdd(buildCartItem(product, sel));
 		flyToCart(imgRef.current);
 		setAdded(true);
@@ -846,6 +863,7 @@ function DetailView({ product, onBack, onAdd, onBuyNow, className }) {
 	}
 
 	function handleBuyNow() {
+		if (!selectionComplete) return;
 		onBuyNow(buildCartItem(product, sel));
 	}
 
@@ -939,6 +957,17 @@ function DetailView({ product, onBack, onAdd, onBuyNow, className }) {
 
 					<div className="detail-price">{fmt(product.priceCents)}</div>
 
+					{isCombo && (
+						<div className="bundle-includes">
+							<span className="group-label">Inclui</span>
+							{product.includes.map(item => (
+								<span key={item}>
+									<Check size={14} /> {item}
+								</span>
+							))}
+						</div>
+					)}
+
 					<ProductSelectors product={product} sel={sel} onChange={set} />
 
 					{productHasHoodie(product) && <MedidaTabela />}
@@ -958,6 +987,7 @@ function DetailView({ product, onBack, onAdd, onBuyNow, className }) {
 									type="button"
 									className={`btn btn-block${added ? ' btn-added' : ' btn-primary'}`}
 									onClick={handleAdd}
+									disabled={!selectionComplete}
 								>
 									{added ? (
 										<>
@@ -974,6 +1004,7 @@ function DetailView({ product, onBack, onAdd, onBuyNow, className }) {
 									type="button"
 									className="btn btn-buy-now btn-block"
 									onClick={handleBuyNow}
+									disabled={!selectionComplete}
 								>
 									<Zap size={16} /> Comprar agora
 								</button>
@@ -1022,7 +1053,24 @@ function buildInitialSel(product) {
 			backpack: product.hasBackpack ? product.models[0].code : null,
 		};
 	}
+	if (product.kind === 'multiPieceBundle') {
+		return Object.fromEntries(
+			product.pieces.flatMap(piece => [
+				[`${piece.key}Color`, null],
+				[`${piece.key}Size`, null],
+			]),
+		);
+	}
 	return {};
+}
+
+function isProductSelectionComplete(product, sel) {
+	if (product.kind !== 'multiPieceBundle') return true;
+	return product.pieces.every(
+		piece =>
+			piece.colors.some(color => color.code === sel[`${piece.key}Color`]) &&
+			piece.sizes.includes(sel[`${piece.key}Size`]),
+	);
 }
 
 function ProductSelectors({ product, sel, onChange }) {
@@ -1140,6 +1188,42 @@ function ProductSelectors({ product, sel, onChange }) {
 		);
 	}
 
+	if (product.kind === 'multiPieceBundle') {
+		return (
+			<div className="kit-sizes">
+				{product.pieces.map(piece => (
+					<div className="kit-size-block" key={piece.key}>
+						<span className="kit-size-head">{piece.name}</span>
+						<div className="field-group">
+							<span className="group-label">Cor da {piece.name.toLowerCase()}</span>
+							<div className="pill-row">
+								{piece.colors.map(color => (
+									<button
+										key={color.code}
+										type="button"
+										className={`variant-pill${sel[`${piece.key}Color`] === color.code ? ' active' : ''}`}
+										onClick={() => onChange(`${piece.key}Color`, color.code)}
+									>
+										<span className="color-swatch" style={{ background: color.swatch }} />
+										{color.name}
+									</button>
+								))}
+							</div>
+						</div>
+						<div className="field-group">
+							<span className="group-label">Tamanho da {piece.name.toLowerCase()}</span>
+							<SizePills
+								sizes={piece.sizes}
+								value={sel[`${piece.key}Size`]}
+								onChange={value => onChange(`${piece.key}Size`, value)}
+							/>
+						</div>
+					</div>
+				))}
+			</div>
+		);
+	}
+
 	if (product.kind === 'configuredBundle') {
 		return (
 			<>
@@ -1227,6 +1311,7 @@ function productHasHoodie(product) {
 	return (
 		product.kind === 'sizedVariants' ||
 		product.kind === 'doubleHoodie' ||
+		(product.kind === 'multiPieceBundle' && product.pieces.some(piece => piece.key === 'hoodie')) ||
 		(product.kind === 'configuredBundle' && product.hasHoodie)
 	);
 }

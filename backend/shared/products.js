@@ -15,6 +15,19 @@ export const HOODIE_VARIANTS = [
 	},
 ];
 
+// Cores comprovadas pelos assets das camisetas individuais da coleção.
+export const SHIRT_VARIANTS = [
+	{ code: 'verde', name: 'Verde', swatch: '#0b5149' },
+	{ code: 'off-white', name: 'Off-white', swatch: '#e6e0cf' },
+	{ code: 'preta', name: 'Preta', swatch: '#252426' },
+];
+
+// O asset atual da Jersey mostra uma única combinação de cores, frente
+// off-white e costas pretas; não há outra colorway cadastrada no projeto.
+export const JERSEY_VARIANTS = [
+	{ code: 'bicolor', name: 'Bicolor (Off-white/Preto)', swatch: '#d9d4c5' },
+];
+
 export const BACKPACK_MODELS = [
 	{
 		code: 'listras',
@@ -217,33 +230,29 @@ export const PRODUCTS = [
 		accent: '#213a2c',
 		images: ['/imgs/manta.png'],
 	},
-		{
-			id: 'kit-completo',
-			kind: 'configuredBundle',
-			name: 'Combo Alpha',
-			shortName: 'Combo Completo',
-			description:
-				'O Combo Alpha é a opção mais completa da Coleção Alcateia. Reunindo moletom, caneca, tirante, mochila e cachecol, este kit foi desenvolvido para quem quer carregar a identidade da AASIAM em todos os momentos. Um combo exclusivo que combina utilidade, conforto e pertencimento, ideal para os membros mais engajados da alcateia.',
-		priceCents: 27000,
-		tag: 'Todos os itens',
-		soldOut: true,
+	{
+		id: 'combo-wolf',
+		kind: 'multiPieceBundle',
+		name: 'Combo Wolf',
+		shortName: 'Combo Wolf',
+		description:
+			'O Combo Wolf reúne quatro peças da Coleção Alcateia em um único kit: moletom, camiseta, caneca com tirante e Jersey. Escolha as cores e tamanhos das peças para representar a AASIAM dentro e fora da faculdade.',
+		priceCents: 41500,
+		tag: '4 peças',
 		accent: '#18f08a',
-		includes: ['Moletom', 'Caneca', 'Mochila', 'Manta'],
-		hasHoodie: true,
-		hasBackpack: true,
-		variants: HOODIE_VARIANTS,
-		sizes: HOODIE_SIZES,
-		models: BACKPACK_MODELS,
-		defaultHoodieVariant: 'verde',
-		defaultHoodieSize: 'M',
-		defaultBackpackModel: 'campus',
+		includes: ['Moletom', 'Camiseta', 'Caneca com tirante', 'Jersey'],
+		pieces: [
+			{ key: 'hoodie', name: 'Moletom', colors: HOODIE_VARIANTS, sizes: HOODIE_SIZES },
+			{ key: 'shirt', name: 'Camiseta', colors: SHIRT_VARIANTS, sizes: HOODIE_SIZES },
+			{ key: 'jersey', name: 'Jersey', colors: JERSEY_VARIANTS, sizes: HOODIE_SIZES },
+		],
+		fixedItems: [{ name: 'Caneca com tirante', quantity: 1 }],
 		images: [
-			'/imgs/combo-alpha.png',
+			'/imgs/combo-wolf.png',
 			'/imgs/moletom-verde.png',
-			'/imgs/moletom-off-white.png',
+			'/imgs/camiseta-aasiam.png',
+			'/imgs/jerseys.png',
 			'/imgs/copo.png',
-			'/imgs/mochila.png',
-			'/imgs/manta.png',
 		],
 	},
 ];
@@ -258,7 +267,6 @@ const COST_CENTS = {
 	'manta': 5000,
 	'kit-2-moletons': 26000,
 	'kit-moletom-caneca': 15800,
-	'kit-completo': 24300,
 };
 for (const _p of PRODUCTS) {
 	if (COST_CENTS[_p.id] != null) _p.costCents = COST_CENTS[_p.id];

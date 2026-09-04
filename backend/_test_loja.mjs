@@ -137,14 +137,14 @@ await test("o checkout da loja continua validando antes de chamar a InfinitePay"
   assert.match((await semItens.json()).error, /produto/i);
 });
 
-await test("somente mochilas, cachecol e Combo Alpha estão esgotados", async () => {
+await test("somente mochilas e cachecol estão esgotados", async () => {
   const { PRODUCTS } = await import("./shared/products.js");
   const { calculateOrder, createEmptySelection } = await import("./shared/order.js");
 
   const esgotados = PRODUCTS.filter((p) => p.soldOut === true);
   assert.deepEqual(
     esgotados.map((p) => p.id),
-    ["mochila-listras", "mochila-estampa", "manta", "kit-completo"],
+    ["mochila-listras", "mochila-estampa", "manta"],
     "a lista de produtos esgotados está incorreta",
   );
 
@@ -174,6 +174,80 @@ await test("somente mochilas, cachecol e Combo Alpha estão esgotados", async ()
   });
   assert.equal(res.status, 400);
   assert.match((await res.json()).error, /produto/i);
+});
+
+await test("Combo Wolf usa peças configuráveis, preço base e snapshot estrutural", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const { PRODUCTS } = await import("./shared/products.js");
+  const {
+    calculateOrder,
+    multiPieceBundleConfigurationKey,
+    sanitizeSelection,
+    validateSelection,
+  } = await import("./shared/order.js");
+  const { PRODUCTS: frontendProducts } = await import("../frontend/src/shared/products.js");
+  const wolf = PRODUCTS.find((product) => product.id === "combo-wolf");
+  const frontendWolf = frontendProducts.find((product) => product.id === "combo-wolf");
+
+  assert.deepEqual(
+    [wolf?.name, wolf?.kind, wolf?.priceCents, wolf?.soldOut, wolf?.costCents],
+    ["Combo Wolf", "multiPieceBundle", 41500, undefined, undefined],
+  );
+  assert.deepEqual(wolf.includes, ["Moletom", "Camiseta", "Caneca com tirante", "Jersey"]);
+  assert.equal(PRODUCTS.some((product) => product.id === "kit-completo" || product.name === "Combo Alpha"), false);
+  assert.ok(wolf.images.includes("/imgs/combo-wolf.png"));
+  assert.deepEqual(frontendWolf, wolf, "catálogo frontend diverge do catálogo autoritativo do backend");
+
+  const wolfM = {
+    quantity: 1,
+    hoodieColor: "verde", hoodieSize: "M",
+    shirtColor: "preta", shirtSize: "G",
+    jerseyColor: "bicolor", jerseySize: "GG",
+  };
+  const wolfG = { ...wolfM, hoodieSize: "G" };
+  assert.notEqual(
+    multiPieceBundleConfigurationKey(wolf, wolfM),
+    multiPieceBundleConfigurationKey(wolf, wolfG),
+    "configurações distintas do Combo Wolf foram identificadas como o mesmo item",
+  );
+  assert.equal(validateSelection({ "combo-wolf": wolfM }), null);
+
+  const selection = sanitizeSelection({
+    "combo-wolf": {
+      configurations: {
+        primeiro: wolfM,
+        segundo: wolfG,
+      },
+    },
+  });
+  const order = calculateOrder(selection);
+  assert.equal(order.lines.length, 2, "combinações diferentes foram fundidas no pedido");
+  assert.equal(order.totalCents, 83000);
+  assert.deepEqual(
+    order.lines.map((line) => [
+      line.hoodieColor, line.hoodieSize,
+      line.shirtColor, line.shirtSize,
+      line.jerseyColor, line.jerseySize,
+      line.fixedItems,
+    ]),
+    [
+      ["verde", "M", "preta", "G", "bicolor", "GG", [{ name: "Caneca com tirante", quantity: 1 }]],
+      ["verde", "G", "preta", "G", "bicolor", "GG", [{ name: "Caneca com tirante", quantity: 1 }]],
+    ],
+  );
+
+  for (const [field, value] of [
+    ["hoodieColor", "hack"], ["hoodieSize", "XXXX"],
+    ["shirtColor", "hack"], ["shirtSize", "XXXX"],
+    ["jerseyColor", "hack"], ["jerseySize", "XXXX"],
+  ]) {
+    assert.match(validateSelection({ "combo-wolf": { ...wolfM, [field]: value } }).error, /válid[ao]/i);
+  }
+
+  const app = await readFile(path.join(here, "..", "frontend", "src", "App.jsx"), "utf8");
+  assert.match(app, /'combo-wolf': 'kits'/);
+  assert.match(app, /multiPieceBundleConfigurationKey/);
+  assert.match(app, /disabled=\{!selectionComplete\}/);
 });
 
 await test("os novos uniformes preservam tamanhos, preço e combinações", async () => {

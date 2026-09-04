@@ -227,6 +227,18 @@ const selecaoNovosUniformes = {
   "conjunto-verde": { combinations: { G: { M: 1 } } },
   jersey: { quantity: 1, size: "G" },
 };
+const selecaoComboWolf = {
+  "combo-wolf": {
+    configurations: {
+      "verde-m": {
+        quantity: 1,
+        hoodieColor: "verde", hoodieSize: "M",
+        shirtColor: "preta", shirtSize: "G",
+        jerseyColor: "bicolor", jerseySize: "GG",
+      },
+    },
+  },
+};
 
 async function checkoutCartao(overrides = {}) {
   const attemptId = overrides.attemptId || novoAttempt();
@@ -351,6 +363,58 @@ await test("/quote aplica preço de custo com cupom válido", async () => {
   ).json();
   assert.equal(comCupom.cupomAplicado, true);
   assert.ok(comCupom.subtotalCents < semCupom.subtotalCents, "cupom não baixou o subtotal");
+});
+
+await test("Combo Wolf mantém configurações, preço base e snapshot completo na planilha", async () => {
+  resetSheet();
+  const quote = await (
+    await post("/api/loja/checkout/quote", {
+      selection: selecaoComboWolf,
+      paymentMethod: "pix",
+      price: 1,
+      subtotal: 1,
+      total: 1,
+    })
+  ).json();
+  assert.equal(quote.subtotalCents, 41500, "o backend aceitou preço enviado pelo navegador");
+
+  const cupom = await (
+    await post("/api/loja/checkout/quote", {
+      selection: selecaoComboWolf,
+      paymentMethod: "pix",
+      cupom: "Gabriela Minuzzi",
+    })
+  ).json();
+  assert.equal(cupom.subtotalCents, 41500, "Combo Wolf recebeu custo antigo do Combo Alpha");
+
+  for (const [field, value] of [
+    ["hoodieColor", "hack"], ["hoodieSize", "XXXX"],
+    ["shirtColor", "hack"], ["shirtSize", "XXXX"],
+    ["jerseyColor", "hack"], ["jerseySize", "XXXX"],
+  ]) {
+    const selection = structuredClone(selecaoComboWolf);
+    selection["combo-wolf"].configurations["verde-m"][field] = value;
+    const invalid = await post("/api/loja/checkout/quote", { selection, paymentMethod: "pix" });
+    assert.equal(invalid.status, 400, `${field} inválido foi aceito`);
+  }
+
+  const criado = await (
+    await post("/api/loja/checkout", {
+      attemptId: novoAttempt(),
+      customer: clienteValido,
+      selection: selecaoComboWolf,
+      paymentMethod: "pix",
+    })
+  ).json();
+  assert.equal(criado.subtotalCents, 41500);
+  assert.equal(sheet.rows.length, 1);
+  const itens = sheet.rows[0][5];
+  for (const detalhe of [
+    "Combo Wolf", "Moletom: Verde / M", "Camiseta: Preta / G",
+    "Jersey: Bicolor (Off-white/Preto) / GG", "Caneca com tirante: 1 unidade", "415,00",
+  ]) {
+    assert.match(itens, new RegExp(detalhe.replace(/[()]/g, "\\$&")));
+  }
 });
 
 await test("uniformes novos validam tamanhos e congelam o snapshot completo na planilha", async () => {

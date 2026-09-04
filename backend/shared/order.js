@@ -52,6 +52,42 @@ export function calculateOrder(selection) {
       continue;
     }
 
+    if (product.kind === "multiPieceBundle") {
+      for (const configuration of getMultiPieceBundleConfigurations(selected)) {
+        const quantity = normalizeQuantity(configuration.quantity);
+        const pieces = product.pieces.map((piece) => ({
+          ...piece,
+          color: findByCode(piece.colors, configuration[`${piece.key}Color`]),
+          size: piece.sizes.includes(configuration[`${piece.key}Size`])
+            ? configuration[`${piece.key}Size`]
+            : null
+        }));
+
+        if (quantity === 0 || pieces.some((piece) => !piece.color || !piece.size)) continue;
+
+        const attributes = Object.fromEntries(
+          pieces.flatMap((piece) => [
+            [`${piece.key}Color`, piece.color.code],
+            [`${piece.key}Size`, piece.size]
+          ])
+        );
+        const fixedItems = product.fixedItems?.map((item) => ({ ...item })) || [];
+        const variantParts = [
+          ...pieces.map((piece) => `${piece.name}: ${piece.color.name} / ${piece.size}`),
+          ...fixedItems.map((item) => `${item.name}: ${item.quantity} unidade${item.quantity === 1 ? "" : "s"}`)
+        ];
+        const code = pieces
+          .map((piece) => `${piece.key}-${piece.color.code}-${piece.size}`)
+          .join("--");
+
+        lines.push(buildLine(product, quantity, variantParts.join(" · "), code, {
+          ...attributes,
+          fixedItems
+        }));
+      }
+      continue;
+    }
+
     if (product.kind === "sizedVariants") {
       for (const variant of product.variants) {
         for (const size of product.sizes) {
@@ -168,6 +204,30 @@ export function sanitizeSelection(selection) {
       continue;
     }
 
+    if (product.kind === "multiPieceBundle") {
+      for (const configuration of getMultiPieceBundleConfigurations(selected)) {
+        const quantity = normalizeQuantity(configuration.quantity);
+        if (quantity === 0) continue;
+
+        const cleanConfiguration = { quantity };
+        for (const piece of product.pieces) {
+          const color = findByCode(piece.colors, configuration[`${piece.key}Color`]);
+          cleanConfiguration[`${piece.key}Color`] = color?.code || null;
+          cleanConfiguration[`${piece.key}Size`] = piece.sizes.includes(configuration[`${piece.key}Size`])
+            ? configuration[`${piece.key}Size`]
+            : null;
+        }
+
+        const key = multiPieceBundleConfigurationKey(product, cleanConfiguration);
+        const current = clean[product.id].configurations[key];
+        clean[product.id].configurations[key] = {
+          ...cleanConfiguration,
+          quantity: (current?.quantity || 0) + quantity
+        };
+      }
+      continue;
+    }
+
     if (product.kind === "sizedVariants") {
       for (const variant of product.variants) {
         for (const size of product.sizes) {
@@ -257,6 +317,20 @@ export function validateSelection(selection) {
         }
       }
     }
+
+    if (product.kind === "multiPieceBundle") {
+      for (const configuration of getMultiPieceBundleConfigurations(selected)) {
+        if (normalizeQuantity(configuration.quantity) === 0) continue;
+        for (const piece of product.pieces) {
+          if (!findByCode(piece.colors, configuration[`${piece.key}Color`])) {
+            return { error: `Selecione uma cor válida para ${piece.name}.`, field: "selection" };
+          }
+          if (!piece.sizes.includes(configuration[`${piece.key}Size`])) {
+            return { error: `Selecione um tamanho válido para ${piece.name}.`, field: "selection" };
+          }
+        }
+      }
+    }
   }
 
   return null;
@@ -268,6 +342,13 @@ export function getProduct(productId) {
 
 export function centsToAmount(cents) {
   return Number((Math.max(0, cents) / 100).toFixed(2));
+}
+
+/** Chave estável de cada configuração independente de um bundle com várias peças. */
+export function multiPieceBundleConfigurationKey(product, selection = {}) {
+  return product.pieces
+    .map((piece) => `${piece.key}-${selection[`${piece.key}Color`] || ""}-${selection[`${piece.key}Size`] || ""}`)
+    .join("--");
 }
 
 function createEmptyProductSelection(product) {
@@ -284,6 +365,10 @@ function createEmptyProductSelection(product) {
         ])
       )
     };
+  }
+
+  if (product.kind === "multiPieceBundle") {
+    return { configurations: {} };
   }
 
   if (product.kind === "sizedVariants") {
@@ -331,6 +416,15 @@ function getConfiguredBundleOptions(product, selected) {
       : product.defaultHoodieSize,
     model: findByCode(product.models, selected.backpackModel) || product.models?.[0]
   };
+}
+
+function getMultiPieceBundleConfigurations(selected) {
+  const configurations = selected?.configurations;
+  if (configurations && typeof configurations === "object" && !Array.isArray(configurations)) {
+    const values = Object.values(configurations);
+    if (values.length > 0) return values;
+  }
+  return [selected || {}];
 }
 
 function normalizeQuantity(value) {
