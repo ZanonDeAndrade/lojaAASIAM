@@ -292,6 +292,35 @@ export function avaliarOrder(inscricao, leitura) {
   return { ...base, status };
 }
 
+/**
+ * Aplica uma order do CHURRASCO a partir da leitura oficial do Mercado Pago.
+ *
+ * Chamada pelo webhook central (`/api/mercadopago/webhook` em index.js) e pela
+ * rota própria do churrasco. `leitura` já veio de `GET /v1/orders/{id}`.
+ * Devolve `{ status, body }` para o HTTP.
+ */
+export async function aplicarWebhookChurrasco(leitura) {
+  const referencia = leitura.externalReference;
+
+  if (!isChurrascoOrder(referencia)) {
+    return { status: 200, body: { ok: true, ignorado: "referencia" } };
+  }
+
+  const inscricao = await findInscricao(referencia, { fresh: true });
+  if (!inscricao) {
+    console.warn(`[Churrasco/Webhook] ${referencia} não está na planilha — ignorada.`);
+    return { status: 200, body: { ok: true, ignorado: "desconhecida" } };
+  }
+
+  if (inscricao.orderMpId && leitura.orderId && inscricao.orderMpId !== leitura.orderId) {
+    console.warn(`[Churrasco/Webhook] ${referencia} aponta para outra order — ignorada.`);
+    return { status: 200, body: { ok: true, ignorado: "order_divergente" } };
+  }
+
+  await aplicarOrder(inscricao, leitura, "Webhook");
+  return { status: 200, body: { ok: true } };
+}
+
 /** Aplica a order na linha da planilha. Devolve a inscrição já atualizada. */
 async function aplicarOrder(inscricao, leitura, origem) {
   const mudancas = avaliarOrder(inscricao, leitura);
@@ -656,9 +685,9 @@ export function registerChurrascoRoutes(app) {
   /**
    * Webhook do Mercado Pago — evento `order`.
    *
-   * O corpo é só um aviso de que algo mudou: o status vem sempre de
-   * `GET /v1/orders/{id}`. Notificações da loja, de outro sistema ou de uma
-   * order desconhecida são ignoradas sem criar nada.
+   * Mantido para compatibilidade; o webhook oficial da aplicação é o central
+   * (`/api/mercadopago/webhook`). O corpo é só um aviso: o status vem sempre de
+   * `GET /v1/orders/{id}`. Referência sem prefixo `CHURRASCO-` é ignorada.
    */
   app.post(CHURRASCO_WEBHOOK_PATH, webhookLimiter, async (req, res) => {
     const body = req.body || {};
@@ -686,29 +715,8 @@ export function registerChurrascoRoutes(app) {
 
     try {
       const leitura = lerOrder(await buscarOrder(dataId, { fresh: true }));
-      const referencia = leitura.externalReference;
-
-      // Pedidos da loja chegam no webhook dela; aqui só entra o churrasco.
-      if (!isChurrascoOrder(referencia)) {
-        console.log(`[Churrasco/Webhook] referência fora do churrasco — ignorada.`);
-        return res.status(200).json({ ok: true, ignorado: "referencia" });
-      }
-
-      const inscricao = await findInscricao(referencia, { fresh: true });
-      if (!inscricao) {
-        console.warn(`[Churrasco/Webhook] ${referencia} não está na planilha — ignorada.`);
-        return res.status(200).json({ ok: true, ignorado: "desconhecida" });
-      }
-
-      // A order precisa ser a que a inscrição conhece. Uma notificação sobre
-      // outra order com a mesma referência não altera esta linha.
-      if (inscricao.orderMpId && leitura.orderId && inscricao.orderMpId !== leitura.orderId) {
-        console.warn(`[Churrasco/Webhook] ${referencia} aponta para outra order — ignorada.`);
-        return res.status(200).json({ ok: true, ignorado: "order_divergente" });
-      }
-
-      await aplicarOrder(inscricao, leitura, "Webhook");
-      return res.status(200).json({ ok: true });
+      const { status, body: corpo } = await aplicarWebhookChurrasco(leitura);
+      return res.status(status).json(corpo);
     } catch (err) {
       if (err instanceof MercadoPagoError && err.code === "nao_encontrado") {
         console.warn("[Churrasco/Webhook] order desconhecida — ignorada.");

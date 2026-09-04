@@ -17,10 +17,28 @@ import {
   isGoogleSheetsConfigured,
   quoteSheetName,
 } from "./google-sheets.js";
-import { CHURRASCO_WEBHOOK_PATH, registerChurrascoRoutes } from "./churrasco.js";
-import { ambienteMercadoPago, isMercadoPagoConfigured, isWebhookSecretConfigured } from "./mercadopago.js";
+import {
+  CHURRASCO_WEBHOOK_PATH,
+  ORDER_PREFIX as CHURRASCO_PREFIX,
+  registerChurrascoRoutes,
+  aplicarWebhookChurrasco,
+} from "./churrasco.js";
+import {
+  MercadoPagoError,
+  ambienteMercadoPago,
+  consultarOrder,
+  isMercadoPagoConfigured,
+  isWebhookSecretConfigured,
+  lerOrder,
+  validarAssinaturaWebhook,
+} from "./mercadopago.js";
 import { checkCoupon, marcarCupomUsado, aplicarPrecoCusto } from "./cupons.js";
-import { LOJA_WEBHOOK_PATH, registerLojaRoutes } from "./loja-pagamento.js";
+import {
+  ORDER_PREFIX as LOJA_PREFIX,
+  registerLojaRoutes,
+  aplicarWebhookLoja,
+} from "./loja-pagamento.js";
+import { rateLimit } from "./rate-limit.js";
 
 const app = express();
 const port = process.env.PORT || 3333;
@@ -98,11 +116,64 @@ registerChurrascoRoutes(app);
 
 /* ─── LOJA — checkout pelo Mercado Pago ─── */
 // POST /api/loja/checkout/quote · POST /api/loja/checkout
-// GET  /api/loja/pedidos/:orderId/status · POST /api/loja/webhook/mercadopago
+// GET  /api/loja/pedidos/:orderId/status
 // Cobra cartão (com repasse da taxa ao cliente) e Pix no Checkout Transparente
-// do Mercado Pago, com aba de planilha própria e webhook próprio. Compartilha
-// só o cliente HTTP e a validação de assinatura com o churrasco.
+// do Mercado Pago, com aba de planilha própria. Compartilha o cliente HTTP e a
+// validação de assinatura com o churrasco.
 registerLojaRoutes(app);
+
+/* ─── WEBHOOK CENTRAL DO MERCADO PAGO ───
+   A API de Orders usa UM único destino por aplicação, configurado no painel
+   (tópico "Order"). Este endpoint recebe tudo, valida a assinatura uma vez,
+   consulta a order OFICIAL (`GET /v1/orders/{id}`) e despacha pelo prefixo do
+   `external_reference` — nunca confia na referência vinda no corpo.
+     LOJA-...       → aplicarWebhookLoja
+     CHURRASCO-...  → aplicarWebhookChurrasco
+     qualquer outro → 200 ignorado
+   Os endpoints /api/{loja,churrasco}/webhook/mercadopago seguem funcionando
+   para compatibilidade e usam os mesmos handlers. */
+const webhookCentralLimiter = rateLimit({ windowMs: 60 * 1000, max: 600, message: "too many requests" });
+
+app.post("/api/mercadopago/webhook", webhookCentralLimiter, async (req, res) => {
+  const body = req.body || {};
+  const dataId = String(body?.data?.id || body?.id || "").slice(0, 80);
+
+  const assinatura = validarAssinaturaWebhook({
+    xSignature: req.get("x-signature"),
+    xRequestId: req.get("x-request-id"),
+    dataId,
+  });
+  if (!assinatura.ok) {
+    console.warn(`[MercadoPago/Webhook] assinatura recusada (${assinatura.motivo}).`);
+    return res.status(401).json({ ok: false });
+  }
+
+  const topico = String(body.type || body.topic || body.action || "").toLowerCase();
+  if (!topico.includes("order")) return res.status(200).json({ ok: true, ignorado: "topico" });
+  if (!dataId) return res.status(200).json({ ok: true, ignorado: "sem_id" });
+
+  try {
+    const leitura = lerOrder(await consultarOrder(dataId));
+    const referencia = leitura.externalReference || "";
+
+    let resultado;
+    if (referencia.startsWith(LOJA_PREFIX)) {
+      resultado = await aplicarWebhookLoja(leitura);
+    } else if (referencia.startsWith(CHURRASCO_PREFIX)) {
+      resultado = await aplicarWebhookChurrasco(leitura);
+    } else {
+      return res.status(200).json({ ok: true, ignorado: "referencia" });
+    }
+    return res.status(resultado.status).json(resultado.body);
+  } catch (err) {
+    if (err instanceof MercadoPagoError && err.code === "nao_encontrado") {
+      return res.status(200).json({ ok: true, ignorado: "order_inexistente" });
+    }
+    const motivo = err instanceof MercadoPagoError ? err.code : "processamento";
+    console.error(`[MercadoPago/Webhook] erro ao processar (${motivo}).`);
+    return res.status(500).json({ ok: false });
+  }
+});
 
 app.get("/api/health", (_req, res) => {
   res.json({
@@ -572,30 +643,30 @@ app.listen(port, () => {
   console.log(`CORS    : ${[...ALLOWED_ORIGINS].join(", ")} + *.vercel.app`);
   console.log(`InfinitePay handle: ${process.env.INFINITEPAY_HANDLE || "⚠ NÃO CONFIGURADO"}`);
 
-  // Diagnóstico do churrasco — diz só se a credencial existe e de que tipo é.
+  // Diagnóstico do Mercado Pago — churrasco (Pix) + loja (cartão e Pix).
+  const apiBase = (process.env.API_URL || "http://localhost:3333").replace(/\/$/, "");
   console.log(
-    `Churrasco (Mercado Pago, só Pix): ${
+    `Mercado Pago: ${
       isMercadoPagoConfigured()
         ? `✓ credencial de ${ambienteMercadoPago()}`
         : "✗ defina MERCADO_PAGO_ACCESS_TOKEN"
     }`
   );
-  console.log(
-    `  → webhook : ${(process.env.API_URL || "http://localhost:3333").replace(/\/$/, "")}${CHURRASCO_WEBHOOK_PATH}`
-  );
+  console.log(`  → webhook (painel, tópico "Order"): ${apiBase}/api/mercadopago/webhook`);
+  console.log(`  → compat: ${apiBase}${CHURRASCO_WEBHOOK_PATH} · ${apiBase}/api/loja/webhook/mercadopago`);
   console.log(
     `  → assinatura do webhook: ${
       isWebhookSecretConfigured() ? "✓ configurada" : "✗ defina MERCADO_PAGO_WEBHOOK_SECRET"
     }`
   );
+  console.log(`  → loja: Public Key ${process.env.MERCADO_PAGO_PUBLIC_KEY ? "✓" : "✗ MERCADO_PAGO_PUBLIC_KEY"}`);
 
   // Diagnóstico do Google Sheets
   const sheetsOk = isGoogleSheetsConfigured();
   console.log(`Google Sheets configurado: ${sheetsOk ? "✓ SIM" : "✗ NÃO"}`);
   if (sheetsOk) {
-    const key = getGooglePrivateKey();
     console.log(`  → email : ${process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL}`);
-    console.log(`  → key   : ${key ? `${key.slice(0, 27).replace(/\n/g, "↵")}... (${key.length} chars)` : "VAZIA"}`);
+    console.log(`  → chave privada: ${getGooglePrivateKey() ? "configurada" : "AUSENTE"}`);
     console.log(`  → sheet : ${process.env.GOOGLE_SHEETS_SPREADSHEET_ID} / aba "${defaultGoogleSheetName}"`);
     console.log(`  → teste : GET /api/test-sheets`);
   }

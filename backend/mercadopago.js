@@ -57,15 +57,86 @@ export function ambienteMercadoPago() {
 /**
  * Erro de integração já sanitizado. `code` é o que o resto do sistema lê;
  * `message` fica curta e sem nada do corpo devolvido pelo Mercado Pago.
+ *
+ * Os campos `mp*` carregam só diagnóstico seguro extraído da resposta de erro
+ * (códigos oficiais, nomes de propriedade recusada, id da requisição) — nunca
+ * valor de campo, dado do pagador ou o corpo cru.
  */
 export class MercadoPagoError extends Error {
-  constructor(code, message, { status = 0, retryAfterSeconds = null } = {}) {
+  constructor(
+    code,
+    message,
+    { status = 0, retryAfterSeconds = null, mpCode = "", mpCauses = [], mpFields = [], mpRequestId = "" } = {}
+  ) {
     super(message);
     this.name = "MercadoPagoError";
     this.code = code;
     this.status = status;
     this.retryAfterSeconds = retryAfterSeconds;
+    /** Código oficial do erro do Mercado Pago (ex: "unsupported_properties"). */
+    this.mpCode = mpCode;
+    /** Códigos das causas (ex: [2067, "invalid_param"]). */
+    this.mpCauses = mpCauses;
+    /** Nomes de propriedade citados na recusa (ex: ["notification_url"]). */
+    this.mpFields = mpFields;
+    /** x-request-id do Mercado Pago, para rastrear no painel. */
+    this.mpRequestId = mpRequestId;
   }
+
+  /** Resumo de uma linha, sem PII, para log. */
+  get diagnostico() {
+    const partes = [`status=${this.status || "?"}`, `code=${this.mpCode || this.code}`];
+    if (this.mpCauses.length) partes.push(`causes=${this.mpCauses.join(",")}`);
+    if (this.mpFields.length) partes.push(`fields=${this.mpFields.join(",")}`);
+    if (this.mpRequestId) partes.push(`request-id=${this.mpRequestId}`);
+    return partes.join(" ");
+  }
+}
+
+/* Propriedades conhecidas da API de Orders. Um nome citado na descrição de um
+   erro que esteja nesta lista é seguro de logar; qualquer outra coisa (valor
+   de campo, e-mail, nome) não casa com o padrão e fica de fora. */
+const CAMPOS_ORDERS = new Set([
+  "type", "total_amount", "external_reference", "processing_mode", "description",
+  "transactions", "payments", "payment_method", "id", "token", "installments",
+  "amount", "expiration_time", "payer", "email", "first_name", "last_name",
+  "identification", "items", "notification_url", "metadata", "config",
+  "marketplace", "integration_data",
+]);
+
+/**
+ * Extrai diagnóstico seguro do corpo de erro do Mercado Pago.
+ * Formato observado: { message, error, status, cause: [{ code, description }] }
+ * ou { errors: [{ code, message }] }.
+ */
+function lerErroMp(dados) {
+  if (!dados || typeof dados !== "object") return { mpCode: "", mpCauses: [], mpFields: [] };
+
+  const mpCode = String(dados.error || dados.code || dados.name || "").slice(0, 60);
+
+  const causas = Array.isArray(dados.cause)
+    ? dados.cause
+    : Array.isArray(dados.errors)
+      ? dados.errors
+      : [];
+
+  const mpCauses = [];
+  const mpFields = new Set();
+  for (const causa of causas.slice(0, 10)) {
+    if (causa == null) continue;
+    const c = causa.code ?? causa.error;
+    if (c != null) mpCauses.push(String(c).slice(0, 40));
+    const texto = String(causa.description || causa.message || "");
+    for (const token of texto.match(/[a-z_][a-z0-9_]{2,40}/gi) || []) {
+      if (CAMPOS_ORDERS.has(token.toLowerCase())) mpFields.add(token.toLowerCase());
+    }
+  }
+  // A mensagem de topo às vezes cita a propriedade recusada.
+  for (const token of String(dados.message || "").match(/[a-z_][a-z0-9_]{2,40}/gi) || []) {
+    if (CAMPOS_ORDERS.has(token.toLowerCase())) mpFields.add(token.toLowerCase());
+  }
+
+  return { mpCode, mpCauses, mpFields: [...mpFields] };
 }
 
 function codeParaStatus(status) {
@@ -131,16 +202,26 @@ async function chamar(caminho, { method = "GET", body = null, idempotencyKey = "
   }
 
   if (!resposta.ok) {
-    // O corpo do erro pode trazer dado do pagador — nada dele vai para o log
-    // nem para a resposta da nossa API; só o status e o código interno.
-    throw new MercadoPagoError(
+    // O corpo do erro pode trazer dado do pagador — nada dele vai para a
+    // resposta da nossa API. Só diagnóstico seguro (códigos, nomes de
+    // propriedade, request-id) é extraído e logado.
+    const { mpCode, mpCauses, mpFields } = lerErroMp(dados);
+    const mpRequestId = String(resposta.headers.get("x-request-id") || "").slice(0, 60);
+
+    const erro = new MercadoPagoError(
       codeParaStatus(resposta.status),
       `Mercado Pago respondeu ${resposta.status}.`,
       {
         status: resposta.status,
         retryAfterSeconds: lerRetryAfter(resposta.headers.get("retry-after")),
+        mpCode,
+        mpCauses,
+        mpFields,
+        mpRequestId,
       }
     );
+    console.warn(`[MercadoPago] ${method} ${caminho} recusado ${erro.diagnostico}`);
+    throw erro;
   }
 
   if (!dados || typeof dados !== "object") {
@@ -154,19 +235,21 @@ async function chamar(caminho, { method = "GET", body = null, idempotencyKey = "
 /**
  * Cria uma order na API de Orders (Checkout Transparente).
  *
- * O payload é montado aqui inteiro, do zero — nada vindo do navegador entra
- * nele além do `token` do cartão (que já é opaco). `metadata` e
- * `notification_url` só entram quando quem chama os fornece: a cobrança Pix do
- * churrasco continua produzindo exatamente o mesmo corpo de antes.
+ * O payload é o mínimo documentado — os mesmos campos que a cobrança Pix do
+ * churrasco já usa em produção: `type`, `total_amount`, `external_reference`,
+ * `processing_mode`, `transactions.payments` e `payer.email`. Nada mais.
+ *
+ * `notification_url` e `metadata` NÃO existem no corpo da API de Orders (a
+ * notificação é configurada na aplicação, no tópico "Order"). Enviá-los
+ * devolve 400 `unsupported_properties` — por isso não há como passá-los daqui.
+ * O módulo é identificado pelo prefixo do `external_reference` (CHURRASCO- /
+ * LOJA-), não por metadata.
  *
  * @param {object}   params
- * @param {string}   params.externalReference  - referência imutável do pedido/inscrição
+ * @param {string}   params.externalReference  - referência imutável (com prefixo do módulo)
  * @param {number}   params.totalAmountCents   - inteiro, calculado no servidor
  * @param {Array}    params.payments           - [{ amountCents, payment_method, expiration_time? }]
- * @param {string}   [params.payerEmail]       - atalho para `payer: { email }`
- * @param {object}   [params.payer]            - objeto payer completo (tem prioridade)
- * @param {object}   [params.metadata]         - dados livres (ex: { source, orderId })
- * @param {string}   [params.notificationUrl]  - webhook desta order (HTTPS)
+ * @param {string}   params.payerEmail         - e-mail do pagador (obrigatório)
  * @param {string}   params.idempotencyKey     - estável para a mesma tentativa
  * @param {string}   [params.processingMode]   - "automatic" por padrão
  */
@@ -175,9 +258,6 @@ export async function criarOrder({
   totalAmountCents,
   payments,
   payerEmail,
-  payer,
-  metadata,
-  notificationUrl,
   idempotencyKey,
   processingMode = "automatic",
 }) {
@@ -196,11 +276,8 @@ export async function criarOrder({
         return item;
       }),
     },
-    payer: payer || { email: payerEmail },
+    payer: { email: payerEmail },
   };
-
-  if (metadata && typeof metadata === "object") payload.metadata = metadata;
-  if (notificationUrl) payload.notification_url = notificationUrl;
 
   return chamar("/v1/orders", { method: "POST", body: payload, idempotencyKey });
 }
@@ -282,7 +359,6 @@ export function lerOrder(order) {
     status: String(order?.status || ""),
     statusDetail: String(order?.status_detail || ""),
     totalAmountCents: amountToCents(order?.total_amount),
-    metadata: order?.metadata && typeof order.metadata === "object" ? order.metadata : {},
 
     paymentId: pagamento.id ? String(pagamento.id) : "",
     paymentStatus: String(pagamento.status || ""),

@@ -37,6 +37,15 @@ export function formatDateTime() {
 export async function ensureSheetExists() {}
 export async function ensureSheetHeader() {}
 
+/* Só existem para satisfazer os imports de `index.js` quando ele é subido
+   inteiro (teste do webhook central). Nenhum teste chama de verdade. */
+export function getGooglePrivateKey() {
+  return "chave-de-teste";
+}
+export function createGoogleAuth() {
+  return { fake: true };
+}
+
 /** Só o subconjunto de `spreadsheets.values` que o código usa. */
 export function createSheetsClient() {
   return {

@@ -28,7 +28,6 @@
  */
 import crypto from "node:crypto";
 
-import { apiBaseUrl } from "./infinitepay.js";
 import { checkCoupon, marcarCupomUsado, aplicarPrecoCusto } from "./cupons.js";
 import { clientIp, rateLimit } from "./rate-limit.js";
 import { formatDateTime } from "./google-sheets.js";
@@ -53,13 +52,13 @@ import {
   ambienteMercadoPago,
   consultarOrder,
   criarOrder,
+  criarOrderPix,
   isMercadoPagoConfigured,
   isWebhookSecretConfigured,
   lerOrder,
   validarAssinaturaWebhook,
 } from "./mercadopago.js";
 import {
-  PIX_EXPIRACAO,
   PIX_EXPIRACAO_MINUTOS,
   STATUS_CANCELADO,
   STATUS_ERRO,
@@ -76,20 +75,15 @@ import {
   statusLabel,
 } from "./shared/churrasco.js";
 
-/** Prefixo da referência externa — é o que separa a loja do churrasco. */
+/**
+ * Prefixo da referência externa — é o ÚNICO identificador do módulo. A API de
+ * Orders não aceita `metadata` nem `notification_url` no corpo; o webhook
+ * (central, em index.js) despacha lendo este prefixo do `external_reference`
+ * oficial da order.
+ */
 export const ORDER_PREFIX = "LOJA-";
 export const LOJA_WEBHOOK_PATH = "/api/loja/webhook/mercadopago";
 export { LOJA_SHEET_NAME };
-
-/** Meio do pagamento no metadata da order. */
-const SOURCE = "ecommerce";
-
-/** O Mercado Pago só aceita `notification_url` HTTPS. Em dev (localhost) a
- *  confirmação vem pelo polling do navegador — a order é criada sem webhook. */
-function notificationUrl() {
-  const url = `${apiBaseUrl()}${LOJA_WEBHOOK_PATH}`;
-  return url.startsWith("https://") ? url : undefined;
-}
 
 /* ─── Segredo (mesma cadeia de fallback do churrasco) ─────────────────── */
 
@@ -333,6 +327,36 @@ export function avaliarOrder(pedido, leitura) {
   return { ...base, status };
 }
 
+/**
+ * Aplica uma order da LOJA a partir da leitura oficial do Mercado Pago.
+ *
+ * Chamada pelo webhook central (`/api/mercadopago/webhook` em index.js) e pela
+ * rota própria da loja. Assume que `leitura` já veio de `GET /v1/orders/{id}`
+ * e que a referência já foi identificada como `LOJA-` — mas revalida por
+ * segurança. Devolve `{ status, body }` para o HTTP.
+ */
+export async function aplicarWebhookLoja(leitura) {
+  const referencia = leitura.externalReference;
+
+  if (!isLojaOrder(referencia)) {
+    return { status: 200, body: { ok: true, ignorado: "referencia" } };
+  }
+
+  const pedido = await findPedido(referencia, { fresh: true });
+  if (!pedido) {
+    console.warn(`[Loja/Webhook] ${referencia} não está na planilha — ignorado.`);
+    return { status: 200, body: { ok: true, ignorado: "desconhecido" } };
+  }
+
+  if (pedido.orderMpId && leitura.orderId && pedido.orderMpId !== leitura.orderId) {
+    console.warn(`[Loja/Webhook] ${referencia} aponta para outra order — ignorado.`);
+    return { status: 200, body: { ok: true, ignorado: "order_divergente" } };
+  }
+
+  await aplicarOrder(pedido, leitura, "Webhook");
+  return { status: 200, body: { ok: true } };
+}
+
 async function aplicarOrder(pedido, leitura, origem) {
   const mudancas = avaliarOrder(pedido, leitura);
   const { pedido: atualizado, gravou } = await atualizarPedido(pedido.id, mudancas);
@@ -433,8 +457,16 @@ function indisponivel(res, motivo) {
   });
 }
 
-function respostaDeErroMp(res, err) {
+/**
+ * Erro do Mercado Pago → mensagem para o cliente + status HTTP nosso. A
+ * mensagem respeita o meio de pagamento: dizer "confira o cartão" num Pix
+ * está errado. Nunca expõe detalhe técnico do Mercado Pago ao usuário — o
+ * diagnóstico já foi logado por `mercadopago.js`.
+ */
+function respostaDeErroMp(res, err, metodo) {
   const codigo = err instanceof MercadoPagoError ? err.code : "erro";
+  const ehPix = metodo === METODO_PIX;
+
   if (codigo === "rate_limit") {
     if (err.retryAfterSeconds) res.setHeader("Retry-After", String(err.retryAfterSeconds));
     return res.status(429).json({ ok: false, error: "Muitas cobranças ao mesmo tempo. Aguarde e tente de novo." });
@@ -445,12 +477,16 @@ function respostaDeErroMp(res, err) {
   if (codigo === "requisicao_invalida") {
     return res.status(422).json({
       ok: false,
-      error: "O pagamento foi recusado. Confira os dados do cartão e tente novamente.",
+      error: ehPix
+        ? "Não foi possível gerar o Pix. Tente novamente."
+        : "O pagamento foi recusado. Confira os dados do cartão e tente novamente.",
     });
   }
   return res.status(502).json({
     ok: false,
-    error: "Não foi possível concluir o pagamento agora. Tente novamente em instantes.",
+    error: ehPix
+      ? "Não foi possível gerar o Pix agora. Tente novamente em instantes."
+      : "Não foi possível concluir o pagamento agora. Tente novamente em instantes.",
   });
 }
 
@@ -572,46 +608,39 @@ export function registerLojaRoutes(app) {
         });
         const pedido = { ...existentePlanilha, cupom: reconstruido.cupom };
 
-        // Já resolvido numa tentativa anterior com o mesmo attemptId.
-        if (pedido.orderMpId && isStatusFinal(pedido.status)) {
+        // A order desta tentativa já existe (retry com o mesmo attemptId, ou
+        // restart do backend no meio): nunca cria uma segunda — relê a que há.
+        if (pedido.orderMpId) {
           const leitura = lerOrder(await buscarOrder(pedido.orderMpId, { fresh: true }));
           return { pedido: await aplicarOrder(pedido, leitura, "Checkout"), leitura };
         }
 
-        const payments =
+        // Pix reutiliza o mesmo caminho que já roda em produção no churrasco.
+        const order =
           pagamento.data.metodo === METODO_PIX
-            ? [
-                {
-                  amountCents: cobranca.totalCents,
-                  payment_method: { id: "pix", type: "bank_transfer" },
-                  expiration_time: PIX_EXPIRACAO,
-                },
-              ]
-            : [
-                {
-                  amountCents: cobranca.totalCents,
-                  payment_method: {
-                    id: pagamento.data.paymentMethodId,
-                    type: "credit_card",
-                    token: pagamento.data.token,
-                    installments: cobranca.installments,
+            ? await criarOrderPix({
+                externalReference: orderId,
+                amountCents: cobranca.totalCents,
+                payerEmail: cliente.data.email,
+                idempotencyKey: chaveIdempotencia(orderId),
+              })
+            : await criarOrder({
+                externalReference: orderId,
+                totalAmountCents: cobranca.totalCents,
+                payerEmail: cliente.data.email,
+                idempotencyKey: chaveIdempotencia(orderId),
+                payments: [
+                  {
+                    amountCents: cobranca.totalCents,
+                    payment_method: {
+                      id: pagamento.data.paymentMethodId,
+                      type: "credit_card",
+                      token: pagamento.data.token,
+                      installments: cobranca.installments,
+                    },
                   },
-                },
-              ];
-
-        const order = await criarOrder({
-          externalReference: orderId,
-          totalAmountCents: cobranca.totalCents,
-          payments,
-          payer: {
-            email: cliente.data.email,
-            first_name: cliente.data.primeiroNome,
-            last_name: cliente.data.sobrenome || cliente.data.primeiroNome,
-          },
-          metadata: { source: SOURCE, order_id: orderId },
-          notificationUrl: notificationUrl(),
-          idempotencyKey: chaveIdempotencia(orderId),
-        });
+                ],
+              });
 
         let leitura = lerOrder(order);
 
@@ -645,18 +674,24 @@ export function registerLojaRoutes(app) {
       });
     } catch (err) {
       if (err instanceof MercadoPagoError) {
-        console.error(`[Loja] Mercado Pago recusou a cobrança: ${err.code} (${err.status}).`);
+        // O diagnóstico completo (fields, request-id) já foi logado em
+        // mercadopago.js; aqui só o resumo com o pedido.
+        console.error(
+          `[Loja] cobrança recusada pelo Mercado Pago — pedido=${orderId} metodo=${pagamento.data.metodo} ${err.diagnostico}`
+        );
         await findPedido(orderId, { fresh: true })
           .then((pedido) =>
             pedido && pedido.status === STATUS_PENDENTE && !pedido.orderMpId
               ? atualizarPedido(orderId, {
                   status: STATUS_ERRO,
-                  observacoes: "Falha ao criar a cobrança no Mercado Pago.",
+                  observacoes:
+                    `Falha ao criar a cobrança no Mercado Pago` +
+                    (err.mpFields.length ? ` (${err.mpCode || err.code}: ${err.mpFields.join(", ")})` : "."),
                 })
               : null
           )
           .catch(() => {});
-        return respostaDeErroMp(res, err);
+        return respostaDeErroMp(res, err, pagamento.data.metodo);
       }
       if (err?.code === "sheets_not_configured") return indisponivel(res, "Google Sheets não configurado");
       console.error(`[Loja] falha no checkout de ${maskEmail(cliente.data?.email)}:`, err?.message || err);
@@ -703,9 +738,9 @@ export function registerLojaRoutes(app) {
   /**
    * Webhook do Mercado Pago — evento `order`.
    *
-   * O corpo é só um aviso: o status vem de `GET /v1/orders/{id}`. Notificações
-   * do churrasco, de outro sistema ou de uma order sem o prefixo `LOJA-` são
-   * ignoradas com 200, sem tocar nada.
+   * Mantido para compatibilidade; o webhook oficial da aplicação é o central
+   * (`/api/mercadopago/webhook`). O corpo é só um aviso: o status vem de
+   * `GET /v1/orders/{id}`. Referência sem prefixo `LOJA-` é ignorada com 200.
    */
   app.post(LOJA_WEBHOOK_PATH, webhookLimiter, async (req, res) => {
     const body = req.body || {};
@@ -727,26 +762,8 @@ export function registerLojaRoutes(app) {
 
     try {
       const leitura = lerOrder(await buscarOrder(dataId, { fresh: true }));
-      const referencia = leitura.externalReference;
-
-      if (!isLojaOrder(referencia)) {
-        console.log("[Loja/Webhook] referência fora da loja — ignorada.");
-        return res.status(200).json({ ok: true, ignorado: "referencia" });
-      }
-
-      const pedido = await findPedido(referencia, { fresh: true });
-      if (!pedido) {
-        console.warn(`[Loja/Webhook] ${referencia} não está na planilha — ignorado.`);
-        return res.status(200).json({ ok: true, ignorado: "desconhecido" });
-      }
-
-      if (pedido.orderMpId && leitura.orderId && pedido.orderMpId !== leitura.orderId) {
-        console.warn(`[Loja/Webhook] ${referencia} aponta para outra order — ignorado.`);
-        return res.status(200).json({ ok: true, ignorado: "order_divergente" });
-      }
-
-      await aplicarOrder(pedido, leitura, "Webhook");
-      return res.status(200).json({ ok: true });
+      const { status, body: corpo } = await aplicarWebhookLoja(leitura);
+      return res.status(status).json(corpo);
     } catch (err) {
       if (err instanceof MercadoPagoError && err.code === "nao_encontrado") {
         return res.status(200).json({ ok: true, ignorado: "order_inexistente" });

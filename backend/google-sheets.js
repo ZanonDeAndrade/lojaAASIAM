@@ -40,11 +40,9 @@ export function createGoogleAuth() {
   const email = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
   const key = getGooglePrivateKey();
 
-  // Logs de diagnóstico — nunca expõe a chave completa
-  console.log(`[Google Auth] email configurado: ${email ? `${email.slice(0, 20)}...` : "NÃO DEFINIDO"}`);
-  console.log(`[Google Auth] private key: ${key
-    ? `${key.slice(0, 27).replace(/\n/g, "↵")}... (${key.length} chars, começa com BEGIN: ${key.includes("BEGIN PRIVATE KEY")})`
-    : "NÃO DEFINIDA"}`);
+  // Diagnóstico — nunca o conteúdo, prefixo ou tamanho de um segredo.
+  console.log(`[Google Auth] service account: ${email ? "configurada" : "NÃO DEFINIDA"}`);
+  console.log(`[Google Auth] chave privada: ${key ? "configurada" : "NÃO DEFINIDA"}`);
 
   return new google.auth.JWT({
     email,

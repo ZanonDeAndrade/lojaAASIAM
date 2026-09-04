@@ -7,10 +7,11 @@
     "start": "node index.js",
     "build": "for f in *.js shared/*.js; do node --check \"$f\" || exit 1; done",
     "dev": "node --watch index.js",
-    "test": "node _test_churrasco.mjs && node _test_comprovante.mjs && node _test_loja.mjs && node _test_loja_pagamento.mjs",
+    "test": "node _test_churrasco.mjs && node _test_comprovante.mjs && node _test_loja.mjs && node _test_loja_pagamento.mjs && node _test_webhook_central.mjs",
     "test:churrasco": "node _test_churrasco.mjs",
     "test:loja": "node _test_loja.mjs",
     "test:loja-pagamento": "node _test_loja_pagamento.mjs",
+    "test:webhook": "node _test_webhook_central.mjs",
     "test:comprovante": "node _test_comprovante.mjs"
   },
   "dependencies": {

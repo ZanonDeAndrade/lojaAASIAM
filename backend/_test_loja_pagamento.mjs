@@ -62,8 +62,6 @@ function novaOrder(payload) {
     external_reference: payload.external_reference,
     total_amount: payload.total_amount,
     processing_mode: payload.processing_mode,
-    metadata: payload.metadata || {},
-    notification_url: payload.notification_url || "",
   };
 
   if (ehPix) {
@@ -137,6 +135,28 @@ globalThis.fetch = async (url, init = {}) => {
   }
 
   if (registro.method === "POST" && alvo.pathname === "/v1/orders") {
+    // Contrato oficial da API de Orders: só estas propriedades raiz existem.
+    // Qualquer outra (notification_url, metadata, ...) devolve 400.
+    const RAIZ_OK = new Set([
+      "type", "total_amount", "external_reference", "processing_mode",
+      "transactions", "payer", "description", "config", "items",
+      "marketplace", "integration_data",
+    ]);
+    const naoSuportadas = Object.keys(registro.body || {}).filter((k) => !RAIZ_OK.has(k));
+    if (naoSuportadas.length) {
+      return resposta(400, {
+        error: "bad_request",
+        message: `The following properties are not supported: ${naoSuportadas.join(", ")}`,
+        status: 400,
+        cause: [
+          {
+            code: "unsupported_properties",
+            description: `unsupported properties: ${naoSuportadas.join(", ")}`,
+          },
+        ],
+      }, { "x-request-id": "req-mock-400" });
+    }
+
     const chave = registro.headers["X-Idempotency-Key"];
     if (chave && mp.porChave.has(chave)) {
       return resposta(201, mp.orders.get(mp.porChave.get(chave)));
@@ -378,11 +398,11 @@ await test("uniformes novos validam tamanhos e congelam o snapshot completo na p
   assert.match(sheet.rows[0][5], /Jersey/);
   assert.match(sheet.rows[0][5], /140,00/);
   assert.match(sheet.rows[0][5], /150,00/);
-  assert.match(sheet.rows[0][19], /Conjunto Chumbo: M/);
-  assert.match(sheet.rows[0][19], /Conjunto Verde: G/);
-  assert.match(sheet.rows[0][19], /Jersey: G/);
-  assert.match(sheet.rows[0][20], /Conjunto Chumbo: G/);
-  assert.match(sheet.rows[0][20], /Conjunto Verde: M/);
+  assert.match(sheet.rows[0][19], /Conjunto Chumbo[^:]*: M/);
+  assert.match(sheet.rows[0][19], /Conjunto Verde[^:]*: G/);
+  assert.match(sheet.rows[0][19], /Jersey[^:]*: G/);
+  assert.match(sheet.rows[0][20], /Conjunto Chumbo[^:]*: G/);
+  assert.match(sheet.rows[0][20], /Conjunto Verde[^:]*: M/);
 });
 
 /* ── Checkout com cartão ── */
@@ -405,9 +425,12 @@ await test("cartão aprovado: cria a linha, cobra o total certo e grava Pago", a
   assert.equal(criacao.body.transactions.payments[0].payment_method.installments, 3);
   assert.equal(criacao.body.transactions.payments[0].payment_method.token, "a".repeat(32));
   assert.equal(criacao.body.external_reference, orderIdDeTentativa(attemptId));
-  assert.equal(criacao.body.metadata.source, "ecommerce");
-  assert.match(criacao.body.notification_url, /\/api\/loja\/webhook\/mercadopago$/);
   assert.ok(criacao.headers["X-Idempotency-Key"], "X-Idempotency-Key ausente");
+
+  // A API de Orders não aceita estas propriedades no corpo — o payload não as envia.
+  assert.equal(Object.hasOwn(criacao.body, "notification_url"), false, "notification_url não pode ir no corpo");
+  assert.equal(Object.hasOwn(criacao.body, "metadata"), false, "metadata não pode ir no corpo");
+  assert.deepEqual(Object.keys(criacao.body.payer), ["email"], "payer só carrega email");
 
   assert.equal(sheet.rows.length, 1);
   assert.equal(sheet.rows[0][12], "Pago"); // coluna M — Status
@@ -494,6 +517,111 @@ await test("Pix: devolve QR e fica pendente; webhook aprovado confirma", async (
     await get(`/api/loja/pedidos/${orderId}/status`, { "X-Pedido-Token": pedidoToken(orderId) })
   ).json();
   assert.equal(status.paid, true);
+});
+
+await test("payload Pix da loja é o mínimo do contrato oficial (sem 400)", async () => {
+  resetSheet();
+  mp.requisicoes = [];
+  const attemptId = novoAttempt();
+  const res = await post("/api/loja/checkout", {
+    attemptId,
+    customer: clienteValido,
+    selection: selecaoMoletom,
+    paymentMethod: "pix",
+  });
+  assert.equal(res.status, 201, "o Mercado Pago recusou o payload Pix");
+  const corpo = await res.json();
+  assert.ok(corpo.pix?.qrCodeBase64, "sem QR Code");
+
+  const [criacao] = requisicoesPara("POST", "/v1/orders");
+  assert.equal(criacao.body.type, "online");
+  assert.equal(criacao.body.total_amount, (corpo.totalCents / 100).toFixed(2));
+  assert.match(criacao.body.external_reference, /^LOJA-/);
+  assert.equal(criacao.body.processing_mode, "automatic");
+  const pgto = criacao.body.transactions.payments[0];
+  assert.equal(pgto.payment_method.id, "pix");
+  assert.equal(pgto.payment_method.type, "bank_transfer");
+  assert.ok(pgto.expiration_time, "sem expiration_time");
+  assert.deepEqual(Object.keys(criacao.body.payer), ["email"]);
+  assert.ok(criacao.headers["X-Idempotency-Key"]);
+  // Nenhuma propriedade fora do contrato.
+  const RAIZ_OK = new Set(["type", "total_amount", "external_reference", "processing_mode", "transactions", "payer"]);
+  assert.deepEqual(Object.keys(criacao.body).filter((k) => !RAIZ_OK.has(k)), []);
+});
+
+await test("mesmo attemptId no Pix não gera duas orders", async () => {
+  resetSheet();
+  mp.requisicoes = [];
+  const attemptId = novoAttempt();
+  const corpo = { attemptId, customer: clienteValido, selection: selecaoMoletom, paymentMethod: "pix" };
+  const [a, b] = await Promise.all([post("/api/loja/checkout", corpo), post("/api/loja/checkout", corpo)]);
+  const ja = await a.json();
+  const jb = await b.json();
+  assert.equal(ja.orderId, jb.orderId);
+  assert.equal(requisicoesPara("POST", "/v1/orders").length, 1, "criou duas orders");
+  assert.equal(sheet.rows.length, 1);
+});
+
+await test("Mercado Pago 400 unsupported_properties: diagnóstico sanitizado, sem PII", async () => {
+  const mpMod = await import("./mercadopago.js");
+  mp.requisicoes = [];
+  let capturado = null;
+  try {
+    // O cliente real não envia props inválidas; forçamos uma pelo transporte.
+    const original = globalThis.fetch;
+    globalThis.fetch = async (url, init) => {
+      if (String(url).includes("/v1/orders") && init?.method === "POST") {
+        const body = JSON.parse(init.body);
+        body.notification_url = "https://x";
+        return original(url, { ...init, body: JSON.stringify(body) });
+      }
+      return original(url, init);
+    };
+    try {
+      await mpMod.criarOrder({
+        externalReference: "LOJA-2026-TESTE400",
+        totalAmountCents: 10000,
+        payerEmail: "quem@exemplo.com",
+        idempotencyKey: "k".repeat(10),
+        payments: [{ amountCents: 10000, payment_method: { id: "pix", type: "bank_transfer" } }],
+      });
+    } finally {
+      globalThis.fetch = original;
+    }
+  } catch (err) {
+    capturado = err;
+  }
+  assert.ok(capturado, "deveria ter lançado");
+  assert.equal(capturado.code, "requisicao_invalida");
+  assert.equal(capturado.status, 400);
+  assert.equal(capturado.mpCauses.includes("unsupported_properties"), true);
+  assert.equal(capturado.mpFields.includes("notification_url"), true);
+  const diag = capturado.diagnostico;
+  assert.ok(!diag.includes("quem@exemplo.com"), "e-mail vazou no diagnóstico");
+  assert.ok(!diag.includes("TEST-"), "token vazou no diagnóstico");
+});
+
+await test("mensagem de erro do Pix não menciona cartão", async () => {
+  resetSheet();
+  // Força um 400 do Mercado Pago só nesta chamada.
+  const original = globalThis.fetch;
+  globalThis.fetch = async (url, init) => {
+    if (String(url).includes("/v1/orders") && init?.method === "POST") {
+      globalThis.fetch = original;
+      return resposta(400, { error: "bad_request", cause: [{ code: "property_value", description: "amount" }] });
+    }
+    return original(url, init);
+  };
+  const res = await post("/api/loja/checkout", {
+    attemptId: novoAttempt(),
+    customer: clienteValido,
+    selection: selecaoMoletom,
+    paymentMethod: "pix",
+  });
+  globalThis.fetch = original;
+  const corpo = await res.json();
+  assert.ok(!/cart[ãa]o/i.test(corpo.error), `mensagem cita cartão: "${corpo.error}"`);
+  assert.match(corpo.error, /pix/i);
 });
 
 /* ── Webhook ── */
