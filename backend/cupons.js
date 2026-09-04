@@ -43,8 +43,11 @@ for (const nome of [
 /** Cupom de associado ilimitado, preço de custo. */
 COUPONS.set(normalizeCoupon("Gabriela Minuzzi"), { unlimited: true, used: false, tipo: "custo" });
 
-/** Cupom de TESTE: R$ 1,00 em qualquer produto. Ilimitado — repita à vontade. */
-COUPONS.set(normalizeCoupon("GabiMinuzzi100"), { unlimited: true, used: false, tipo: "teste" });
+/** Cupons de TESTE: R$ 1,00 em qualquer produto. Ilimitados — repita à vontade.
+ *  São temporários: apagar quando os testes de pagamento terminarem. */
+for (const nome of ["GabiMinuzzi100", "GabrielaMinuzzi100"]) {
+  COUPONS.set(normalizeCoupon(nome), { unlimited: true, used: false, tipo: "teste" });
+}
 
 /** Verifica disponibilidade (case-insensitive, ignora espaços extras). */
 export function checkCoupon(codigo) {

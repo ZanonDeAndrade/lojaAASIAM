@@ -127,6 +127,16 @@ await test("os cupons da loja continuam funcionando", async () => {
     (await post("/api/validar-cupom", { codigo: "gabiminuzzi100" }).then((r) => r.json())).valido,
     true
   );
+
+  // GabrielaMinuzzi100: mesmo comportamento, e não colide com "Gabriela Minuzzi" (custo).
+  assert.deepEqual(await post("/api/validar-cupom", { codigo: "  GabrielaMinuzzi100 " }).then((r) => r.json()), {
+    valido: true,
+    tipo: "teste",
+  });
+  assert.deepEqual(await post("/api/validar-cupom", { codigo: "Gabriela Minuzzi" }).then((r) => r.json()), {
+    valido: true,
+    tipo: "custo",
+  });
 });
 
 await test("o checkout da loja continua validando antes de chamar a InfinitePay", async () => {
