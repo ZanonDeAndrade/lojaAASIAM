@@ -486,6 +486,31 @@ a { color: inherit; }
 
 .tile-media img { width: 100%; height: 100%; object-fit: cover; }
 
+/* Capas de combo em `contain` (arte 1080×1350 num box 1:1): a arte fica em
+   altura cheia e sobra ~10% de vão em cada lado. Em vez da faixa preta, o vão
+   recebe um degradê que prolonga o próprio brilho da arte — que tem verde
+   saturado no meio das laterais e preto nas pontas de cima e de baixo. Fica
+   atrás da imagem (clipado pelo `overflow`/`border-radius` do box). */
+.tile-media--combo-glow {
+  background:
+    radial-gradient(
+      125% 78% at 50% 45%,
+      rgba(37, 140, 52, 0.3) 0%,
+      rgba(18, 66, 32, 0.18) 46%,
+      rgba(0, 0, 0, 0) 74%
+    ),
+    linear-gradient(
+      180deg,
+      #050f0a 0%,
+      #0b2b17 20%,
+      #17532c 42%,
+      #1b5d31 50%,
+      #17532c 58%,
+      #0b2b17 80%,
+      #050f0a 100%
+    );
+}
+
 .tile-placeholder {
   width: 100%;
   height: 100%;

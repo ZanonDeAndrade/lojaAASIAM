@@ -252,7 +252,7 @@ await test("Combo Wolf usa peças configuráveis, preço base e snapshot estrutu
   // destaque, tag), o catálogo do frontend TEM de bater com o do backend, que é
   // quem manda no preço e na composição.
   const semApresentacao = (p) => {
-    const { images, coverImage, coverFit, coverPosition, galleryFit, accent, tag, ...resto } = p;
+    const { images, coverImage, coverFit, coverPosition, coverBackground, galleryFit, accent, tag, ...resto } = p;
     return resto;
   };
   assert.deepEqual(
@@ -364,7 +364,7 @@ await test("Combos novos (Signature, Território, Domínio): modelagem, preço e
 
   // Paridade comercial/estrutural frontend × backend (fora imagem/capa/tag/accent).
   const semApresentacao = (p) => {
-    const { images, coverImage, coverFit, coverPosition, galleryFit, accent, tag, ...resto } = p;
+    const { images, coverImage, coverFit, coverPosition, coverBackground, galleryFit, accent, tag, ...resto } = p;
     return resto;
   };
   for (const id of ["combo-signature", "combo-territorio", "combo-dominio"]) {

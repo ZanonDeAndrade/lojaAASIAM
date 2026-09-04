@@ -295,6 +295,7 @@ export const PRODUCTS = [
 		],
 		coverImage: '/imgs/combo-signature.png',
 		coverFit: 'contain',
+		coverBackground: 'combo-glow',
 		galleryFit: 'contain',
 		images: ['/imgs/camiseta-aasiam.png'],
 	},
@@ -321,6 +322,7 @@ export const PRODUCTS = [
 		fixedItems: [{ name: 'Caneca com tirante', quantity: 1 }],
 		coverImage: '/imgs/combo-territorio.png',
 		coverFit: 'contain',
+		coverBackground: 'combo-glow',
 		galleryFit: 'contain',
 		images: ['/imgs/jerseys.png', '/imgs/copo.png'],
 	},
@@ -347,6 +349,7 @@ export const PRODUCTS = [
 		],
 		coverImage: '/imgs/combo-dominio.png',
 		coverFit: 'contain',
+		coverBackground: 'combo-glow',
 		galleryFit: 'contain',
 		images: [
 			'/imgs/moletom-verde.png',
@@ -381,8 +384,9 @@ export const PRODUCTS = [
 		// não vai para o backend nem para o teste de paridade comercial.
 		coverImage: '/imgs/wolfc.png',
 		// A arte tem "COMBO" colado no topo — `contain` no card mostra tudo sem
-		// aumentar o box (as bordas da arte já são pretas, sem emenda visível).
+		// aumentar o box; o vão lateral recebe o degradê `combo-glow`.
 		coverFit: 'contain',
+		coverBackground: 'combo-glow',
 		// A galeria mostra as peças soltas — nada é cortado (ver `.gallery-contain`).
 		galleryFit: 'contain',
 		images: [

@@ -840,7 +840,11 @@ function ProductTile({ product, onOpen }) {
 			disabled={soldOut}
 			aria-disabled={soldOut}
 		>
-			<div className="tile-media">
+			<div
+				className={`tile-media${
+					product.coverBackground ? ` tile-media--${product.coverBackground}` : ''
+				}`}
+			>
 				{img ? (
 					<SmartImage
 						src={img}
