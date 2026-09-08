@@ -66,6 +66,9 @@ export const LOJA_SHEET_HEADERS = [
   "Tamanho do calção", // U — vazio para itens de uma peça
   "Nome na camiseta", // V — personalização opcional, vazio quando não há
   "Número na camiseta", // W — idem
+  "Cupom", // X — nome do cupom pessoal, vazio quando não há
+  "Subtotal sem cupom", // Y — subtotal aos preços de venda (auditoria)
+  "Desconto do cupom", // Z — Y − G, congelado no pedido
 ];
 
 const COL = {
@@ -92,6 +95,9 @@ const COL = {
   shortsSizes: 20,
   personalizacaoNomes: 21,
   personalizacaoNumeros: 22,
+  cupom: 23,
+  subtotalOriginal: 24,
+  desconto: 25,
 };
 
 const LAST_COLUMN = columnLetter(LOJA_SHEET_HEADERS.length);
@@ -186,6 +192,9 @@ function rowToPedido(row, rowNumber) {
     shortsSizes: row[COL.shortsSizes] || "",
     personalizacaoNomes: row[COL.personalizacaoNomes] || "",
     personalizacaoNumeros: row[COL.personalizacaoNumeros] || "",
+    cupom: row[COL.cupom] || "",
+    subtotalOriginalCents: centsDaPlanilha(row[COL.subtotalOriginal]),
+    descontoCents: centsDaPlanilha(row[COL.desconto]),
   };
 }
 
@@ -214,6 +223,12 @@ function pedidoToRow(pedido) {
   row[COL.shortsSizes] = sheetSafe(pedido.shortsSizes, 500);
   row[COL.personalizacaoNomes] = sheetSafe(pedido.personalizacaoNomes, 500);
   row[COL.personalizacaoNumeros] = sheetSafe(pedido.personalizacaoNumeros, 200);
+  row[COL.cupom] = sheetSafe(pedido.cupom, 40);
+  row[COL.subtotalOriginal] = sheetSafe(
+    pedido.cupom ? formatBRL(pedido.subtotalOriginalCents ?? pedido.subtotalCents) : "",
+    20
+  );
+  row[COL.desconto] = sheetSafe(pedido.cupom ? formatBRL(pedido.descontoCents ?? 0) : "", 20);
   return row;
 }
 
@@ -276,6 +291,9 @@ export async function criarPedidoPendente(dados) {
     shortsSizes: dados.shortsSizes || "",
     personalizacaoNomes: dados.personalizacaoNomes || "",
     personalizacaoNumeros: dados.personalizacaoNumeros || "",
+    cupom: dados.cupom || "",
+    subtotalOriginalCents: dados.subtotalOriginalCents ?? dados.subtotalCents,
+    descontoCents: dados.descontoCents ?? 0,
     subtotalCents: dados.subtotalCents,
     paymentMethod: dados.paymentMethod,
     installments: dados.installments || 1,

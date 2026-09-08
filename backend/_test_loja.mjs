@@ -11,9 +11,21 @@
  */
 import assert from "node:assert/strict";
 import path from "node:path";
+import { registerHooks } from "node:module";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
+const fake = (name) => pathToFileURL(path.join(here, "_test_churrasco_fakes", name)).href;
+
+// A planilha é um dublê em memória — nada sai para a rede do Google.
+registerHooks({
+  resolve(specifier, context, nextResolve) {
+    if (specifier.endsWith("/google-sheets.js")) {
+      return { url: fake("google-sheets.js"), shortCircuit: true };
+    }
+    return nextResolve(specifier, context);
+  },
+});
 
 const PORT = 3599;
 
@@ -28,6 +40,7 @@ process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY = "-----BEGIN PRIVATE KEY-----\nt
 process.env.MERCADO_PAGO_ACCESS_TOKEN = "TEST-token-de-mentira";
 process.env.MERCADO_PAGO_WEBHOOK_SECRET = "segredo-de-teste";
 process.env.CHURRASCO_TOKEN_SECRET = "segredo-de-teste";
+process.env.CUPONS_CACHE_MS = "0";
 
 // Nada deste teste pode sair para a internet.
 const fetchLocal = globalThis.fetch;
@@ -94,48 +107,63 @@ await test("/api/config continua entregando o que a loja lê", async () => {
 });
 
 await test("os cupons da loja continuam funcionando", async () => {
-  assert.deepEqual(await post("/api/validar-cupom", { codigo: "  MILTON   ROBERTO  " }).then((r) => r.json()), {
+  const { resetSheet } = await import(fake("google-sheets.js"));
+  const { resetCuponsStoreForTests } = await import("./cupons-store.js");
+  resetSheet();
+  resetCuponsStoreForTests();
+
+  // Cupom pessoal — case-insensitive, trim, nome canônico de volta.
+  assert.deepEqual(await post("/api/validar-cupom", { codigo: "  ZANON  " }).then((r) => r.json()), {
     valido: true,
     tipo: "custo",
+    codigo: "Zanon",
   });
+
   assert.deepEqual(await post("/api/validar-cupom", { codigo: "fulano da silva" }).then((r) => r.json()), {
     valido: false,
     motivo: "invalido",
   });
 
-  // Uso único: usar e revalidar.
-  assert.equal((await post("/api/usar-cupom", { codigo: "Amanda Roos", orderId: "X1" }).then((r) => r.json())).ok, true);
+  // Contabilizar (idempotente) e revalidar: 1/2 continua válido.
   assert.equal(
-    (await post("/api/validar-cupom", { codigo: "amanda roos" }).then((r) => r.json())).motivo,
-    "ja_utilizado"
+    (await post("/api/usar-cupom", { codigo: "Amanda", orderId: "X1" }).then((r) => r.json())).ok,
+    true
   );
-
-  // Ilimitado continua valendo depois do uso.
-  await post("/api/usar-cupom", { codigo: "Gabriela Minuzzi", orderId: "X2" });
   assert.equal(
-    (await post("/api/validar-cupom", { codigo: "Gabriela Minuzzi" }).then((r) => r.json())).valido,
+    (await post("/api/usar-cupom", { codigo: "amanda", orderId: "X1" }).then((r) => r.json())).jaContava,
+    true
+  );
+  assert.equal(
+    (await post("/api/validar-cupom", { codigo: "amanda" }).then((r) => r.json())).valido,
     true
   );
 
-  // Cupom de teste: tipo "teste", ilimitado, não trava.
+  // Segundo uso esgota; terceiro é bloqueado.
+  await post("/api/usar-cupom", { codigo: "Amanda", orderId: "X2" });
+  assert.deepEqual(await post("/api/validar-cupom", { codigo: "Amanda" }).then((r) => r.json()), {
+    valido: false,
+    motivo: "esgotado",
+  });
+  assert.equal(
+    (await post("/api/usar-cupom", { codigo: "Amanda", orderId: "X3" }).then((r) => r.json())).ok,
+    false
+  );
+
+  // Cupons de teste (R$ 1,00) seguem intactos e ilimitados.
   assert.deepEqual(await post("/api/validar-cupom", { codigo: " GabiMinuzzi100 " }).then((r) => r.json()), {
     valido: true,
     tipo: "teste",
+    codigo: "GabiMinuzzi100",
   });
-  await post("/api/usar-cupom", { codigo: "GabiMinuzzi100", orderId: "X3" });
+  await post("/api/usar-cupom", { codigo: "GabiMinuzzi100", orderId: "X4" });
   assert.equal(
     (await post("/api/validar-cupom", { codigo: "gabiminuzzi100" }).then((r) => r.json())).valido,
     true
   );
-
-  // GabrielaMinuzzi100: mesmo comportamento, e não colide com "Gabriela Minuzzi" (custo).
   assert.deepEqual(await post("/api/validar-cupom", { codigo: "  GabrielaMinuzzi100 " }).then((r) => r.json()), {
     valido: true,
     tipo: "teste",
-  });
-  assert.deepEqual(await post("/api/validar-cupom", { codigo: "Gabriela Minuzzi" }).then((r) => r.json()), {
-    valido: true,
-    tipo: "custo",
+    codigo: "GabrielaMinuzzi100",
   });
 });
 
@@ -227,7 +255,7 @@ await test("Combo Wolf usa peças configuráveis, preço base e snapshot estrutu
 
   assert.deepEqual(
     [wolf?.name, wolf?.kind, wolf?.priceCents, wolf?.soldOut, wolf?.costCents],
-    ["Combo Wolf", "multiPieceBundle", 41500, undefined, undefined],
+    ["Combo Wolf", "multiPieceBundle", 41500, undefined, 37800],
   );
   assert.deepEqual(wolf.includes, ["Moletom", "Camiseta", "Caneca com tirante", "Jersey"]);
   assert.deepEqual(wolf.pieces.find((piece) => piece.key === "hoodie").colors.map((color) => color.code), ["verde", "bege"]);
@@ -353,8 +381,12 @@ await test("Combos novos (Signature, Território, Domínio): modelagem, preço e
   // Todos são multiPieceBundle — nada de kind novo por combo.
   for (const id of ["combo-signature", "combo-territorio", "combo-dominio"]) {
     assert.equal(back(id)?.kind, "multiPieceBundle", `${id} não é multiPieceBundle`);
-    assert.equal(back(id)?.costCents, undefined, `${id} ganhou costCents sem autorização`);
   }
+  // Preço de custo dos combos = soma dos custos unitários das peças, igual nos dois catálogos.
+  assert.deepEqual(
+    ["combo-signature", "combo-territorio", "combo-dominio"].map((id) => [back(id).costCents, front(id).costCents]),
+    [[16000, 16000], [16800, 16800], [21000, 21000]],
+  );
 
   // Preço oficial, igual no frontend e no backend.
   assert.deepEqual(

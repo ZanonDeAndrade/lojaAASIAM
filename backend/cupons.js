@@ -1,71 +1,77 @@
 /**
- * Cupons de desconto da loja.
- *
- * Map em memória — a lista nunca é exposta nas respostas da API. Extraído de
- * `index.js` para ser compartilhado entre o checkout antigo (InfinitePay) e o
- * checkout do Mercado Pago, sem duplicar a regra nem a lista de nomes.
+ * Cupons de desconto da loja — REGRA DE PREÇO.
  *
  * Dois tipos:
- *  - "custo"  → aplica o preço de custo (`costCents`) de cada produto;
+ *  - "custo"  → cada produto do carrinho passa a ser vendido pelo seu
+ *               `costCents` (preço de custo real cadastrado). O cadastro e o
+ *               limite de 2 utilizações vivem em `cupons-store.js` (aba
+ *               "Cupons" do Google Sheets) — nada em memória.
  *  - "teste"  → zera tudo para R$ 1,00/unidade, para os testes de pagamento.
+ *               Ilimitados, sem persistência. Apagar quando os testes acabarem.
  *
- * O estado ("já usado") vive só em memória: reinício do Render zera os usos
- * únicos. Limitação conhecida e aceita — a lista é pequena e curada.
+ * A normalização (trim + minúsculas + espaços) identifica o mesmo cupom em
+ * "zanon", "Zanon", " ZANON ". O nome canônico volta na resposta para exibição.
  */
-import { getProduct, centsToAmount } from "./shared/order.js";
+import { centsToAmount, getProduct } from "./shared/order.js";
+import {
+  checkCupomCusto,
+  contabilizarUsoCupom,
+  normalizarCodigo,
+} from "./cupons-store.js";
 
 /** Preço unitário aplicado pelo cupom de teste. */
 export const PRECO_TESTE_CENTS = 100;
 
 export function normalizeCoupon(codigo) {
-  return String(codigo || "")
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, " ");
+  return normalizarCodigo(codigo);
 }
-
-const COUPONS = new Map();
-
-/** Cupons de associado, uso único, preço de custo. */
-for (const nome of [
-  "Milton Roberto",
-  "Marcelo Telles",
-  "Samuel Watthier",
-  "Guilherme William",
-  "Jessika Rodrigues",
-  "Vinicius Schmidt",
-  "Gabriel Telles",
-  "Amanda Roos",
-  "Vinícios Dotto",
-]) {
-  COUPONS.set(normalizeCoupon(nome), { unlimited: false, used: false, tipo: "custo" });
-}
-/** Cupom de associado ilimitado, preço de custo. */
-COUPONS.set(normalizeCoupon("Gabriela Minuzzi"), { unlimited: true, used: false, tipo: "custo" });
 
 /** Cupons de TESTE: R$ 1,00 em qualquer produto. Ilimitados — repita à vontade.
  *  São temporários: apagar quando os testes de pagamento terminarem. */
-for (const nome of ["GabiMinuzzi100", "GabrielaMinuzzi100"]) {
-  COUPONS.set(normalizeCoupon(nome), { unlimited: true, used: false, tipo: "teste" });
+const TEST_COUPONS = new Map([
+  ["gabiminuzzi100", "GabiMinuzzi100"],
+  ["gabrielaminuzzi100", "GabrielaMinuzzi100"],
+]);
+
+/**
+ * Um produto do carrinho não tem `costCents` cadastrado. O checkout com cupom
+ * de custo é BLOQUEADO — nunca cai para 0, `null` ou o preço de venda.
+ */
+export class CupomPrecoError extends Error {
+  constructor(productId, productName) {
+    super(`Produto sem preço de custo configurado: ${productName || productId}`);
+    this.name = "CupomPrecoError";
+    this.code = "produto_sem_custo";
+    this.productId = productId;
+    this.productName = productName || productId;
+  }
 }
 
-/** Verifica disponibilidade (case-insensitive, ignora espaços extras). */
-export function checkCoupon(codigo) {
+/**
+ * Verifica um cupom sem marcar nada como usado (case-insensitive, ignora
+ * espaços). Assíncrona: o cupom de custo é lido da planilha.
+ *
+ *  { valido: true, tipo: "custo" | "teste", codigo }
+ *  { valido: false, motivo: "invalido" | "inativo" | "esgotado" }
+ */
+export async function checkCoupon(codigo) {
   const key = normalizeCoupon(codigo);
-  if (!key || !COUPONS.has(key)) return { valido: false, motivo: "invalido" };
-  const c = COUPONS.get(key);
-  if (!c.unlimited && c.used) return { valido: false, motivo: "ja_utilizado" };
-  return { valido: true, tipo: c.tipo };
+  if (!key) return { valido: false, motivo: "invalido" };
+  if (TEST_COUPONS.has(key)) {
+    return { valido: true, tipo: "teste", codigo: TEST_COUPONS.get(key) };
+  }
+  return checkCupomCusto(codigo);
 }
 
-/** Marca um cupom de uso único como usado (idempotente; ilimitado nunca trava). */
-export function marcarCupomUsado(codigo, orderId) {
+/**
+ * Contabiliza a utilização de um cupom APÓS o pagamento aprovado. Idempotente
+ * por pedido (webhook reenviado não conta duas vezes). Cupom de teste é no-op.
+ */
+export async function marcarCupomUsado(codigo, orderId) {
   const key = normalizeCoupon(codigo);
-  const c = COUPONS.get(key);
-  if (!c) return false;
-  if (!c.unlimited) c.used = true;
-  console.log(`[Cupom] "${key}" marcado como usado (pedido ${orderId || "?"}).`);
-  return true;
+  if (!key) return { ok: false, motivo: "parametros" };
+  if (TEST_COUPONS.has(key)) return { ok: true, tipo: "teste" };
+  return contabilizarUsoCupom(codigo, orderId);
 }
 
 /** Reprecifica todas as linhas do pedido, no lugar, e recalcula o total. */
@@ -80,14 +86,18 @@ function reprecificar(order, unitCentsFor) {
 }
 
 /**
- * Aplica o preço de custo (`costCents`) a todas as linhas do pedido.
- * Exportada porque o checkout legado da InfinitePay ainda a chama direto.
+ * Aplica o preço de custo (`costCents`) a todas as linhas do pedido. Lança
+ * `CupomPrecoError` se qualquer produto do carrinho não tiver custo válido.
  */
 export function aplicarPrecoCusto(order) {
-  reprecificar(order, (line) => {
+  for (const line of order.lines) {
     const product = getProduct(line.productId);
-    return product && Number.isFinite(product.costCents) ? product.costCents : line.unitPriceCents;
-  });
+    const custo = product?.costCents;
+    if (!Number.isFinite(custo) || custo <= 0) {
+      throw new CupomPrecoError(line.productId, line.productName);
+    }
+  }
+  reprecificar(order, (line) => getProduct(line.productId).costCents);
 }
 
 /** Aplica o desconto de um cupom já validado, conforme o `tipo`. */

@@ -1,12 +1,41 @@
 /**
- * Planilha falsa em memória — usada só por `_test_churrasco.mjs`.
- * Reproduz a superfície de `google-sheets.js` que o churrasco consome.
+ * Planilha falsa em memória — usada pelos testes que sobem rotas reais
+ * (`_test_churrasco.mjs`, `_test_loja.mjs`, `_test_loja_pagamento.mjs`,
+ * `_test_webhook_central.mjs`).
+ *
+ * Reproduz a superfície de `google-sheets.js` que o código consome. Para manter
+ * o comportamento histórico, TODAS as abas dividem `sheet.rows` — exceto a aba
+ * "Cupons", que fica isolada em `sheet.byTab.Cupons` (senão o contador de
+ * cupons se misturaria com as linhas de pedido nos testes).
  */
-export const sheet = { rows: [], calls: { update: 0, append: 0, get: 0 } };
+const CUPONS_TAB = "Cupons";
+
+export const sheet = {
+  rows: [],
+  byTab: {},
+  calls: { update: 0, append: 0, get: 0 },
+};
 
 export function resetSheet() {
   sheet.rows = [];
+  sheet.byTab = {};
   sheet.calls = { update: 0, append: 0, get: 0 };
+}
+
+/** Linhas de uma aba isolada (só "Cupons" hoje), cópia rasa. */
+export function tabRows(name) {
+  return (sheet.byTab[name] || []).map((r) => [...r]);
+}
+
+function parseTab(range) {
+  const m = String(range).match(/^'((?:[^']|'')+)'!|^([^'!]+)!/);
+  const raw = m ? m[1] ?? m[2] ?? "" : "";
+  return raw.replace(/''/g, "'");
+}
+
+function bucketFor(range) {
+  if (parseTab(range) === CUPONS_TAB) return (sheet.byTab[CUPONS_TAB] ||= []);
+  return sheet.rows;
 }
 
 export function isGoogleSheetsConfigured() {
@@ -51,19 +80,21 @@ export function createSheetsClient() {
   return {
     spreadsheets: {
       values: {
-        async get() {
+        async get({ range }) {
           sheet.calls.get += 1;
-          return { data: { values: sheet.rows.map((r) => [...r]) } };
+          return { data: { values: bucketFor(range).map((r) => [...r]) } };
         },
         async update({ range, requestBody }) {
           sheet.calls.update += 1;
-          const rowNumber = Number(range.match(/!A(\d+):/)[1]);
-          sheet.rows[rowNumber - 2] = [...requestBody.values[0]];
+          const bucket = bucketFor(range);
+          const rowNumber = Number(range.match(/!A(\d+)/)[1]);
+          bucket[rowNumber - 2] = [...requestBody.values[0]];
           return {};
         },
-        async append({ requestBody }) {
+        async append({ range, requestBody }) {
           sheet.calls.append += 1;
-          sheet.rows.push([...requestBody.values[0]]);
+          const bucket = bucketFor(range);
+          for (const row of requestBody.values) bucket.push([...row]);
           return {};
         },
       },

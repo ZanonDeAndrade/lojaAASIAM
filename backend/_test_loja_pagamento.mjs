@@ -42,6 +42,7 @@ process.env.MERCADO_PAGO_WEBHOOK_SECRET = WEBHOOK_SECRET;
 process.env.MERCADO_PAGO_PUBLIC_KEY = "TEST-public-key";
 // Taxas: os padrões do módulo já são os do simulador; fixamos só o Pix.
 process.env.LOJA_FEE_PIX_BPS = "99";
+process.env.CUPONS_CACHE_MS = "0"; // cupons: sempre relê a aba falsa
 
 /* ─── Mercado Pago falso ─────────────────────────────────────────────── */
 
@@ -183,6 +184,24 @@ const requisicoesPara = (metodo, prefixo) =>
 const express = (await import("express")).default;
 const { sheet, resetSheet } = await import(fake("google-sheets.js"));
 const feesMod = await import("./loja-fees.js");
+const cuponsStore = await import("./cupons-store.js");
+const { resetCuponsStoreForTests } = cuponsStore;
+const { __resetRateLimits } = await import("./rate-limit.js");
+
+/** Zera a planilha falsa, o store de cupons e os contadores de rate limit. */
+function resetTudo() {
+  resetSheet();
+  resetCuponsStoreForTests();
+  __resetRateLimits();
+}
+
+/** Linha VIVA da aba "Cupons" pelo código (para ler contador e editar `Ativo`). */
+function cupomRow(codigo) {
+  const alvo = String(codigo).trim().toLowerCase();
+  return (sheet.byTab[cuponsStore.CUPONS_SHEET_NAME] || []).find(
+    (r) => String(r[0] || "").trim().toLowerCase() === alvo
+  );
+}
 const { registerLojaRoutes, LOJA_WEBHOOK_PATH, orderIdDeTentativa, pedidoToken } = await import(
   "./loja-pagamento.js"
 );
@@ -356,6 +375,7 @@ await test("/quote ignora produto inexistente e recusa carrinho vazio/esgotado",
 });
 
 await test("/quote aplica preço de custo com cupom válido", async () => {
+  resetTudo();
   const semCupom = await (
     await post("/api/loja/checkout/quote", { selection: selecaoMoletom, paymentMethod: "pix" })
   ).json();
@@ -363,20 +383,31 @@ await test("/quote aplica preço de custo com cupom válido", async () => {
     await post("/api/loja/checkout/quote", {
       selection: selecaoMoletom,
       paymentMethod: "pix",
-      cupom: "Gabriela Minuzzi",
+      cupom: "Zanon",
     })
   ).json();
   assert.equal(comCupom.cupomAplicado, true);
+  assert.equal(comCupom.cupom, "Zanon");
+  assert.equal(comCupom.subtotalOriginalCents, semCupom.subtotalCents);
+  assert.equal(comCupom.descontoCents, semCupom.subtotalCents - comCupom.subtotalCents);
   assert.ok(comCupom.subtotalCents < semCupom.subtotalCents, "cupom não baixou o subtotal");
 });
 
 await test("cupom de teste GabiMinuzzi100 deixa cada item por R$ 1,00, no quote e no pedido", async () => {
-  resetSheet();
+  resetTudo();
 
   const { checkCoupon } = await import("./cupons.js");
-  assert.deepEqual(checkCoupon("GabiMinuzzi100"), { valido: true, tipo: "teste" });
-  assert.deepEqual(checkCoupon("  gabiminuzzi100 "), { valido: true, tipo: "teste" });
-  assert.equal(checkCoupon("Gabriela Minuzzi").tipo, "custo", "cupom de associado mudou de tipo");
+  assert.deepEqual(await checkCoupon("GabiMinuzzi100"), {
+    valido: true,
+    tipo: "teste",
+    codigo: "GabiMinuzzi100",
+  });
+  assert.deepEqual(await checkCoupon("  gabiminuzzi100 "), {
+    valido: true,
+    tipo: "teste",
+    codigo: "GabiMinuzzi100",
+  });
+  assert.equal((await checkCoupon("Zanon")).tipo, "custo", "cupom pessoal mudou de tipo");
 
   // 2x moletom (R$ 320) + 1x Jersey (R$ 150) = 3 unidades → R$ 3,00.
   const selection = {
@@ -416,14 +447,16 @@ await test("Combo Wolf mantém configurações, preço base e snapshot completo 
   ).json();
   assert.equal(quote.subtotalCents, 41500, "o backend aceitou preço enviado pelo navegador");
 
+  resetCuponsStoreForTests();
   const cupom = await (
     await post("/api/loja/checkout/quote", {
       selection: selecaoComboWolf,
       paymentMethod: "pix",
-      cupom: "Gabriela Minuzzi",
+      cupom: "Zanon",
     })
   ).json();
-  assert.equal(cupom.subtotalCents, 41500, "Combo Wolf recebeu custo antigo do Combo Alpha");
+  // Combo Wolf tem custo próprio (13000 + 8000 + 14000 + 2800 = 37800).
+  assert.equal(cupom.subtotalCents, 37800, "Combo Wolf não pegou o próprio preço de custo");
 
   for (const [field, value] of [
     ["hoodieColor", "hack"], ["hoodieSize", "XXXX"],
@@ -1132,6 +1165,230 @@ await test("/api/loja/config não vaza o Access Token", async () => {
   assert.equal(cfg.publicKey, "TEST-public-key");
   assert.ok(!JSON.stringify(cfg).includes(ACCESS_TOKEN));
   assert.deepEqual(cfg.parcelasCartao, [1, 3, 4, 5, 6]);
+});
+
+/* ── Cupons pessoais de preço de custo ──
+   As rotas /api/validar-cupom e /api/usar-cupom vivem em index.js; aqui o teste
+   exercita a REGRA (`checkCoupon`) e o store direto, mais o caminho HTTP real do
+   checkout (/api/loja/checkout[/quote]). O teste HTTP das rotas de validação
+   está em _test_loja.mjs. */
+const { checkCoupon } = await import("./cupons.js");
+
+await test("cupom pessoal válido: tipo custo, nome canônico, contador zerado", async () => {
+  resetTudo();
+  assert.deepEqual(await checkCoupon("Zanon"), {
+    valido: true,
+    tipo: "custo",
+    codigo: "Zanon",
+    usos: 0,
+    max: 2,
+  });
+});
+
+await test("cupom inexistente → invalido; case-insensitive e trim identificam o mesmo cupom", async () => {
+  resetTudo();
+  assert.deepEqual(await checkCoupon("ninguem aqui"), { valido: false, motivo: "invalido" });
+  for (const variante of ["zanon", "ZANON", "  Zanon  ", " zAnOn "]) {
+    const j = await checkCoupon(variante);
+    assert.equal(j.valido, true, `"${variante}" não validou`);
+    assert.equal(j.codigo, "Zanon");
+  }
+});
+
+await test("cupom desativado na planilha → recusado como 'inativo'", async () => {
+  resetTudo();
+  await cuponsStore.seedCupons(); // cria a aba
+  cupomRow("Milton")[3] = "Não"; // coluna D — Ativo, editado "na mão"
+  resetCuponsStoreForTests(); // limpa só o cache; a linha alterada permanece
+  assert.deepEqual(await checkCoupon("milton"), { valido: false, motivo: "inativo" });
+});
+
+await test("primeiro e segundo uso passam; terceiro é bloqueado e o contador para em 2", async () => {
+  resetTudo();
+  const s = cuponsStore;
+  assert.equal((await s.checkCupomCusto("Samuel")).valido, true);
+  assert.equal((await s.contabilizarUsoCupom("Samuel", "PED-1")).contabilizado, true);
+  assert.equal((await s.checkCupomCusto("Samuel")).valido, true);
+  assert.equal((await s.contabilizarUsoCupom("Samuel", "PED-2")).contabilizado, true);
+  assert.deepEqual(
+    [(await s.checkCupomCusto("Samuel")).valido, (await s.checkCupomCusto("Samuel")).motivo],
+    [false, "esgotado"]
+  );
+  const terceiro = await s.contabilizarUsoCupom("Samuel", "PED-3");
+  assert.deepEqual([terceiro.ok, terceiro.motivo], [false, "esgotado"]);
+  assert.equal(Number(cupomRow("Samuel")[2]), 2); // coluna C — usos
+});
+
+await test("webhook duplicado (mesmo pedido) não consome duas utilizações", async () => {
+  resetTudo();
+  const a = await cuponsStore.contabilizarUsoCupom("Amanda", "PED-X");
+  const b = await cuponsStore.contabilizarUsoCupom("Amanda", "PED-X");
+  const c = await cuponsStore.contabilizarUsoCupom("Amanda", "PED-X");
+  assert.equal(a.contabilizado, true);
+  assert.equal(b.jaContava, true);
+  assert.equal(c.jaContava, true);
+  assert.equal(Number(cupomRow("Amanda")[2]), 1);
+});
+
+await test("concorrência: duas contabilizações simultâneas na última utilização não passam de max", async () => {
+  resetTudo();
+  const s = cuponsStore;
+  await s.contabilizarUsoCupom("Gabriel", "PED-1"); // usos = 1 (falta 1)
+  const [r1, r2] = await Promise.all([
+    s.contabilizarUsoCupom("Gabriel", "PED-2"),
+    s.contabilizarUsoCupom("Gabriel", "PED-3"),
+  ]);
+  assert.equal([r1, r2].filter((r) => r.contabilizado).length, 1, "as duas contaram");
+  assert.equal([r1, r2].filter((r) => r.ok === false && r.motivo === "esgotado").length, 1);
+  assert.equal(Number(cupomRow("Gabriel")[2]), 2, "contador passou de 2");
+});
+
+await test("cupom recalcula custo de vários produtos e quantidade > 1; ignora números do navegador", async () => {
+  resetTudo();
+  const selection = {
+    "moletom-verde": { variants: { verde: { M: 2 } } }, // 2 × custo 13000
+    caneca: { quantity: 3 }, // 3 × custo 2800
+  };
+  const q = await (
+    await post("/api/loja/checkout/quote", {
+      selection,
+      paymentMethod: "pix",
+      cupom: "Marcelo",
+      price: 1,
+      subtotal: 1,
+      subtotalCents: 1,
+      descontoCents: 999999,
+    })
+  ).json();
+  assert.equal(q.subtotalOriginalCents, 2 * 16000 + 3 * 4000); // 44000
+  assert.equal(q.subtotalCents, 2 * 13000 + 3 * 2800); // 34400
+  assert.equal(q.descontoCents, 44000 - 34400); // 9600
+});
+
+await test("checkout com cupom: total ao Mercado Pago = grossUp(custo), planilha congela X/Y/Z, uso contabilizado só ao aprovar", async () => {
+  resetTudo();
+  mp.requisicoes = [];
+  const criado = await (
+    await post("/api/loja/checkout", {
+      attemptId: novoAttempt(),
+      customer: clienteValido,
+      selection: selecaoMoletom, // 2× moletom-verde → orig 32000, custo 26000
+      cupom: "  jessika ",
+      paymentMethod: "credit_card",
+      cardToken: "a".repeat(32),
+      paymentMethodId: "master",
+      installments: 1,
+    })
+  ).json();
+
+  const totalEsperado = feesMod.grossUpCents(26000, 498);
+  assert.equal(criado.subtotalCents, 26000);
+  assert.equal(criado.totalCents, totalEsperado);
+  assert.equal(criado.cupom, "Jessika");
+
+  const [criacao] = requisicoesPara("POST", "/v1/orders");
+  assert.equal(criacao.body.total_amount, (totalEsperado / 100).toFixed(2));
+
+  const linha = sheet.rows[0];
+  assert.equal(linha[23], "Jessika"); // X — Cupom
+  assert.match(linha[24], /R\$ 320,00/); // Y — Subtotal sem cupom
+  assert.match(linha[25], /R\$ 60,00/); // Z — Desconto do cupom
+  assert.equal(linha[12], "Pago"); // M — Status
+
+  assert.equal(Number(cupomRow("Jessika")[2]), 1, "cupom não contabilizado após aprovação");
+});
+
+await test("Pix com cupom: contabiliza só quando o webhook aprova, e webhook reenviado não conta de novo", async () => {
+  resetTudo();
+  const attemptId = novoAttempt();
+  await post("/api/loja/checkout", {
+    attemptId,
+    customer: clienteValido,
+    selection: selecaoMoletom,
+    cupom: "Guilherme",
+    paymentMethod: "pix",
+  });
+  // Antes de qualquer webhook: nada contabilizado.
+  assert.equal(Number(cupomRow("Guilherme")[2]), 0);
+
+  const orderId = orderIdDeTentativa(attemptId);
+  const orderMp = [...mp.orders.values()].find((o) => o.external_reference === orderId);
+  Object.assign(orderMp, { status: "processed", status_detail: "accredited" });
+  Object.assign(orderMp.transactions.payments[0], { status: "processed", status_detail: "accredited" });
+
+  await notificar(orderMp.id);
+  await notificar(orderMp.id);
+  await notificar(orderMp.id);
+  assert.equal(Number(cupomRow("Guilherme")[2]), 1);
+
+  // A planilha do pedido guardou o cupom mesmo o pagamento sendo assíncrono.
+  assert.equal(sheet.rows[0][23], "Guilherme");
+});
+
+await test("produto sem preço de custo BLOQUEIA o checkout com cupom (sem fallback silencioso)", async () => {
+  resetTudo();
+  const { PRODUCT_BY_ID } = await import("./shared/products.js");
+  const original = PRODUCT_BY_ID["caneca"].costCents;
+  delete PRODUCT_BY_ID["caneca"].costCents;
+  try {
+    const q = await post("/api/loja/checkout/quote", {
+      selection: { caneca: { quantity: 1 } },
+      paymentMethod: "pix",
+      cupom: "Dotto",
+    });
+    assert.equal(q.status, 400);
+    const jq = await q.json();
+    assert.equal(jq.field, "cupom");
+    assert.match(jq.error, /não foi poss[ií]vel aplicar o cupom/i);
+
+    const chk = await post("/api/loja/checkout", {
+      attemptId: novoAttempt(),
+      customer: clienteValido,
+      selection: { caneca: { quantity: 1 } },
+      cupom: "Dotto",
+      paymentMethod: "pix",
+    });
+    assert.equal(chk.status, 400);
+    assert.equal(sheet.rows.length, 0, "criou linha para um checkout bloqueado");
+    // Cupom intacto — nada foi contabilizado.
+    assert.equal(Number(cupomRow("Dotto")[2]), 0);
+  } finally {
+    PRODUCT_BY_ID["caneca"].costCents = original;
+  }
+});
+
+await test("cupom esgotado é recusado no /quote com a mensagem de limite", async () => {
+  resetTudo();
+  await cuponsStore.contabilizarUsoCupom("Sofia", "PED-A");
+  await cuponsStore.contabilizarUsoCupom("Sofia", "PED-B");
+  resetCuponsStoreForTests();
+  const q = await post("/api/loja/checkout/quote", {
+    selection: selecaoMoletom,
+    paymentMethod: "pix",
+    cupom: "Sofia",
+  });
+  assert.equal(q.status, 400);
+  const jq = await q.json();
+  assert.match(jq.error, /limite de utiliza/i);
+  assert.equal(jq.cupomInvalido, true);
+});
+
+await test("checkout SEM cupom continua idêntico (colunas X/Y/Z vazias)", async () => {
+  resetTudo();
+  const criado = await (
+    await post("/api/loja/checkout", {
+      attemptId: novoAttempt(),
+      customer: clienteValido,
+      selection: selecaoMoletom,
+      paymentMethod: "pix",
+    })
+  ).json();
+  assert.equal(criado.subtotalCents, 32000);
+  assert.equal(criado.cupom, null);
+  const linha = sheet.rows[0];
+  assert.equal(linha[23], "");
+  assert.equal(linha[24], "");
+  assert.equal(linha[25], "");
 });
 
 server.close();

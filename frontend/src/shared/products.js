@@ -408,6 +408,16 @@ const COST_CENTS = {
 	'manta': 5000,
 	'kit-2-moletons': 26000,
 	'kit-moletom-caneca': 15800,
+	'camiseta-aasiam': 8000,
+	'camiseta-goleiro-aasiam': 8000,
+	'conjunto-chumbo': 13000,
+	'conjunto-verde': 13000,
+	'jersey': 14000,
+	// Combos — soma dos custos unitários das peças
+	'combo-signature': 16000, // 2× camiseta (8000)
+	'combo-territorio': 16800, // jersey (14000) + caneca (2800)
+	'combo-dominio': 21000, // moletom (13000) + camiseta (8000)
+	'combo-wolf': 37800, // moletom (13000) + camiseta (8000) + jersey (14000) + caneca (2800)
 };
 for (const _p of PRODUCTS) {
 	if (COST_CENTS[_p.id] != null) _p.costCents = COST_CENTS[_p.id];

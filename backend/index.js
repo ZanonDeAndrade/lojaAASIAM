@@ -32,7 +32,7 @@ import {
   lerOrder,
   validarAssinaturaWebhook,
 } from "./mercadopago.js";
-import { checkCoupon, marcarCupomUsado, aplicarPrecoCusto } from "./cupons.js";
+import { checkCoupon, marcarCupomUsado, aplicarCupom } from "./cupons.js";
 import {
   ORDER_PREFIX as LOJA_PREFIX,
   registerLojaRoutes,
@@ -334,17 +334,22 @@ app.get("/api/test-planilha-pedido", async (_req, res) => {
 
 /* ─── CUPONS ─── */
 // Valida um cupom sem marcá-lo como usado. Não expõe a lista de cupons.
-app.post("/api/validar-cupom", (req, res) => {
+app.post("/api/validar-cupom", async (req, res) => {
   const { codigo } = req.body || {};
-  return res.json(checkCoupon(codigo));
+  const r = await checkCoupon(codigo);
+  // Nunca expõe contadores nem a lista — só o suficiente para a tela.
+  return res.json(
+    r.valido
+      ? { valido: true, tipo: r.tipo, codigo: r.codigo }
+      : { valido: false, motivo: r.motivo }
+  );
 });
 
-// Marca um cupom como usado. Chamada após o pagamento ser confirmado.
-app.post("/api/usar-cupom", (req, res) => {
+// Contabiliza um cupom. Chamada só após o pagamento confirmado; idempotente.
+app.post("/api/usar-cupom", async (req, res) => {
   const { codigo, orderId } = req.body || {};
-  const ok = marcarCupomUsado(codigo, orderId);
-  if (!ok) return res.status(404).json({ ok: false, motivo: "invalido" });
-  return res.json({ ok: true });
+  const resultado = await marcarCupomUsado(codigo, orderId);
+  return res.status(resultado.ok ? 200 : 404).json(resultado);
 });
 
 app.post("/api/checkout", async (req, res) => {
@@ -353,12 +358,16 @@ app.post("/api/checkout", async (req, res) => {
     const selection = sanitizeSelection(req.body?.selection);
     const order = calculateOrder(selection);
 
-    // Cupom: revalida no servidor; se válido e disponível, aplica preço de custo
+    // Checkout LEGADO (InfinitePay). O e-commerce hoje usa /api/loja/checkout;
+    // aqui só o cupom de TESTE (R$ 1,00) continua valendo. Os cupons de custo
+    // exigem a contabilização persistida do fluxo Mercado Pago e não são
+    // aplicados por esta rota.
     const cupom = String(req.body?.cupom || "").trim();
-    const cupomValido = cupom ? checkCoupon(cupom).valido : false;
-    if (cupomValido) {
-      aplicarPrecoCusto(order);
-      console.log(`[Checkout] Cupom "${cupom}" válido — preço de custo aplicado.`);
+    const cupomInfo = cupom ? await checkCoupon(cupom) : { valido: false };
+    const cupomTesteValido = cupomInfo.valido && cupomInfo.tipo === "teste";
+    if (cupomTesteValido) {
+      aplicarCupom(order, "teste");
+      console.log(`[Checkout] Cupom de teste "${cupom}" aplicado (R$ 1,00/item).`);
     }
 
     if (!customer.name) {
@@ -405,7 +414,7 @@ app.post("/api/checkout", async (req, res) => {
       order,
       customer: { name: customer.name, phone: customer.phone, notes: customer.notes },
       totalCents: order.totalCents,
-      cupom: cupomValido ? cupom : null,
+      cupom: cupomTesteValido ? cupom : null,
     });
 
     console.log(`[Checkout] Pedido ${orderId} criado. Aguardando pagamento.`);
@@ -617,9 +626,9 @@ app.post("/api/webhooks/infinitepay", async (req, res) => {
       // Marca como gravado para idempotência (se o cache existir)
       if (cached) cached.written = true;
 
-      // Cupom: marca como usado somente após pagamento confirmado (status "Pago")
+      // Cupom: contabiliza só após pagamento confirmado (status "Pago").
       if (cached?.cupom && statusLabel === "Pago") {
-        marcarCupomUsado(cached.cupom, orderId);
+        await marcarCupomUsado(cached.cupom, orderId);
       }
     } catch (err) {
       console.error(`[Sheets] ERRO ao escrever pedido ${orderId}: ${err.message}`);

@@ -30,6 +30,10 @@ services:
         value: Pedidos Loja
       - key: LOJA_FEE_PIX_BPS
         sync: false   # Taxa do Pix da loja em pontos-base (vazio = 0)
+      - key: CUPONS_SHEET_NAME
+        value: Cupons   # Aba dos cupons pessoais (cadastro + contador de usos)
+      - key: ADMIN_TOKEN
+        sync: false   # Opcional; se definido, habilita GET /api/loja/cupons (header X-Admin-Token)
       # LOJA_FEE_CARD_2X_BPS / _1X_ / _3X_ ... — só para sobrepor a tabela padrão
       - key: CHURRASCO_SHEET_NAME
         value: Inscrições Churrasco

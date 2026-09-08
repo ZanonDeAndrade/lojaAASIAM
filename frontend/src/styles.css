@@ -1798,6 +1798,38 @@ a { color: inherit; }
 
 .cupom-msg-ok  { color: var(--green-bright); }
 .cupom-msg-err { color: var(--danger); }
+.cupom-msg-dim { color: var(--text-dim); }
+
+.cupom-label {
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: var(--text-dim);
+}
+
+.cupom-aplicado {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 10px 12px;
+  border: 1px solid var(--green-bright);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--green-bright) 10%, transparent);
+}
+
+.cupom-aplicado-nome {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--green-bright);
+}
+
+.cupom-remover {
+  flex-shrink: 0;
+}
 
 .cupom-strike {
   text-decoration: line-through;

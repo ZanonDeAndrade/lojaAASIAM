@@ -471,6 +471,7 @@ export default function App() {
 							<CheckoutMercadoPago
 								cart={cart}
 								appliedCupom={appliedCupom}
+								onCupomInvalido={() => setAppliedCupom(null)}
 								onBack={() => go('cart')}
 								onDone={resetAll}
 							/>
@@ -1563,11 +1564,13 @@ function CartView({ cart, onQty, onRemove, onShop, onCheckout, appliedCupom, onA
 			});
 			const data = await res.json();
 			if (data.valido) {
-				onApplyCupom({ codigo, tipo: data.tipo });
+				// Preserva o nome canônico do backend para exibir ("Cupom Zanon aplicado").
+				onApplyCupom({ codigo: data.codigo || codigo, tipo: data.tipo });
+				setCupomInput(data.codigo || codigo);
 				setCupomMsg(data.tipo === 'teste' ? 'teste' : 'success');
-			} else if (data.motivo === 'ja_utilizado') {
+			} else if (data.motivo === 'esgotado') {
 				onApplyCupom(null);
-				setCupomMsg('used');
+				setCupomMsg('esgotado');
 			} else {
 				onApplyCupom(null);
 				setCupomMsg('invalid');
@@ -1578,6 +1581,12 @@ function CartView({ cart, onQty, onRemove, onShop, onCheckout, appliedCupom, onA
 		} finally {
 			setCupomLoading(false);
 		}
+	}
+
+	function handleRemoverCupom() {
+		onApplyCupom(null);
+		setCupomInput('');
+		setCupomMsg('removed');
 	}
 
 	return (
@@ -1619,39 +1628,58 @@ function CartView({ cart, onQty, onRemove, onShop, onCheckout, appliedCupom, onA
 						))}
 
 						<div className="cupom-section">
-							<div className="cupom-row">
-								<input
-									className="input cupom-input"
-									placeholder="Código do cupom"
-									value={cupomInput}
-									onChange={e => setCupomInput(e.target.value)}
-									onKeyDown={e => e.key === 'Enter' && handleAplicarCupom()}
-									disabled={cupomLoading}
-								/>
-								<button
-									type="button"
-									className="btn btn-ghost btn-sm cupom-btn"
-									onClick={handleAplicarCupom}
-									disabled={cupomLoading || !cupomInput.trim()}
-								>
-									{cupomLoading ? <Loader2 size={15} className="pc-spin" /> : 'Aplicar'}
-								</button>
-							</div>
-							{cupomMsg === 'success' && (
+							<span className="cupom-label">Cupom de desconto</span>
+							{appliedCupom ? (
+								<div className="cupom-aplicado">
+									<span className="cupom-aplicado-nome">
+										<Check size={15} /> Cupom {appliedCupom.codigo} aplicado
+									</span>
+									<button
+										type="button"
+										className="btn btn-ghost btn-sm cupom-remover"
+										onClick={handleRemoverCupom}
+									>
+										Remover
+									</button>
+								</div>
+							) : (
+								<div className="cupom-row">
+									<input
+										className="input cupom-input"
+										placeholder="Digite seu cupom"
+										value={cupomInput}
+										onChange={e => setCupomInput(e.target.value)}
+										onKeyDown={e => e.key === 'Enter' && handleAplicarCupom()}
+										disabled={cupomLoading}
+									/>
+									<button
+										type="button"
+										className="btn btn-ghost btn-sm cupom-btn"
+										onClick={handleAplicarCupom}
+										disabled={cupomLoading || !cupomInput.trim()}
+									>
+										{cupomLoading ? <Loader2 size={15} className="pc-spin" /> : 'Aplicar'}
+									</button>
+								</div>
+							)}
+							{appliedCupom && cupomMsg === 'success' && (
+								<p className="cupom-msg cupom-msg-ok">Cupom aplicado com sucesso.</p>
+							)}
+							{appliedCupom && cupomMsg === 'teste' && (
 								<p className="cupom-msg cupom-msg-ok">
-									<Check size={14} /> Cupom aplicado! Preço de associado ativado.
+									Cupom de teste: cada item sai por R$ 1,00.
 								</p>
 							)}
-							{cupomMsg === 'teste' && (
-								<p className="cupom-msg cupom-msg-ok">
-									<Check size={14} /> Cupom de teste: cada item sai por R$ 1,00.
+							{cupomMsg === 'esgotado' && (
+								<p className="cupom-msg cupom-msg-err">
+									Este cupom atingiu o limite de utilizações.
 								</p>
-							)}
-							{cupomMsg === 'used' && (
-								<p className="cupom-msg cupom-msg-err">Este cupom já foi utilizado.</p>
 							)}
 							{cupomMsg === 'invalid' && (
 								<p className="cupom-msg cupom-msg-err">Cupom inválido.</p>
+							)}
+							{cupomMsg === 'removed' && (
+								<p className="cupom-msg cupom-msg-dim">Cupom removido.</p>
 							)}
 						</div>
 					</div>
@@ -1669,7 +1697,7 @@ function CartView({ cart, onQty, onRemove, onShop, onCheckout, appliedCupom, onA
 							</div>
 							{appliedCupom && t.discount > 0 && (
 								<div className="summary-row cupom-discount-row">
-									<span>Desconto</span>
+									<span>Cupom {appliedCupom.codigo}</span>
 									<strong>- {fmt(t.discount)}</strong>
 								</div>
 							)}

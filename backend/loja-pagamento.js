@@ -28,7 +28,8 @@
  */
 import crypto from "node:crypto";
 
-import { checkCoupon, marcarCupomUsado, aplicarCupom } from "./cupons.js";
+import { CupomPrecoError, aplicarCupom, checkCoupon, marcarCupomUsado } from "./cupons.js";
+import { listarCupons } from "./cupons-store.js";
 import { clientIp, rateLimit } from "./rate-limit.js";
 import { formatDateTime } from "./google-sheets.js";
 import { calculateOrder, sanitizeSelection, validateSelection } from "./shared/order.js";
@@ -211,9 +212,13 @@ export function parsePagamento(body) {
 
 /**
  * Reconstrói o pedido a partir da seleção: preços reais do catálogo, cupom
- * revalidado no servidor. Devolve `{ error }` ou `{ order, cupom, resumoItens }`.
+ * revalidado no servidor. Nenhum valor financeiro do navegador é lido.
+ *
+ * Devolve `{ error, field }` ou
+ * `{ order, cupom, subtotalOriginalCents, descontoCents, resumoItens, ... }`
+ * onde `order` já está reprecificado ao custo quando há cupom de custo.
  */
-function reconstruirPedido(body) {
+async function reconstruirPedido(body) {
   const validation = validateSelection(body?.selection);
   if (validation) return validation;
 
@@ -224,9 +229,41 @@ function reconstruirPedido(body) {
     return { error: "Selecione pelo menos um produto disponível.", field: "selection" };
   }
 
+  const subtotalOriginalCents = order.totalCents;
+
   const cupomBruto = limpar(body?.cupom, 60);
-  const cupom = cupomBruto ? checkCoupon(cupomBruto) : { valido: false };
-  if (cupom.valido) aplicarCupom(order, cupom.tipo);
+  let cupom = { valido: false };
+  if (cupomBruto) {
+    cupom = await checkCoupon(cupomBruto);
+    if (!cupom.valido) {
+      return {
+        error:
+          cupom.motivo === "esgotado"
+            ? "Este cupom atingiu o limite de utilizações."
+            : "Cupom inválido.",
+        field: "cupom",
+        cupomInvalido: true,
+      };
+    }
+    try {
+      aplicarCupom(order, cupom.tipo);
+    } catch (err) {
+      if (err instanceof CupomPrecoError) {
+        console.error(
+          `[Loja/Cupom] checkout BLOQUEADO — ${err.message} (cupom "${cupomBruto}"). ` +
+            `Cadastre o preço de custo do produto ${err.productId} antes de liberar o cupom.`
+        );
+        return {
+          error:
+            "Não foi possível aplicar o cupom a um dos produtos do carrinho. Fale com a Atlética.",
+          field: "cupom",
+        };
+      }
+      throw err;
+    }
+  }
+
+  const descontoCents = subtotalOriginalCents - order.totalCents;
 
   const resumoItens = order.lines
     .map(
@@ -255,7 +292,10 @@ function reconstruirPedido(body) {
 
   return {
     order,
-    cupom: cupom.valido ? cupomBruto : null,
+    cupom: cupom.valido ? cupom.codigo || cupomBruto : null,
+    cupomTipo: cupom.valido ? cupom.tipo : null,
+    subtotalOriginalCents,
+    descontoCents,
     resumoItens,
     shirtSizes,
     shortsSizes,
@@ -377,7 +417,31 @@ async function aplicarOrder(pedido, leitura, origem) {
       `[Loja/${origem}] ${pedido.id} pago (${resultado.paymentMethod}, ${resultado.installments}x, ` +
         `${formatBRL(resultado.totalChargedCents)}, order ${resultado.orderMpId}).`
     );
-    if (pedido.cupom) marcarCupomUsado(pedido.cupom, pedido.id);
+
+    // Cupom: contabilizado SÓ agora (pagamento aprovado), uma única vez por
+    // pedido. `pedido.status !== STATUS_PAGO` já barra o webhook reenviado; a
+    // dedupe por orderId dentro de `contabilizarUsoCupom` é a segunda trava.
+    const cupom = resultado.cupom || pedido.cupom;
+    if (cupom) {
+      try {
+        const r = await marcarCupomUsado(cupom, pedido.id);
+        if (r?.contabilizado) {
+          console.log(
+            `[Loja/${origem}] cupom "${cupom}" contabilizado (${r.usos}/${r.max}) — pedido ${pedido.id}.`
+          );
+        } else if (r?.jaContava) {
+          console.log(`[Loja/${origem}] cupom "${cupom}" do pedido ${pedido.id} já constava.`);
+        } else if (r && r.ok === false) {
+          console.warn(
+            `[Loja/${origem}] cupom "${cupom}" NÃO contabilizado (${r.motivo}) — pedido ${pedido.id}.`
+          );
+        }
+      } catch (err) {
+        console.error(
+          `[Loja/Cupom] erro ao contabilizar "${cupom}" do pedido ${pedido.id}: ${err?.message || err}`
+        );
+      }
+    }
   }
   if (gravou && resultado.status === STATUS_REVISAO && pedido.status !== STATUS_REVISAO) {
     console.warn(`[Loja/${origem}] ${pedido.id} marcado para revisão manual.`);
@@ -414,6 +478,11 @@ function pedidoView(pedido, leitura = null) {
     paymentFeeCents: pedido.paymentFeeCents,
     paymentFee: formatBRL(pedido.paymentFeeCents),
     feeBps: pedido.feeBps,
+    cupom: pedido.cupom || null,
+    subtotalOriginalCents: pedido.subtotalOriginalCents ?? null,
+    subtotalOriginal: pedido.cupom ? formatBRL(pedido.subtotalOriginalCents ?? 0) : null,
+    descontoCents: pedido.descontoCents ?? null,
+    desconto: pedido.cupom ? formatBRL(pedido.descontoCents ?? 0) : null,
     totalCents: pedido.totalChargedCents,
     total: formatBRL(pedido.totalChargedCents),
     receiptUrl: leitura?.ticketUrl || null,
@@ -517,23 +586,52 @@ export function registerLojaRoutes(app) {
   });
 
   /**
+   * Conferência dos cupons — só com o token de administração
+   * (`ADMIN_TOKEN` no ambiente + cabeçalho `X-Admin-Token`). Sem o token
+   * configurado a rota não existe (404). Nunca exposta ao cliente.
+   */
+  app.get("/api/loja/cupons", async (req, res) => {
+    const token = process.env.ADMIN_TOKEN;
+    if (!token || req.get("X-Admin-Token") !== token) {
+      return res.status(404).json({ ok: false, error: "not found" });
+    }
+    try {
+      return res.json({ ok: true, cupons: await listarCupons() });
+    } catch (err) {
+      console.error("[Loja/Cupons] falha ao listar:", err?.message || err);
+      return res.status(502).json({ ok: false, error: "Não foi possível ler os cupons." });
+    }
+  });
+
+  /**
    * Simulação — não cria pedido nem cobrança. Reconstrói o subtotal do
    * catálogo, aplica a taxa da tabela do servidor e devolve os números que o
    * checkout mostra ANTES de pagar.
    */
-  app.post("/api/loja/checkout/quote", quoteLimiter, (req, res) => {
-    const reconstruido = reconstruirPedido(req.body);
+  app.post("/api/loja/checkout/quote", quoteLimiter, async (req, res) => {
+    const reconstruido = await reconstruirPedido(req.body);
     if (reconstruido.error) {
-      return res.status(400).json({ ok: false, error: reconstruido.error, field: reconstruido.field });
+      return res.status(400).json({
+        ok: false,
+        error: reconstruido.error,
+        field: reconstruido.field,
+        cupomInvalido: Boolean(reconstruido.cupomInvalido),
+      });
     }
 
     const subtotalCents = reconstruido.order.totalCents;
     const metodo = String(req.body?.paymentMethod || METODO_CARTAO);
+    const cupomInfo = {
+      cupomAplicado: Boolean(reconstruido.cupom),
+      cupom: reconstruido.cupom,
+      subtotalOriginalCents: reconstruido.subtotalOriginalCents,
+      descontoCents: reconstruido.descontoCents,
+    };
 
     try {
       if (metodo === METODO_PIX) {
         const pix = simularCobranca({ subtotalCents, paymentMethod: METODO_PIX });
-        return res.json({ ok: true, subtotalCents, cupomAplicado: Boolean(reconstruido.cupom), pix, cartao: null });
+        return res.json({ ok: true, subtotalCents, ...cupomInfo, pix, cartao: null });
       }
 
       const installments = Math.trunc(Number(req.body?.installments) || 1);
@@ -541,7 +639,7 @@ export function registerLojaRoutes(app) {
       return res.json({
         ok: true,
         subtotalCents,
-        cupomAplicado: Boolean(reconstruido.cupom),
+        ...cupomInfo,
         cartao,
         opcoes: opcoesDeParcelamento(subtotalCents),
       });
@@ -574,9 +672,14 @@ export function registerLojaRoutes(app) {
     const pagamento = parsePagamento(req.body);
     if (pagamento.error) return res.status(400).json({ ok: false, error: pagamento.error, field: pagamento.field });
 
-    const reconstruido = reconstruirPedido(req.body);
+    const reconstruido = await reconstruirPedido(req.body);
     if (reconstruido.error) {
-      return res.status(400).json({ ok: false, error: reconstruido.error, field: reconstruido.field });
+      return res.status(400).json({
+        ok: false,
+        error: reconstruido.error,
+        field: reconstruido.field,
+        cupomInvalido: Boolean(reconstruido.cupomInvalido),
+      });
     }
 
     const subtotalCents = reconstruido.order.totalCents;
@@ -611,6 +714,9 @@ export function registerLojaRoutes(app) {
           shortsSizes: reconstruido.shortsSizes,
           personalizacaoNomes: reconstruido.personalizacaoNomes,
           personalizacaoNumeros: reconstruido.personalizacaoNumeros,
+          cupom: reconstruido.cupom || "",
+          subtotalOriginalCents: reconstruido.subtotalOriginalCents,
+          descontoCents: reconstruido.descontoCents,
           subtotalCents,
           paymentMethod: cobranca.paymentMethod,
           installments: cobranca.installments,

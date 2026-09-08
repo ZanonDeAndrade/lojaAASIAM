@@ -83,7 +83,44 @@ GOOGLE_SHEETS_SHEET_NAME=Pedidos AASIAM
 ## Precos e produtos
 
 Edite `shared/products.js` para ajustar nomes, descricoes e valores. Os totais
-sao recalculados no servidor.
+sao recalculados no servidor. O `costCents` (preco de custo) de cada produto sai
+do mapa `COST_CENTS` no fim do arquivo — mesmo bloco no front-end e no back-end.
+
+## Cupons pessoais (preco de custo)
+
+Cupons por nome — `Dotto`, `Schmidt`, `Milton`, `Samuel`, `Marcelo`, `Zanon`,
+`Amanda`, `Jessika`, `Gabriel`, `Guilherme`, `Sofia` — que fazem cada item do
+carrinho ser vendido pelo seu `costCents`, em vez do preco de venda. Cada um vale
+**2 utilizacoes**.
+
+- **Cadastro e contador:** aba **`Cupons`** do mesmo Google Sheets
+  (`Codigo | Maximo de usos | Usos contabilizados | Ativo | Pedidos que usaram`).
+  E o "painel": edite `Ativo` para ligar/desligar, leia `Usos` / `Maximo` para
+  ver `1 / 2`, `2 / 2` (esgotado). Nunca e preciso editar codigo.
+- **Seed / migration:** `node backend/cupons-seed.mjs` — idempotente (upsert por
+  codigo normalizado), seguro em producao. A aba tambem se auto-semeia no
+  primeiro uso.
+- **Regra:** `checkCoupon` (em `cupons.js`) valida contra a aba; `aplicarCupom`
+  troca o preco pelo `costCents`. Produto **sem** `costCents` valido **bloqueia**
+  o checkout (nunca cai para 0 nem para o preco de venda).
+- **Contagem:** so quando o pagamento e **aprovado** (`aplicarOrder` →
+  `STATUS_PAGO`). Idempotente por `orderId` (webhook reenviado nao conta 2x) e
+  serializada (duas compras na ultima utilizacao nao passam de 2).
+- **Normalizacao:** `" ZANON "`, `zanon`, `Zanon` sao o mesmo cupom; o nome
+  canonico volta para exibicao ("Cupom Zanon aplicado").
+- **Pedido:** a aba `Pedidos Loja` ganhou `Cupom`, `Subtotal sem cupom` e
+  `Desconto do cupom` (colunas X–Z), congelados no pedido.
+- `GabiMinuzzi100` / `GabrielaMinuzzi100` continuam sendo cupons de **teste**
+  (R$ 1,00/item, ilimitados) — apagar quando os testes de pagamento acabarem.
+
+### Variaveis dos cupons
+
+```bash
+CUPONS_SHEET_NAME=Cupons   # nome da aba (padrao "Cupons")
+CUPONS_CACHE_MS=5000       # cache da aba entre leituras; 0 desliga (testes)
+ADMIN_TOKEN=               # se definido, habilita GET /api/loja/cupons
+                           # (cabecalho X-Admin-Token) para conferir os usos
+```
 
 ---
 

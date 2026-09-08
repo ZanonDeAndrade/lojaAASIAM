@@ -15,8 +15,17 @@ function clientIp(req) {
  * Devolve um middleware Express que recusa com 429 depois de `max`
  * requisições dentro de `windowMs`.
  */
+/** Todas as janelas ativas — só para `__resetRateLimits()` nos testes. */
+const _janelas = [];
+
+/** Zera todos os contadores. TEST-ONLY: nunca chamado em produção. */
+export function __resetRateLimits() {
+  for (const hits of _janelas) hits.clear();
+}
+
 export function rateLimit({ windowMs, max, message, keyFrom = clientIp }) {
   const hits = new Map(); // chave → { count, resetAt }
+  _janelas.push(hits);
 
   function prune(now) {
     for (const [key, entry] of hits) {

@@ -97,7 +97,7 @@ const CAMPOS = ['number', 'expiration', 'security'];
 const novoAttemptId = () =>
 	(window.crypto?.randomUUID?.() || `a-${Date.now()}-${Math.random().toString(36).slice(2)}`);
 
-export default function CheckoutMercadoPago({ cart, appliedCupom, onBack, onDone }) {
+export default function CheckoutMercadoPago({ cart, appliedCupom, onCupomInvalido, onBack, onDone }) {
 	const [config, setConfig] = useState(null);
 	const [configErro, setConfigErro] = useState('');
 
@@ -193,6 +193,9 @@ export default function CheckoutMercadoPago({ cart, appliedCupom, onBack, onDone
 			if (res.ok && data.ok) {
 				setQuote(data);
 				setErro('');
+			} else if (data.cupomInvalido && onCupomInvalido) {
+				onCupomInvalido();
+				setErro('O cupom não está mais disponível e foi removido. Confira o novo total.');
 			} else {
 				setErro(data.error || 'Não foi possível calcular o valor do pagamento.');
 			}
@@ -201,7 +204,7 @@ export default function CheckoutMercadoPago({ cart, appliedCupom, onBack, onDone
 		} finally {
 			setQuoteCarregando(false);
 		}
-	}, [selection, cupom, metodo, parcelas]);
+	}, [selection, cupom, metodo, parcelas, onCupomInvalido]);
 
 	useEffect(() => {
 		if (!config || resultado) return;
@@ -481,7 +484,20 @@ export default function CheckoutMercadoPago({ cart, appliedCupom, onBack, onDone
 					)}
 
 					<div className="mp-resumo-pagamento">
-						<Linha rotulo="Subtotal dos produtos" valor={fmt(quote?.subtotalCents)} />
+						{quote?.cupom && quote.descontoCents > 0 ? (
+							<>
+								<Linha
+									rotulo="Subtotal dos produtos"
+									valor={fmt(quote.subtotalOriginalCents)}
+								/>
+								<Linha
+									rotulo={`Cupom ${quote.cupom}`}
+									valor={`- ${fmt(quote.descontoCents)}`}
+								/>
+							</>
+						) : (
+							<Linha rotulo="Subtotal dos produtos" valor={fmt(quote?.subtotalCents)} />
+						)}
 						<Linha
 							rotulo="Pagamento"
 							valor={metodo === 'pix' ? 'Pix' : 'Cartão de crédito'}
@@ -631,8 +647,14 @@ function ResultadoPagamento({ resultado, onTentarDeNovo, onVoltarLoja }) {
 						</div>
 						<div className="pc-summary-row">
 							<span>Produtos</span>
-							<strong>{resultado.subtotal}</strong>
+							<strong>{resultado.cupom ? resultado.subtotalOriginal : resultado.subtotal}</strong>
 						</div>
+						{resultado.cupom && resultado.descontoCents > 0 && (
+							<div className="pc-summary-row">
+								<span>Cupom {resultado.cupom}</span>
+								<strong>- {resultado.desconto}</strong>
+							</div>
+						)}
 						<div className="pc-summary-row">
 							<span>Acréscimo do pagamento</span>
 							<strong>{resultado.paymentFee}</strong>
