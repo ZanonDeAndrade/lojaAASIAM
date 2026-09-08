@@ -1,5 +1,9 @@
 export const HOODIE_SIZES = ['PP', 'P', 'M', 'G', 'GG', 'XG'];
 
+// Grade do fabricante da Jersey — 3P e 3G no lugar de XG. É por produto:
+// moletons e camisetas seguem com HOODIE_SIZES.
+export const JERSEY_SIZES = ['3P', 'PP', 'P', 'M', 'G', 'GG', '3G'];
+
 export const HOODIE_VARIANTS = [
 		{
 			code: 'verde',
@@ -29,10 +33,10 @@ export const JERSEY_VARIANTS = [
 
 /* Atributos reutilizáveis dos produtos personalizáveis — a regra vive em
    order.js; aqui só a declaração. `chipLabel` monta a descrição curta do item. */
-const sizeAttribute = (key, label, chipLabel) => ({
+const sizeAttribute = (key, label, chipLabel, options = HOODIE_SIZES) => ({
 	key,
 	label,
-	options: HOODIE_SIZES,
+	options,
 	chipLabel,
 });
 const colorAttribute = (options, label = 'Cor') => ({
@@ -243,10 +247,11 @@ export const PRODUCTS = [
 			tag: 'Escolha o tamanho',
 			accent: '#12c86b',
 			variants: JERSEY_VARIANTS,
-			sizes: HOODIE_SIZES,
+			sizes: JERSEY_SIZES,
+			sizeGuide: 'jersey',
 			attributes: [
 				colorAttribute(JERSEY_VARIANTS),
-				sizeAttribute('size', 'Tamanho', 'Tam. {value}'),
+				sizeAttribute('size', 'Tamanho', 'Tam. {value}', JERSEY_SIZES),
 			],
 			personalization: { noun: 'Jersey' },
 			images: ['/imgs/jerseys.png'],

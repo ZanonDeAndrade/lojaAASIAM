@@ -1,5 +1,34 @@
 export const HOODIE_SIZES = ['PP', 'P', 'M', 'G', 'GG', 'XG'];
 
+// Grade do fabricante da Jersey — 3P e 3G no lugar de XG. É por produto:
+// moletons e camisetas seguem com HOODIE_SIZES.
+export const JERSEY_SIZES = ['3P', 'PP', 'P', 'M', 'G', 'GG', '3G'];
+
+/**
+ * Guias de medidas por produto (dados; a apresentação é o componente
+ * `MedidaTabela` no App). `a` = comprimento, `b` = largura, em centímetros.
+ * A legenda e os avisos são compartilhados por todos os guias.
+ */
+export const SIZE_GUIDES = {
+	moletom: [
+		{ size: 'PP', a: 60, b: 50 },
+		{ size: 'P', a: 63, b: 53 },
+		{ size: 'M', a: 67, b: 56 },
+		{ size: 'G', a: 70, b: 59 },
+		{ size: 'GG', a: 74, b: 63 },
+		{ size: 'XG', a: 77, b: 66 },
+	],
+	jersey: [
+		{ size: '3P', a: 73, b: 48 },
+		{ size: 'PP', a: 75, b: 51 },
+		{ size: 'P', a: 77, b: 54 },
+		{ size: 'M', a: 79, b: 57 },
+		{ size: 'G', a: 81, b: 60 },
+		{ size: 'GG', a: 83, b: 63 },
+		{ size: '3G', a: 85, b: 66 },
+	],
+};
+
 export const HOODIE_VARIANTS = [
 		{
 			code: 'verde',
@@ -31,10 +60,10 @@ export const JERSEY_VARIANTS = [
    `chipLabel` monta a descrição curta do item ("Tam. M", "Preta"); `{value}`
    é o código e `{name}` o rótulo da opção. `personalization` liga os campos
    de nome/número — `noun` só decide o texto do label no frontend. */
-const sizeAttribute = (key, label, chipLabel) => ({
+const sizeAttribute = (key, label, chipLabel, options = HOODIE_SIZES) => ({
 	key,
 	label,
-	options: HOODIE_SIZES,
+	options,
 	chipLabel,
 });
 const colorAttribute = (options, label = 'Cor') => ({
@@ -245,10 +274,11 @@ export const PRODUCTS = [
 			tag: 'Escolha o tamanho',
 			accent: '#12c86b',
 			variants: JERSEY_VARIANTS,
-			sizes: HOODIE_SIZES,
+			sizes: JERSEY_SIZES,
+			sizeGuide: 'jersey',
 			attributes: [
 				colorAttribute(JERSEY_VARIANTS),
-				sizeAttribute('size', 'Tamanho', 'Tam. {value}'),
+				sizeAttribute('size', 'Tamanho', 'Tam. {value}', JERSEY_SIZES),
 			],
 			personalization: { noun: 'Jersey' },
 			images: ['/imgs/jerseys.png'],

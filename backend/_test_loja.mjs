@@ -529,6 +529,41 @@ await test("Jersey e conjuntos: kind unificado, tamanhos, cor e personalização
     "a Jersey perdeu as cores Branca/Preta",
   );
 
+  // Grade do fabricante da Jersey: 3P..3G (sem XG), por produto.
+  const jerseyGrade = ["3P", "PP", "P", "M", "G", "GG", "3G"];
+  const jerseyP = PRODUCTS.find((p) => p.id === "jersey");
+  assert.deepEqual(jerseyP.sizes, jerseyGrade, "sizes da Jersey");
+  assert.deepEqual(
+    jerseyP.attributes.find((a) => a.key === "size").options,
+    jerseyGrade,
+    "options do atributo de tamanho da Jersey",
+  );
+  assert.equal(jerseyP.sizeGuide, "jersey", "Jersey sem sizeGuide próprio");
+  for (const size of jerseyGrade) {
+    assert.equal(
+      validateSelection({ jersey: { configurations: { a: { quantity: 1, color: "preta", size } } } }),
+      null,
+      `Jersey ${size} deveria valer`,
+    );
+  }
+  assert.match(
+    validateSelection({ jersey: { configurations: { a: { quantity: 1, color: "preta", size: "XG" } } } }).error,
+    /tamanho/i,
+    "Jersey não deveria mais aceitar XG",
+  );
+
+  // Nenhum outro produto teve a grade alterada.
+  assert.deepEqual(
+    PRODUCTS.find((p) => p.id === "moletom-verde").sizes,
+    ["PP", "P", "M", "G", "GG", "XG"],
+    "grade do moletom mudou",
+  );
+  assert.deepEqual(
+    PRODUCTS.find((p) => p.id === "camiseta-aasiam").attributes[0].options,
+    ["PP", "P", "M", "G", "GG", "XG"],
+    "grade da camiseta mudou",
+  );
+
   // Jersey: preço não muda; personalizações diferentes são itens diferentes.
   const jerseySel = {
     jersey: {
@@ -622,6 +657,16 @@ await test("o cálculo do pedido é o mesmo no frontend e no backend", async () 
     daquiP.PRODUCTS.map((p) => [p.id, p.priceCents, p.soldOut === true]),
     "id, preço ou situação de venda divergem entre frontend e backend"
   );
+
+  // Grade de tamanhos por produto tem de bater — senão o front deixa escolher
+  // um tamanho que o back recusa.
+  const grade = (mod, id) => {
+    const p = mod.PRODUCTS.find((x) => x.id === id);
+    return [p.sizes, (p.attributes || []).find((a) => a.key === "size")?.options];
+  };
+  for (const id of ["jersey", "moletom-verde", "camiseta-aasiam"]) {
+    assert.deepEqual(grade(doFrontP, id), grade(daquiP, id), `grade de ${id} diverge frontend/backend`);
+  }
 });
 
 await test("Camisetas Verde e Chumbo: tamanho obrigatório, nome/número opcionais e estruturados", async () => {

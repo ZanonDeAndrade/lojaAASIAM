@@ -26,7 +26,7 @@ import {
 } from 'lucide-react';
 import gsap from 'gsap';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { PRODUCTS } from './shared/products.js';
+import { PRODUCTS, SIZE_GUIDES } from './shared/products.js';
 import {
 	multiPieceBundleConfigurationKey,
 	personalizationKey,
@@ -1039,7 +1039,7 @@ function DetailView({ product, onBack, onAdd, onBuyNow, className }) {
 
 					<ProductSelectors product={product} sel={sel} onChange={set} />
 
-					{productHasHoodie(product) && <MedidaTabela />}
+					{sizeGuideRows(product) && <MedidaTabela rows={sizeGuideRows(product)} />}
 
 					<div className="detail-actions">
 						{product.soldOut ? (
@@ -1459,17 +1459,12 @@ function SizePills({ sizes, value, onChange }) {
 	);
 }
 
-/* ── Guia de medidas (moletons) ── */
-const MEDIDAS_MOLETOM = [
-	{ size: 'PP', a: 60, b: 50 },
-	{ size: 'P', a: 63, b: 53 },
-	{ size: 'M', a: 67, b: 56 },
-	{ size: 'G', a: 70, b: 59 },
-	{ size: 'GG', a: 74, b: 63 },
-	{ size: 'XG', a: 77, b: 66 },
-];
+/* ── Guia de medidas ──
+   Os dados vêm de `SIZE_GUIDES` (shared/products.js); aqui só a apresentação.
+   Um produto escolhe o guia por `product.sizeGuide`; os que incluem moletom
+   caem no guia 'moletom' automaticamente. */
 
-// Produtos que incluem moletom exibem o guia de medidas.
+// Produtos que incluem moletom exibem o guia de medidas do moletom.
 function productHasHoodie(product) {
 	return (
 		product.hasHoodie === true ||
@@ -1479,7 +1474,16 @@ function productHasHoodie(product) {
 	);
 }
 
-function MedidaTabela() {
+// Linhas do guia de medidas de um produto, ou null se ele não tem guia.
+function sizeGuideRows(product) {
+	if (product.sizeGuide && SIZE_GUIDES[product.sizeGuide]) {
+		return SIZE_GUIDES[product.sizeGuide];
+	}
+	if (productHasHoodie(product)) return SIZE_GUIDES.moletom;
+	return null;
+}
+
+function MedidaTabela({ rows }) {
 	const [open, setOpen] = useState(false);
 
 	return (
@@ -1512,7 +1516,7 @@ function MedidaTabela() {
 								</tr>
 							</thead>
 							<tbody>
-								{MEDIDAS_MOLETOM.map(row => (
+								{rows.map(row => (
 									<tr key={row.size}>
 										<td>{row.size}</td>
 										<td>{row.a}</td>
