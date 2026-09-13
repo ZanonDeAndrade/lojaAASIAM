@@ -393,6 +393,151 @@ await test("/quote aplica preço de custo com cupom válido", async () => {
   assert.ok(comCupom.subtotalCents < semCupom.subtotalCents, "cupom não baixou o subtotal");
 });
 
+/* ── Cupom programador5 (5% sobre o subtotal) ── */
+
+await test("cupons.js: aplicarDescontoPercentual arredonda para o centavo mais próximo", async () => {
+  const { aplicarDescontoPercentual } = await import("./cupons.js");
+
+  // R$ 3,33 × 5% = R$ 0,1665 → arredonda para R$ 0,17 (17 centavos).
+  const pedido = { totalCents: 333, totalAmount: 3.33 };
+  aplicarDescontoPercentual(pedido, 5);
+  assert.equal(pedido.totalCents, 316);
+  assert.equal(pedido.totalAmount, 3.16);
+
+  // Nunca fica negativo.
+  const zerado = { totalCents: 0, totalAmount: 0 };
+  aplicarDescontoPercentual(zerado, 5);
+  assert.equal(zerado.totalCents, 0);
+});
+
+await test("/quote: programador5 desconta exatamente 5% do subtotal, nunca do acréscimo do pagamento", async () => {
+  resetTudo();
+  const semCupom = await (
+    await post("/api/loja/checkout/quote", { selection: selecaoMoletom, paymentMethod: "pix" })
+  ).json();
+  // 2x moletom-verde = R$ 320,00 → 5% = R$ 16,00.
+  assert.equal(semCupom.subtotalCents, 32000);
+
+  for (const variacao of ["programador5", "PROGRAMADOR5", "  Programador5  "]) {
+    const comCupom = await (
+      await post("/api/loja/checkout/quote", {
+        selection: selecaoMoletom,
+        paymentMethod: "pix",
+        cupom: variacao,
+      })
+    ).json();
+    assert.equal(comCupom.cupomAplicado, true);
+    assert.equal(comCupom.cupom, "programador5");
+    assert.equal(comCupom.subtotalOriginalCents, 32000);
+    assert.equal(comCupom.descontoCents, 1600, "5% de R$ 320,00 deveria ser R$ 16,00");
+    assert.equal(comCupom.subtotalCents, 30400);
+    // O acréscimo do pagamento (Pix) incide sobre o subtotal JÁ com desconto.
+    assert.equal(comCupom.pix.totalCents, feesMod.grossUpCents(30400, 99));
+  }
+});
+
+await test("/quote: programador5 recalcula sozinho quando quantidade/produtos mudam", async () => {
+  resetTudo();
+  const umMoletom = await (
+    await post("/api/loja/checkout/quote", {
+      selection: { "moletom-verde": { variants: { verde: { M: 1 } } } },
+      paymentMethod: "pix",
+      cupom: "programador5",
+    })
+  ).json();
+  assert.equal(umMoletom.subtotalOriginalCents, 16000);
+  assert.equal(umMoletom.descontoCents, 800);
+
+  const doisProdutos = await (
+    await post("/api/loja/checkout/quote", {
+      selection: { "moletom-verde": { variants: { verde: { M: 2 } } }, caneca: { quantity: 3 } },
+      paymentMethod: "pix",
+      cupom: "programador5",
+    })
+  ).json();
+  // (2×16000 + 3×4000) = 44000 → 5% = 2200.
+  assert.equal(doisProdutos.subtotalOriginalCents, 44000);
+  assert.equal(doisProdutos.descontoCents, 2200);
+  assert.equal(doisProdutos.subtotalCents, 41800);
+});
+
+await test("/quote: carrinho vazio ou só com quantidade inválida recusa antes de aplicar o cupom", async () => {
+  resetTudo();
+  const vazio = await post("/api/loja/checkout/quote", {
+    selection: {},
+    paymentMethod: "pix",
+    cupom: "programador5",
+  });
+  assert.equal(vazio.status, 400);
+
+  const quantidadeInvalida = await post("/api/loja/checkout/quote", {
+    selection: { "moletom-verde": { variants: { verde: { M: -5 } } } },
+    paymentMethod: "pix",
+    cupom: "programador5",
+  });
+  assert.equal(quantidadeInvalida.status, 400);
+});
+
+await test("programador5: cliente não altera percentual/desconto/total manipulando o corpo da requisição", async () => {
+  resetTudo();
+  const body = await (
+    await post("/api/loja/checkout/quote", {
+      selection: selecaoMoletom,
+      paymentMethod: "pix",
+      cupom: "programador5",
+      // Campos forjados — nenhum é lido pelo backend.
+      percentual: 90,
+      descontoCents: 1,
+      subtotalCents: 1,
+      totalCents: 1,
+    })
+  ).json();
+  assert.equal(body.subtotalOriginalCents, 32000);
+  assert.equal(body.descontoCents, 1600);
+  assert.equal(body.subtotalCents, 30400);
+});
+
+await test("checkout com programador5: pedido guarda cupom, subtotal original e desconto; MP cobra o valor já descontado", async () => {
+  resetTudo();
+  const { res, body } = await checkoutCartao({ cupom: "  PROGRAMADOR5 ", paymentMethod: "pix" });
+  assert.equal(res.status, 201);
+  assert.equal(body.cupom, "programador5");
+  assert.equal(body.subtotalOriginalCents, 32000);
+  assert.equal(body.descontoCents, 1600);
+  assert.equal(body.subtotalCents, 30400);
+
+  // A order criada no Mercado Pago cobrou o gross-up do subtotal JÁ com desconto.
+  const chamada = requisicoesPara("POST", "/v1/orders").at(-1);
+  assert.equal(chamada.body.transactions.payments[0].amount, (body.totalCents / 100).toFixed(2));
+
+  assert.equal(sheet.rows[0][23], "programador5"); // X — Cupom
+  assert.match(sheet.rows[0][24], /R\$ 320,00/); // Y — Subtotal sem cupom
+  assert.match(sheet.rows[0][25], /R\$ 16,00/); // Z — Desconto do cupom
+});
+
+await test("programador5 não é cumulativo: um único campo `cupom`, dois códigos juntos são recusados", async () => {
+  resetTudo();
+  // A API só lê um campo `cupom` (string única) por requisição — não existe
+  // como somar dois cupons na mesma compra. Tentar embutir dois códigos no
+  // mesmo campo não bate com nenhum cupom cadastrado: é recusado como
+  // inválido, nunca soma os dois descontos.
+  const combinado = await post("/api/loja/checkout/quote", {
+    selection: selecaoMoletom,
+    paymentMethod: "pix",
+    cupom: "programador5,Zanon",
+  });
+  assert.equal(combinado.status, 400);
+
+  const soProgramador5 = await (
+    await post("/api/loja/checkout/quote", {
+      selection: selecaoMoletom,
+      paymentMethod: "pix",
+      cupom: "programador5",
+    })
+  ).json();
+  assert.equal(soProgramador5.descontoCents, 1600, "só o desconto de 5% — nada somado");
+});
+
 await test("cupom de teste GabiMinuzzi100 deixa cada item por R$ 1,00, no quote e no pedido", async () => {
   resetTudo();
 

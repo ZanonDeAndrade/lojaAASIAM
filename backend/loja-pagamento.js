@@ -246,7 +246,7 @@ async function reconstruirPedido(body) {
       };
     }
     try {
-      aplicarCupom(order, cupom.tipo);
+      aplicarCupom(order, cupom.tipo, cupom.codigo || cupomBruto);
     } catch (err) {
       if (err instanceof CupomPrecoError) {
         console.error(

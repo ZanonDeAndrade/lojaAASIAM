@@ -167,6 +167,39 @@ await test("os cupons da loja continuam funcionando", async () => {
   });
 });
 
+await test("cupom programador5 (5% do subtotal): case-insensitive, sem limite de uso", async () => {
+  const { resetSheet } = await import(fake("google-sheets.js"));
+  const { resetCuponsStoreForTests } = await import("./cupons-store.js");
+  resetSheet();
+  resetCuponsStoreForTests();
+
+  for (const variacao of ["programador5", "PROGRAMADOR5", "  Programador5  "]) {
+    assert.deepEqual(await post("/api/validar-cupom", { codigo: variacao }).then((r) => r.json()), {
+      valido: true,
+      tipo: "percentual",
+      codigo: "programador5",
+      percentual: 5,
+    });
+  }
+
+  // Sem limite de uso: contabilizar não altera a validade em pedidos futuros.
+  for (const orderId of ["PED-A", "PED-B", "PED-C"]) {
+    assert.equal(
+      (await post("/api/usar-cupom", { codigo: "programador5", orderId }).then((r) => r.json())).ok,
+      true
+    );
+  }
+  assert.equal(
+    (await post("/api/validar-cupom", { codigo: "programador5" }).then((r) => r.json())).valido,
+    true
+  );
+
+  assert.deepEqual(await post("/api/validar-cupom", { codigo: "programador10" }).then((r) => r.json()), {
+    valido: false,
+    motivo: "invalido",
+  });
+});
+
 await test("o checkout da loja continua validando antes de chamar a InfinitePay", async () => {
   // Sem nome, sem telefone e sem itens a rota recusa localmente — nenhuma
   // chamada externa acontece (o fetch deste teste bloquearia).

@@ -340,7 +340,7 @@ app.post("/api/validar-cupom", async (req, res) => {
   // Nunca expõe contadores nem a lista — só o suficiente para a tela.
   return res.json(
     r.valido
-      ? { valido: true, tipo: r.tipo, codigo: r.codigo }
+      ? { valido: true, tipo: r.tipo, codigo: r.codigo, ...(r.percentual != null ? { percentual: r.percentual } : {}) }
       : { valido: false, motivo: r.motivo }
   );
 });

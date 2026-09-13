@@ -113,6 +113,13 @@ const PRECO_TESTE_CENTS = 100;
 function cartTotals(cart, cupom = null) {
 	const subtotal = cart.reduce((t, i) => t + i.unitCents * i.qty, 0);
 	if (!cupom) return { subtotal, total: subtotal, discount: 0 };
+	if (cupom.tipo === 'percentual') {
+		// Mesmo arredondamento do backend (cupons.js: aplicarDescontoPercentual) —
+		// sobre o subtotal inteiro, nunca por item, pra não haver deriva de centavo.
+		const percentual = Number(cupom.percentual) || 0;
+		const discount = Math.round((subtotal * percentual) / 100);
+		return { subtotal, total: Math.max(0, subtotal - discount), discount };
+	}
 	const totalComDesconto = cart.reduce((t, i) => {
 		if (cupom.tipo === 'teste') return t + PRECO_TESTE_CENTS * i.qty;
 		const product = PRODUCTS.find(p => p.id === i.productId);
@@ -1569,9 +1576,9 @@ function CartView({ cart, onQty, onRemove, onShop, onCheckout, appliedCupom, onA
 			const data = await res.json();
 			if (data.valido) {
 				// Preserva o nome canônico do backend para exibir ("Cupom Zanon aplicado").
-				onApplyCupom({ codigo: data.codigo || codigo, tipo: data.tipo });
+				onApplyCupom({ codigo: data.codigo || codigo, tipo: data.tipo, percentual: data.percentual });
 				setCupomInput(data.codigo || codigo);
-				setCupomMsg(data.tipo === 'teste' ? 'teste' : 'success');
+				setCupomMsg(data.tipo === 'teste' ? 'teste' : data.tipo === 'percentual' ? 'percentual' : 'success');
 			} else if (data.motivo === 'esgotado') {
 				onApplyCupom(null);
 				setCupomMsg('esgotado');
@@ -1672,6 +1679,11 @@ function CartView({ cart, onQty, onRemove, onShop, onCheckout, appliedCupom, onA
 							{appliedCupom && cupomMsg === 'teste' && (
 								<p className="cupom-msg cupom-msg-ok">
 									Cupom de teste: cada item sai por R$ 1,00.
+								</p>
+							)}
+							{appliedCupom && cupomMsg === 'percentual' && (
+								<p className="cupom-msg cupom-msg-ok">
+									Cupom aplicado: {appliedCupom.percentual}% de desconto sobre os produtos.
 								</p>
 							)}
 							{cupomMsg === 'esgotado' && (
