@@ -297,43 +297,119 @@ a { color: inherit; }
 /* ─── PAGE CONTENT ─── */
 .content-pad { padding-top: 40px; padding-bottom: 96px; }
 
-/* ─── BANNER DO CHURRASCO ───
-   Um único banner, sem palco 3D e sem altura fixa: a altura vem da proporção
-   da arte (2076×758), então nada é cortado nem esticado em largura nenhuma. */
-.hero-banner {
-  display: block;
+/* ─── CARROSSEL DE DESTAQUE ───
+   Pôsteres 4:5 (1080×1350): a caixa usa a mesma proporção da arte, então
+   `cover` nunca precisa cortar nem deixar vão — é só uma rede de segurança
+   contra um pixel de diferença de arredondamento. Largura 100% no celular
+   (dentro das margens do `.page`), até 440px no desktop, sempre centralizado. */
+.hero-carousel {
   position: relative;
   width: 100%;
-  margin: 0 0 40px;
+  max-width: 440px;
+  margin: 0 auto 40px;
+}
+
+.hero-carousel-viewport {
+  position: relative;
+  width: 100%;
+  /* Reserva o espaço antes da imagem chegar: sem isso a página pula. */
+  aspect-ratio: 4 / 5;
   border-radius: var(--r-lg);
   overflow: hidden;
-  /* Reserva o espaço antes da imagem chegar: sem isso a página pula. */
-  aspect-ratio: 2076 / 758;
   background: var(--panel-2);
   box-shadow: var(--shadow-sm);
-  outline-offset: 3px;
-  transition: transform 0.18s ease, box-shadow 0.18s ease;
+  cursor: grab;
+  touch-action: pan-y;
 }
 
-.hero-banner img {
-  display: block;
+.hero-carousel-viewport.is-dragging { cursor: grabbing; }
+
+.hero-carousel-track {
+  display: flex;
   width: 100%;
-  height: auto;
+  height: 100%;
+  transition: transform 0.45s cubic-bezier(0.22, 0.61, 0.36, 1);
 }
 
-/* A arte é o conteúdo; a resposta ao ponteiro é só a moldura. */
-.hero-banner:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 22px 48px -20px rgba(0, 0, 0, 0.55);
+.hero-carousel-slide {
+  position: relative;
+  flex: 0 0 100%;
+  width: 100%;
+  height: 100%;
 }
 
-.hero-banner:focus-visible {
-  outline: 3px solid var(--green-bright);
+.hero-carousel-slide .smart-picture,
+.hero-carousel-slide img {
+  width: 100%;
+  height: 100%;
 }
+
+.hero-carousel-slide img { object-fit: cover; }
+
+.hero-carousel-counter {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  padding: 4px 10px;
+  border-radius: var(--r-pill);
+  background: rgba(0, 0, 0, 0.45);
+  color: #fff;
+  font-family: var(--font);
+  font-weight: 700;
+  font-size: 0.72rem;
+  letter-spacing: 0.02em;
+  pointer-events: none;
+}
+
+.hero-carousel-arrow {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.45);
+  color: #fff;
+  transition: background 0.15s;
+}
+
+.hero-carousel-arrow:hover { background: rgba(0, 0, 0, 0.65); }
+.hero-carousel-arrow:focus-visible { outline: 3px solid var(--green-bright); outline-offset: 2px; }
+.hero-carousel-arrow-prev { left: 12px; }
+.hero-carousel-arrow-next { right: 12px; }
+
+.hero-carousel-dots {
+  position: absolute;
+  bottom: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 9px;
+  border-radius: var(--r-pill);
+  background: rgba(0, 0, 0, 0.35);
+}
+
+.hero-carousel-dot {
+  width: 7px;
+  height: 7px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: rgba(255, 255, 255, 0.5);
+  transition: width 0.2s ease, background 0.2s ease;
+}
+
+.hero-carousel-dot:hover { background: rgba(255, 255, 255, 0.75); }
+.hero-carousel-dot.is-active { width: 18px; background: var(--green-bright); }
+.hero-carousel-dot:focus-visible { outline: 2px solid var(--green-bright); outline-offset: 2px; }
 
 @media (prefers-reduced-motion: reduce) {
-  .hero-banner { transition: none; }
-  .hero-banner:hover { transform: none; }
+  .hero-carousel-track { transition: none !important; }
 }
 
 .smart-picture {
@@ -422,7 +498,10 @@ a { color: inherit; }
 }
 
 /* ─── CATALOG (single page with category sections) ─── */
-.catalog-section { padding-bottom: 56px; }
+/* Alvo do botão "Combos" do cabeçalho (e da pílula "Combos" do filtro): o
+   cabeçalho é `sticky` no desktop e a barra de logo é `sticky` no celular —
+   sem essa folga a rolagem suave para com o título da seção escondido atrás. */
+.catalog-section { padding-bottom: 56px; scroll-margin-top: 96px; }
 .catalog-section:last-child { padding-bottom: 0; }
 
 .section-head {
@@ -484,31 +563,6 @@ a { color: inherit; }
 }
 
 .tile-media img { width: 100%; height: 100%; object-fit: cover; }
-
-/* Capas de combo em `contain` (arte 1080×1350 num box 1:1): a arte fica em
-   altura cheia e sobra ~10% de vão em cada lado. Em vez da faixa preta, o vão
-   recebe um degradê que prolonga o próprio brilho da arte — que tem verde
-   saturado no meio das laterais e preto nas pontas de cima e de baixo. Fica
-   atrás da imagem (clipado pelo `overflow`/`border-radius` do box). */
-.tile-media--combo-glow {
-  background:
-    radial-gradient(
-      125% 78% at 50% 45%,
-      rgba(37, 140, 52, 0.3) 0%,
-      rgba(18, 66, 32, 0.18) 46%,
-      rgba(0, 0, 0, 0) 74%
-    ),
-    linear-gradient(
-      180deg,
-      #050f0a 0%,
-      #0b2b17 20%,
-      #17532c 42%,
-      #1b5d31 50%,
-      #17532c 58%,
-      #0b2b17 80%,
-      #050f0a 100%
-    );
-}
 
 .tile-placeholder {
   width: 100%;

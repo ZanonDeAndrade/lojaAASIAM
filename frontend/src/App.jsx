@@ -4,6 +4,7 @@ import {
 	Check,
 	CheckCircle2,
 	ChevronDown,
+	ChevronLeft,
 	ChevronRight,
 	Copy,
 	CreditCard,
@@ -105,6 +106,14 @@ function normalizeQty(v) {
  */
 function productCover(product) {
 	return product.coverImage || product.images?.[0] || null;
+}
+
+/**
+ * DOM da seção de uma categoria. Combos usa `id="combos"` — âncora do botão
+ * do cabeçalho; as demais mantêm `cat-<id>`, como sempre.
+ */
+function catSectionId(catId) {
+	return catId === 'kits' ? 'combos' : `cat-${catId}`;
 }
 
 // Preço unitário do cupom de teste — o backend é a autoridade (cupons.js).
@@ -351,15 +360,6 @@ export default function App() {
 		return () => window.removeEventListener('popstate', aoVoltar);
 	}, []);
 
-	/** Navega para um endereço do próprio site, sem recarregar a página. */
-	function irPara(path) {
-		if (window.location.pathname !== path) {
-			window.history.pushState({}, '', path);
-		}
-		setView(viewFromLocation());
-		window.scrollTo({ top: 0 });
-	}
-
 	function toggleTheme() {
 		setTheme(t => (t === 'dark' ? 'light' : 'dark'));
 	}
@@ -370,17 +370,14 @@ export default function App() {
 	}
 
 	function scrollToCategory(catId) {
+		const targetId = catSectionId(catId);
 		if (view !== 'catalog') {
 			setView('catalog');
 			setTimeout(() => {
-				document
-					.getElementById(`cat-${catId}`)
-					?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+				document.getElementById(targetId)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 			}, 80);
 		} else {
-			document
-				.getElementById(`cat-${catId}`)
-				?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+			document.getElementById(targetId)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 		}
 	}
 
@@ -436,7 +433,7 @@ export default function App() {
 				onScrollTo={scrollToCategory}
 				onHome={() => go('catalog')}
 				onCart={() => go('cart')}
-				onChurrasco={() => irPara('/churrasco')}
+				onCombos={() => scrollToCategory('kits')}
 				onToggleTheme={toggleTheme}
 			/>
 
@@ -445,7 +442,6 @@ export default function App() {
 					{view === 'catalog' && (
 						<CatalogView
 							onOpen={openProduct}
-							onChurrasco={() => irPara('/churrasco')}
 							className="fade-in"
 						/>
 					)}
@@ -507,17 +503,19 @@ export default function App() {
    HEADER
 ══════════════════════════════════════════════════════ */
 /**
- * Acesso ao churrasco. É um link de verdade — abre em outra aba, copia o
- * endereço, responde ao teclado —, mas o clique comum troca a tela sem
- * recarregar. Aparece duas vezes no header e o CSS mostra só a do momento:
- * no desktop ao lado do carrinho, no celular na barra de cima, porque a
- * barra de baixo já divide o espaço entre as quatro categorias.
+ * Atalho para a seção de combos. É uma âncora de verdade (`#combos`) — abre em
+ * outra aba, copia o endereço, responde ao teclado —, mas o clique comum rola
+ * a própria página, suavemente, sem recarregar. Aparece duas vezes no header e
+ * o CSS mostra só a do momento: no desktop ao lado do carrinho, no celular na
+ * barra de cima, porque a barra de baixo já divide o espaço entre as quatro
+ * categorias. Estilo, tamanho, cor e ícone são os mesmos de sempre — só o
+ * destino mudou, do evento do churrasco para os combos da própria loja.
  */
-function ChurrascoLink({ onAbrir, className = '' }) {
+function CombosLink({ onIr, className = '' }) {
 	return (
 		<a
 			className={`churrasco-link ${className}`.trim()}
-			href="/churrasco"
+			href="#combos"
 			onClick={evento => {
 				// Clique com modificador ou botão do meio: deixa o navegador
 				// abrir em outra aba, como qualquer link.
@@ -531,11 +529,14 @@ function ChurrascoLink({ onAbrir, className = '' }) {
 					return;
 				}
 				evento.preventDefault();
-				onAbrir();
+				// Âncora de verdade: atualiza a URL (compartilhável, funciona com
+				// o botão voltar) — a rolagem em si continua suave, via JS.
+				window.history.pushState(null, '', '#combos');
+				onIr();
 			}}
 		>
 			<Flame size={15} aria-hidden="true" />
-			<span>Churrasco</span>
+			<span>Combos</span>
 		</a>
 	);
 }
@@ -547,7 +548,7 @@ function SiteHeader({
 	onScrollTo,
 	onHome,
 	onCart,
-	onChurrasco,
+	onCombos,
 	onToggleTheme,
 }) {
 	const [brokenDesktop, setBrokenDesktop] = useState(false);
@@ -596,7 +597,7 @@ function SiteHeader({
 					<span className="wordmark">AASIAM</span>
 				</button>
 
-				<ChurrascoLink onAbrir={onChurrasco} className="churrasco-link-topo" />
+				<CombosLink onIr={onCombos} className="churrasco-link-topo" />
 			</div>
 
 			<header className="site-header">
@@ -640,8 +641,8 @@ function SiteHeader({
 
 						{/* Theme toggle + cart */}
 						<div className="header-actions">
-							<ChurrascoLink
-								onAbrir={onChurrasco}
+							<CombosLink
+								onIr={onCombos}
 								className="churrasco-link-barra"
 							/>
 
@@ -677,43 +678,172 @@ function SiteHeader({
    CATALOG VIEW — all categories on one page
 ══════════════════════════════════════════════════════ */
 /* ══════════════════════════════════════════════════════
-   BANNER DO CHURRASCO — destaque único da home
+   CARROSSEL DE DESTAQUE — abertura da home
 ══════════════════════════════════════════════════════ */
 
-/* A arte já diz tudo: nome, data, horário e cardápio estão pintados nela.
-   Por isso nada é escrito por cima — o banner inteiro é o link, e a única
-   resposta ao mouse e ao teclado é a moldura verde. */
-function ChurrascoBanner({ onAbrir }) {
+/* Pôsteres 4:5 da coleção Alcateia — o anúncio da coleção primeiro, depois os
+   quatro combos, na mesma ordem em que aparecem na seção de Combos abaixo. */
+const HERO_CAROUSEL_SLIDES = [
+	{
+		src: '/imgs/carousel-colecao-alcateia.png',
+		alt: 'Anúncio da coleção Alcateia 2026.1 da AASIAM, com moletom verde estampado e o lobo da atlética ao fundo',
+	},
+	{
+		src: '/imgs/combo-signature.png',
+		alt: 'Combo Signature: duas camisetas oficiais da Alcateia, verde e chumbo, com os patrocinadores da equipe',
+	},
+	{
+		src: '/imgs/combo-territorio.png',
+		alt: 'Combo Território: Jersey número 23 branca e preta da Alcateia, com caneca e chaveiro AASIAM',
+	},
+	{
+		src: '/imgs/combo-dominio.png',
+		alt: 'Combo Domínio: moletom verde e camiseta oficial preta e dourada da coleção Alcateia',
+	},
+	{
+		src: '/imgs/wolfc.png',
+		alt: 'Combo Wolf: moletom, camiseta, Jersey e caneca da coleção Alcateia, em bege e preto',
+	},
+];
+
+const CAROUSEL_INTERVAL_MS = 5000;
+const CAROUSEL_PAUSE_MS = 5000;
+const CAROUSEL_SWIPE_THRESHOLD = 0.18; // fração da largura do carrossel
+
+/**
+ * Carrossel de pôsteres 4:5 da coleção — troca sozinho a cada ~5s, aceita
+ * setas, indicadores e arrastar (mouse ou toque, via Pointer Events). Qualquer
+ * interação pausa a troca automática por alguns segundos, pra não brigar com
+ * quem está navegando. Só a primeira imagem carrega logo; as outras usam
+ * `loading="lazy"` (dentro de `SmartImage`) — igual ao resto do catálogo.
+ */
+function HeroCarousel() {
+	const count = HERO_CAROUSEL_SLIDES.length;
+	const [index, setIndex] = useState(0);
+	const [dragging, setDragging] = useState(false);
+	const [dragOffset, setDragOffset] = useState(0);
+
+	const hoveringRef = useRef(false);
+	const pausedUntilRef = useRef(0);
+	const viewportRef = useRef(null);
+	const startXRef = useRef(0);
+	const widthRef = useRef(1);
+
+	function goTo(next) {
+		setIndex(((next % count) + count) % count);
+		pausedUntilRef.current = Date.now() + CAROUSEL_PAUSE_MS;
+	}
+
+	// Troca automática — respeita "reduzir movimento" e pausa em cima de
+	// arrastar, hover ou foco (setas/indicadores) e logo após qualquer clique.
+	useEffect(() => {
+		if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return undefined;
+		const id = setInterval(() => {
+			if (dragging || hoveringRef.current || Date.now() < pausedUntilRef.current) return;
+			setIndex(i => (i + 1) % count);
+		}, CAROUSEL_INTERVAL_MS);
+		return () => clearInterval(id);
+	}, [count, dragging]);
+
+	function onPointerDown(evento) {
+		setDragging(true);
+		startXRef.current = evento.clientX;
+		widthRef.current = viewportRef.current?.offsetWidth || 1;
+		evento.currentTarget.setPointerCapture?.(evento.pointerId);
+	}
+	function onPointerMove(evento) {
+		if (!dragging) return;
+		setDragOffset(evento.clientX - startXRef.current);
+	}
+	function onPointerUp() {
+		if (!dragging) return;
+		setDragging(false);
+		const limite = widthRef.current * CAROUSEL_SWIPE_THRESHOLD;
+		if (dragOffset <= -limite) goTo(index + 1);
+		else if (dragOffset >= limite) goTo(index - 1);
+		else pausedUntilRef.current = Date.now() + CAROUSEL_PAUSE_MS;
+		setDragOffset(0);
+	}
+
 	return (
-		<a
-			className="hero-banner"
-			href="/churrasco"
-			onClick={evento => {
-				// Clique com modificador ou botão do meio: deixa o navegador
-				// abrir em outra aba, como qualquer link.
-				if (
-					evento.metaKey ||
-					evento.ctrlKey ||
-					evento.shiftKey ||
-					evento.altKey ||
-					evento.button !== 0
-				) {
-					return;
-				}
-				evento.preventDefault();
-				onAbrir();
-			}}
+		<div
+			className="hero-carousel"
+			role="region"
+			aria-roledescription="carrossel"
+			aria-label="Novidades e combos da coleção Alcateia"
+			onMouseEnter={() => { hoveringRef.current = true; }}
+			onMouseLeave={() => { hoveringRef.current = false; }}
+			onFocus={() => { hoveringRef.current = true; }}
+			onBlur={() => { hoveringRef.current = false; }}
 		>
-			<SmartImage
-				src="/imgs/banner-churrasco-amf-games.png"
-				alt="Churrasco da AASIAM durante o AMF Games, dia 12 de setembro ao meio-dia"
-				priority="high"
-			/>
-		</a>
+			<div
+				className={`hero-carousel-viewport${dragging ? ' is-dragging' : ''}`}
+				ref={viewportRef}
+				onPointerDown={onPointerDown}
+				onPointerMove={onPointerMove}
+				onPointerUp={onPointerUp}
+				onPointerCancel={onPointerUp}
+			>
+				<div
+					className="hero-carousel-track"
+					style={{
+						transform: `translateX(calc(${-index * 100}% + ${dragOffset}px))`,
+						transition: dragging ? 'none' : undefined,
+					}}
+				>
+					{HERO_CAROUSEL_SLIDES.map((slide, i) => (
+						<div
+							className="hero-carousel-slide"
+							key={slide.src}
+							aria-hidden={i !== index}
+						>
+							<SmartImage
+								src={slide.src}
+								alt={slide.alt}
+								priority={i === 0 ? 'high' : 'low'}
+							/>
+						</div>
+					))}
+				</div>
+
+				<span className="hero-carousel-counter">{index + 1}/{count}</span>
+			</div>
+
+			<button
+				type="button"
+				className="hero-carousel-arrow hero-carousel-arrow-prev"
+				onClick={() => goTo(index - 1)}
+				aria-label="Slide anterior"
+			>
+				<ChevronLeft size={20} />
+			</button>
+			<button
+				type="button"
+				className="hero-carousel-arrow hero-carousel-arrow-next"
+				onClick={() => goTo(index + 1)}
+				aria-label="Próximo slide"
+			>
+				<ChevronRight size={20} />
+			</button>
+
+			<div className="hero-carousel-dots" role="tablist" aria-label="Selecionar slide">
+				{HERO_CAROUSEL_SLIDES.map((slide, i) => (
+					<button
+						key={slide.src}
+						type="button"
+						role="tab"
+						aria-selected={i === index}
+						aria-label={`Slide ${i + 1} de ${count}`}
+						className={`hero-carousel-dot${i === index ? ' is-active' : ''}`}
+						onClick={() => goTo(i)}
+					/>
+				))}
+			</div>
+		</div>
 	);
 }
 
-function CatalogView({ onOpen, onChurrasco, className }) {
+function CatalogView({ onOpen, className }) {
 	const [activeFilter, setActiveFilter] = useState('todos');
 	const visibleCats =
 		activeFilter === 'todos'
@@ -722,7 +852,7 @@ function CatalogView({ onOpen, onChurrasco, className }) {
 
 	return (
 		<div className={`page content-pad ${className || ''}`}>
-			<ChurrascoBanner onAbrir={onChurrasco} />
+			<HeroCarousel />
 
 			<div className="cat-filter">
 				<button
@@ -749,7 +879,7 @@ function CatalogView({ onOpen, onChurrasco, className }) {
 				return (
 					<section
 						key={cat.id}
-						id={`cat-${cat.id}`}
+						id={catSectionId(cat.id)}
 						className="catalog-section"
 					>
 						<div className="section-head">
@@ -833,13 +963,9 @@ function ProductTile({ product, onOpen }) {
 	const priority = IMG_PRIORITY_BY_ID[product.id] || 'low';
 	// Combos (têm lista `includes`) não exibem badge de texto sobreposto na imagem
 	const isCombo = Array.isArray(product.includes) && product.includes.length > 0;
-	// Enquadramento da capa no card. Padrão = `cover` (regra do .tile-media img).
-	// `coverFit`/`coverPosition` no produto ajustam capas cuja arte tem texto
-	// colado no topo (ex.: "COMBO …") sem mexer no card, no grid nem na imagem.
-	const coverStyle =
-		product.coverFit || product.coverPosition
-			? { objectFit: product.coverFit, objectPosition: product.coverPosition }
-			: undefined;
+	// `coverAspect` troca o quadrado padrão do card por outra proporção — usado
+	// pelos combos com pôster 4:5, que já chega cheio, sem cortes nem vão lateral.
+	const mediaStyle = product.coverAspect ? { aspectRatio: product.coverAspect } : undefined;
 	return (
 		<button
 			type="button"
@@ -848,18 +974,9 @@ function ProductTile({ product, onOpen }) {
 			disabled={soldOut}
 			aria-disabled={soldOut}
 		>
-			<div
-				className={`tile-media${
-					product.coverBackground ? ` tile-media--${product.coverBackground}` : ''
-				}`}
-			>
+			<div className="tile-media" style={mediaStyle}>
 				{img ? (
-					<SmartImage
-						src={img}
-						alt={product.name}
-						priority={priority}
-						style={coverStyle}
-					/>
+					<SmartImage src={img} alt={product.name} priority={priority} />
 				) : (
 					<div className="tile-placeholder">
 						<ShoppingBag size={48} />
