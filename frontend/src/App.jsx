@@ -119,10 +119,10 @@ function catSectionId(catId) {
 // Preço unitário do cupom de teste — o backend é a autoridade (cupons.js).
 const PRECO_TESTE_CENTS = 100;
 
-// Prévia do cupom de valor fixo (só exibição — o backend é quem decide de
-// verdade em /api/loja/checkout/quote e /api/loja/checkout). O mecanismo é
-// genérico; o código secreto que ativa esse tipo nunca aparece aqui.
-const TOTAL_FIXO_CUPOM_TESTE_CENTS = 100;
+// Prévia do cupom Diretoria (só exibição — o backend é quem decide de verdade
+// em /api/loja/checkout/quote e /api/loja/checkout). O mecanismo é genérico; o
+// código que ativa esse tipo nunca é citado aqui, só o rótulo "Diretoria".
+const CUPOM_DIRETORIA_CENTS = 100;
 
 function cartTotals(cart, cupom = null) {
 	const subtotal = cart.reduce((t, i) => t + i.unitCents * i.qty, 0);
@@ -130,7 +130,7 @@ function cartTotals(cart, cupom = null) {
 	if (cupom.tipo === 'valorFixo') {
 		// Nunca sobe o preço: se por algum motivo o subtotal já fosse menor que
 		// o valor fixo, o total fica no subtotal (desconto zero), nunca acima.
-		const total = Math.min(subtotal, TOTAL_FIXO_CUPOM_TESTE_CENTS);
+		const total = Math.min(subtotal, CUPOM_DIRETORIA_CENTS);
 		return { subtotal, total, discount: subtotal - total };
 	}
 	if (cupom.tipo === 'percentual') {
@@ -331,17 +331,46 @@ function viewFromLocation() {
 	) {
 		return 'pagamento-concluido';
 	}
+	// Carrinho e checkout têm endereço próprio — assim um F5 (ou o botão
+	// voltar/avançar do navegador) não te devolve pro catálogo no meio da
+	// compra. O carrinho e o cupom aplicado sobrevivem à parte, via
+	// localStorage; isto aqui só garante que a TELA certa volta a aparecer.
+	if (path === '/carrinho') return 'cart';
+	if (path === '/checkout') return 'checkout';
 	return 'catalog';
+}
+
+/** Caminho que representa cada tela — só as que têm endereço próprio. */
+function pathFromView(view) {
+	if (view === 'cart') return '/carrinho';
+	if (view === 'checkout') return '/checkout';
+	return '/';
+}
+
+/** Lê um item JSON do localStorage; nunca deixa dado corrompido derrubar a página. */
+function lerArmazenado(chave, padrao) {
+	try {
+		const bruto = localStorage.getItem(chave);
+		return bruto ? JSON.parse(bruto) : padrao;
+	} catch {
+		return padrao;
+	}
 }
 
 export default function App() {
 	const [view, setView] = useState(viewFromLocation);
 	const [selectedProduct, setProduct] = useState(null);
-	const [cart, setCart] = useState([]);
+	// Carrinho e cupom sobrevivem a um F5 (inclusive na página de checkout) —
+	// mesmo padrão já usado pelo tema, via localStorage. O backend nunca confia
+	// nisso: carrinho e cupom são sempre revalidados do zero a cada tela.
+	const [cart, setCart] = useState(() => {
+		const salvo = lerArmazenado('aasiam-cart', []);
+		return Array.isArray(salvo) ? salvo : [];
+	});
 	const [theme, setTheme] = useState(
 		() => localStorage.getItem('aasiam-theme') || 'dark',
 	);
-	const [appliedCupom, setAppliedCupom] = useState(null);
+	const [appliedCupom, setAppliedCupom] = useState(() => lerArmazenado('aasiam-cupom', null));
 
 	/* apply theme class to <html> */
 	useEffect(() => {
@@ -350,6 +379,23 @@ export default function App() {
 		html.classList.toggle('light', theme === 'light');
 		localStorage.setItem('aasiam-theme', theme);
 	}, [theme]);
+
+	useEffect(() => {
+		try {
+			localStorage.setItem('aasiam-cart', JSON.stringify(cart));
+		} catch {
+			/* localStorage indisponível (modo privado, quota cheia): carrinho só na memória */
+		}
+	}, [cart]);
+
+	useEffect(() => {
+		try {
+			if (appliedCupom) localStorage.setItem('aasiam-cupom', JSON.stringify(appliedCupom));
+			else localStorage.removeItem('aasiam-cupom');
+		} catch {
+			/* idem */
+		}
+	}, [appliedCupom]);
 
 	/* hide splash screen once React has mounted (fallback de 2.5s no index.html) */
 	useEffect(() => {
@@ -377,6 +423,10 @@ export default function App() {
 
 	function go(nextView) {
 		setView(nextView);
+		const novoCaminho = pathFromView(nextView);
+		if (window.location.pathname !== novoCaminho) {
+			window.history.pushState({}, '', novoCaminho);
+		}
 		window.scrollTo({ top: 0, behavior: 'smooth' });
 	}
 
@@ -1703,9 +1753,11 @@ function CartView({ cart, onQty, onRemove, onShop, onCheckout, appliedCupom, onA
 			});
 			const data = await res.json();
 			if (data.valido) {
-				// Preserva o nome canônico do backend para exibir ("Cupom Zanon aplicado").
-				// Para o tipo "valorFixo" o backend nunca devolve o código real — só
-				// um rótulo genérico — então não há nada sensível para vazar aqui.
+				// Preserva o nome canônico do backend para exibir ("Cupom Zanon aplicado")
+				// e para reenviar em /quote e /checkout — é o que faz o desconto
+				// continuar valendo do carrinho até o pagamento. O tipo "valorFixo"
+				// tem rótulo próprio ("Cupom Diretoria") decidido só por `tipo`, sem
+				// depender do texto do código em nenhuma tela.
 				onApplyCupom({ codigo: data.codigo || codigo, tipo: data.tipo, percentual: data.percentual });
 				setCupomInput(data.codigo || codigo);
 				setCupomMsg(
@@ -1783,7 +1835,7 @@ function CartView({ cart, onQty, onRemove, onShop, onCheckout, appliedCupom, onA
 									<span className="cupom-aplicado-nome">
 										<Check size={15} />{' '}
 										{appliedCupom.tipo === 'valorFixo'
-											? 'Cupom de teste aplicado'
+											? 'Cupom Diretoria aplicado'
 											: `Cupom ${appliedCupom.codigo} aplicado`}
 									</span>
 									<button
@@ -1829,7 +1881,7 @@ function CartView({ cart, onQty, onRemove, onShop, onCheckout, appliedCupom, onA
 							)}
 							{appliedCupom && cupomMsg === 'valorFixo' && (
 								<p className="cupom-msg cupom-msg-ok">
-									Cupom de teste aplicado: o total deste pedido passa a ser R$ 1,00.
+									Cupom Diretoria aplicado: o total deste pedido passa a ser R$ 1,00.
 								</p>
 							)}
 							{cupomMsg === 'esgotado' && (
@@ -1861,7 +1913,7 @@ function CartView({ cart, onQty, onRemove, onShop, onCheckout, appliedCupom, onA
 								<div className="summary-row cupom-discount-row">
 									<span>
 										{appliedCupom.tipo === 'valorFixo'
-											? 'Cupom de teste'
+											? 'Cupom Diretoria'
 											: `Cupom ${appliedCupom.codigo}`}
 									</span>
 									<strong>- {fmt(t.discount)}</strong>

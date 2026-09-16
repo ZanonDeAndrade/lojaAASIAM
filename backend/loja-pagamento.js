@@ -29,9 +29,8 @@
 import crypto from "node:crypto";
 
 import {
+  CUPOM_DIRETORIA_CENTS,
   CupomPrecoError,
-  TEST_FIXED_TOTAL_CENTS,
-  TEST_FIXED_TOTAL_LABEL,
   aplicarCupom,
   checkCoupon,
   marcarCupomUsado,
@@ -299,12 +298,7 @@ async function reconstruirPedido(body) {
 
   return {
     order,
-    // `cupom` é o que vai pra planilha (auditoria interna) — o código REAL do
-    // cupom de valor fixo (`codigoInterno`), nunca o rótulo genérico. `cupomPublico`
-    // é o que pode voltar numa resposta ao cliente: para todo cupom normal os
-    // dois são iguais; só o cupom de valor fixo os separa (ver cupons.js).
-    cupom: cupom.valido ? cupom.codigoInterno || cupom.codigo || cupomBruto : null,
-    cupomPublico: cupom.valido ? cupom.codigo || cupomBruto : null,
+    cupom: cupom.valido ? cupom.codigo || cupomBruto : null,
     cupomTipo: cupom.valido ? cupom.tipo : null,
     subtotalOriginalCents,
     descontoCents,
@@ -475,12 +469,6 @@ function pedidoView(pedido, leitura = null) {
         }
       : null;
 
-  // O cupom de valor fixo grava o código REAL na planilha (auditoria interna)
-  // mas NUNCA pode sair numa resposta ao cliente — aqui, o único lugar onde a
-  // planilha vira JSON pro navegador, ele é trocado pelo rótulo genérico.
-  // `isTestOrder` em si também nunca entra nesta resposta (só no painel/planilha).
-  const cupomExibido = pedido.isTestOrder ? TEST_FIXED_TOTAL_LABEL : pedido.cupom || null;
-
   return {
     ok: true,
     orderId: pedido.id,
@@ -496,11 +484,12 @@ function pedidoView(pedido, leitura = null) {
     paymentFeeCents: pedido.paymentFeeCents,
     paymentFee: formatBRL(pedido.paymentFeeCents),
     feeBps: pedido.feeBps,
-    cupom: cupomExibido,
+    cupom: pedido.cupom || null,
+    cupomTipo: pedido.cupomTipo || null,
     subtotalOriginalCents: pedido.subtotalOriginalCents ?? null,
-    subtotalOriginal: cupomExibido ? formatBRL(pedido.subtotalOriginalCents ?? 0) : null,
+    subtotalOriginal: pedido.cupom ? formatBRL(pedido.subtotalOriginalCents ?? 0) : null,
     descontoCents: pedido.descontoCents ?? null,
-    desconto: cupomExibido ? formatBRL(pedido.descontoCents ?? 0) : null,
+    desconto: pedido.cupom ? formatBRL(pedido.descontoCents ?? 0) : null,
     totalCents: pedido.totalChargedCents,
     total: formatBRL(pedido.totalChargedCents),
     receiptUrl: leitura?.ticketUrl || null,
@@ -510,21 +499,21 @@ function pedidoView(pedido, leitura = null) {
 }
 
 /**
- * Cobrança do cupom de valor fixo — mesmo formato de `simularCobranca`, mas
- * sem gross-up: o acréscimo do pagamento é zerado, senão o total cobrado
- * passaria de `TEST_FIXED_TOTAL_CENTS`. Sempre 1x — parcelar R$ 1,00 não faz
- * sentido e o Mercado Pago provavelmente recusaria parcelas centavos.
+ * Cobrança do cupom Diretoria — mesmo formato de `simularCobranca`, mas sem
+ * gross-up: o acréscimo do pagamento é zerado, senão o total cobrado passaria
+ * de `CUPOM_DIRETORIA_CENTS`. Sempre 1x — parcelar R$ 1,00 não faz sentido e o
+ * Mercado Pago provavelmente recusaria parcelas de centavos.
  */
 function cobrancaValorFixo(paymentMethod) {
   return {
-    subtotalCents: TEST_FIXED_TOTAL_CENTS,
+    subtotalCents: CUPOM_DIRETORIA_CENTS,
     paymentMethod,
     installments: 1,
     feeBps: 0,
     feeRate: 0,
     paymentFeeCents: 0,
-    totalCents: TEST_FIXED_TOTAL_CENTS,
-    installmentCents: TEST_FIXED_TOTAL_CENTS,
+    totalCents: CUPOM_DIRETORIA_CENTS,
+    installmentCents: CUPOM_DIRETORIA_CENTS,
   };
 }
 
@@ -660,8 +649,9 @@ export function registerLojaRoutes(app) {
     const ehValorFixo = reconstruido.cupomTipo === "valorFixo";
     const metodo = String(req.body?.paymentMethod || METODO_CARTAO);
     const cupomInfo = {
-      cupomAplicado: Boolean(reconstruido.cupomPublico),
-      cupom: reconstruido.cupomPublico,
+      cupomAplicado: Boolean(reconstruido.cupom),
+      cupom: reconstruido.cupom,
+      cupomTipo: reconstruido.cupomTipo,
       subtotalOriginalCents: reconstruido.subtotalOriginalCents,
       descontoCents: reconstruido.descontoCents,
     };
@@ -730,8 +720,8 @@ export function registerLojaRoutes(app) {
 
     let cobranca;
     try {
-      // Cupom de valor fixo: nunca chama o gross-up — o total é sempre
-      // TEST_FIXED_TOTAL_CENTS, sem acréscimo, em 1x, seja qual for o método
+      // Cupom Diretoria: nunca chama o gross-up — o total é sempre
+      // CUPOM_DIRETORIA_CENTS, sem acréscimo, em 1x, seja qual for o método
       // ou o número de parcelas que o navegador mandou.
       cobranca = ehValorFixo
         ? cobrancaValorFixo(pagamento.data.metodo)
@@ -764,6 +754,7 @@ export function registerLojaRoutes(app) {
           personalizacaoNomes: reconstruido.personalizacaoNomes,
           personalizacaoNumeros: reconstruido.personalizacaoNumeros,
           cupom: reconstruido.cupom || "",
+          cupomTipo: reconstruido.cupomTipo || "",
           subtotalOriginalCents: reconstruido.subtotalOriginalCents,
           descontoCents: reconstruido.descontoCents,
           subtotalCents,
@@ -772,9 +763,12 @@ export function registerLojaRoutes(app) {
           feeBps: cobranca.feeBps,
           paymentFeeCents: cobranca.paymentFeeCents,
           totalChargedCents: cobranca.totalCents,
-          isTestOrder: ehValorFixo,
         });
-        const pedido = { ...existentePlanilha, cupom: reconstruido.cupom, isTestOrder: ehValorFixo };
+        const pedido = {
+          ...existentePlanilha,
+          cupom: reconstruido.cupom,
+          cupomTipo: reconstruido.cupomTipo || "",
+        };
 
         // A order desta tentativa já existe (retry com o mesmo attemptId, ou
         // restart do backend no meio): nunca cria uma segunda — relê a que há.

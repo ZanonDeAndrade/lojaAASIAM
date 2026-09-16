@@ -29,7 +29,7 @@ services:
       - key: LOJA_SHEET_NAME
         value: Pedidos Loja
       - key: ENABLE_TEST_COUPON
-        sync: false   # Cupom interno de teste (total = R$ 1,00). Deixe SEM VALOR fora da janela de teste.
+        sync: false   # Liga o cupom Diretoria "1REAL" (total real = R$ 1,00). Nome mantido por compatibilidade.
       - key: LOJA_FEE_PIX_BPS
         sync: false   # Taxa do Pix da loja em pontos-base (vazio = 0)
       - key: CUPONS_SHEET_NAME

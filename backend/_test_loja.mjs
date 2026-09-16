@@ -200,39 +200,35 @@ await test("cupom programador5 (5% do subtotal): case-insensitive, sem limite de
   });
 });
 
-await test("POST /api/validar-cupom nunca devolve o código real do cupom de teste (1REAL)", async () => {
-  const codigoSecreto = ["1", "real"].join(""); // nunca escrito por extenso no arquivo
+await test("POST /api/validar-cupom: cupom Diretoria (1REAL) só existe com ENABLE_TEST_COUPON=true, e o código volta igual em toda chamada", async () => {
+  const codigo = "1REAL";
   const original = process.env.ENABLE_TEST_COUPON;
 
   try {
     // Ausente: rejeitado, resposta idêntica à de um código qualquer inexistente.
     delete process.env.ENABLE_TEST_COUPON;
-    assert.deepEqual(await post("/api/validar-cupom", { codigo: codigoSecreto }).then((r) => r.json()), {
+    assert.deepEqual(await post("/api/validar-cupom", { codigo }).then((r) => r.json()), {
       valido: false,
       motivo: "invalido",
     });
 
     // Valor diferente de "true" (mesmo "1" ou "TRUE"): também rejeitado.
     process.env.ENABLE_TEST_COUPON = "1";
-    assert.equal(
-      (await post("/api/validar-cupom", { codigo: codigoSecreto }).then((r) => r.json())).valido,
-      false
-    );
+    assert.equal((await post("/api/validar-cupom", { codigo }).then((r) => r.json())).valido, false);
     process.env.ENABLE_TEST_COUPON = "TRUE";
-    assert.equal(
-      (await post("/api/validar-cupom", { codigo: codigoSecreto }).then((r) => r.json())).valido,
-      false
-    );
+    assert.equal((await post("/api/validar-cupom", { codigo }).then((r) => r.json())).valido, false);
 
-    // Habilitado: válido, mas a resposta HTTP nunca contém o código real —
-    // só o rótulo genérico "Teste", em qualquer variação de maiúsculas.
+    // Habilitado: válido, e o nome canônico volta igual em qualquer variação de
+    // escrita — é esse valor que o carrinho reenvia ao checkout depois, e ele
+    // precisa continuar batendo (bug corrigido: o checkout não pode recusar o
+    // código que o próprio carrinho já validou).
     process.env.ENABLE_TEST_COUPON = "true";
-    for (const variacao of [codigoSecreto, codigoSecreto.toUpperCase(), `  ${codigoSecreto} `]) {
-      const res = await post("/api/validar-cupom", { codigo: variacao });
-      const texto = await res.text();
-      assert.ok(!texto.toLowerCase().includes(codigoSecreto), "a resposta HTTP vazou o código real do cupom");
-      const corpo = JSON.parse(texto);
-      assert.deepEqual(corpo, { valido: true, tipo: "valorFixo", codigo: "Teste" });
+    for (const variacao of [codigo, codigo.toLowerCase(), `  ${codigo} `]) {
+      assert.deepEqual(await post("/api/validar-cupom", { codigo: variacao }).then((r) => r.json()), {
+        valido: true,
+        tipo: "valorFixo",
+        codigo: "1REAL",
+      });
     }
   } finally {
     if (original === undefined) delete process.env.ENABLE_TEST_COUPON;

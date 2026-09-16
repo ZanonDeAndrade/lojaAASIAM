@@ -24,6 +24,13 @@ const API_BASE = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
 const currency = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
 const fmt = (cents) => currency.format((Number(cents) || 0) / 100);
 
+/* Rótulo do cupom na tela — pelo `tipo`, nunca pelo texto do código. O cupom
+   Diretoria (`valorFixo`) sempre aparece como "Cupom Diretoria"; os demais
+   mostram o próprio código, como sempre. */
+function nomeCupom(tipo, codigo) {
+	return tipo === 'valorFixo' ? 'Cupom Diretoria' : `Cupom ${codigo}`;
+}
+
 /* O carrinho (estado do App) → o formato `selection` que o backend recalcula.
    Espelha `cartToSelection` do App.jsx: o backend é a autoridade dos preços. */
 function cartToSelection(cart) {
@@ -491,7 +498,7 @@ export default function CheckoutMercadoPago({ cart, appliedCupom, onCupomInvalid
 									valor={fmt(quote.subtotalOriginalCents)}
 								/>
 								<Linha
-									rotulo={`Cupom ${quote.cupom}`}
+									rotulo={nomeCupom(quote.cupomTipo, quote.cupom)}
 									valor={`- ${fmt(quote.descontoCents)}`}
 								/>
 							</>
@@ -651,7 +658,7 @@ function ResultadoPagamento({ resultado, onTentarDeNovo, onVoltarLoja }) {
 						</div>
 						{resultado.cupom && resultado.descontoCents > 0 && (
 							<div className="pc-summary-row">
-								<span>Cupom {resultado.cupom}</span>
+								<span>{nomeCupom(resultado.cupomTipo, resultado.cupom)}</span>
 								<strong>- {resultado.desconto}</strong>
 							</div>
 						)}

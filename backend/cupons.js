@@ -15,17 +15,21 @@
  *                   válido para qualquer cliente. O desconto nunca reprecifica
  *                   as linhas — só abate `order.totalCents` — então o "Itens"
  *                   do pedido continua mostrando o preço de venda normal.
- *  - "valorFixo"  → colapsa o TOTAL FINAL do pedido (produtos + acréscimo do
- *                   pagamento) para exatamente `TEST_FIXED_TOTAL_CENTS`,
- *                   independentemente do carrinho. Cupom interno de teste —
- *                   só existe com `ENABLE_TEST_COUPON=true` no ambiente — e o
- *                   código real NUNCA sai numa resposta ao cliente: só o
- *                   rótulo genérico `TEST_FIXED_TOTAL_LABEL` ("Teste"). Ver
- *                   `TEST_FIXED_TOTAL_CODE` mais abaixo.
+ *  - "valorFixo"  → cupom Diretoria: colapsa o TOTAL FINAL do pedido
+ *                   (produtos + acréscimo do pagamento) para exatamente
+ *                   `CUPOM_DIRETORIA_CENTS`, não importa o carrinho. Cobrança
+ *                   REAL — não é simulação. Só existe com
+ *                   `ENABLE_TEST_COUPON=true` no ambiente (nome da variável
+ *                   mantido — é o que já está configurado em produção);
+ *                   ausente, vazia ou diferente de "true" desativa por
+ *                   completo. Não é anunciado em nenhuma vitrine, banner ou
+ *                   sugestão do site — só funciona pra quem já sabe o código.
  *
  * A normalização (trim + minúsculas + espaços) identifica o mesmo cupom em
  * "zanon", "Zanon", " ZANON ". O nome canônico volta na resposta para exibição
- * — exceto o "valorFixo", que nunca ecoa o próprio código de volta.
+ * — inclusive o "valorFixo": o código de ativação e o que aparece pro cliente
+ * são o mesmo (só o RÓTULO na tela é outro — "Cupom Diretoria" — decidido no
+ * frontend a partir do `tipo`, nunca do texto do código).
  */
 import { centsToAmount, getProduct } from "./shared/order.js";
 import {
@@ -56,32 +60,27 @@ const TEST_COUPONS = new Map([
 const PERCENT_COUPONS = new Map([["programador5", { codigo: "programador5", percentual: 5 }]]);
 
 /**
- * Cupom INTERNO de teste — R$ 1,00 fechado, para validar o fluxo de
- * pagamento de ponta a ponta em produção sem cobrar valor real. Chave
+ * Cupom Diretoria — pedido REAL, cobrado por exatamente R$ 1,00. Chave
  * reservada: nunca cadastre um cupom pessoal com este nome.
  *
- *  - `TEST_FIXED_TOTAL_CODE`         chave normalizada usada para RECONHECER
- *                                    o código digitado pelo cliente.
- *  - `TEST_FIXED_TOTAL_CODIGO_REAL`  como fica gravado na planilha do pedido
- *                                    (auditoria interna — nunca sai da API).
- *  - `TEST_FIXED_TOTAL_LABEL`        o ÚNICO valor que aparece numa resposta
- *                                    ao cliente (`/api/validar-cupom`, quote,
- *                                    checkout, status do pedido) — nunca o
- *                                    código real, então ele nunca aparece em
- *                                    banner, bundle do frontend ou log do
- *                                    navegador.
+ *  - `CUPOM_DIRETORIA_CODE`    chave normalizada usada para RECONHECER o
+ *                              código digitado pelo cliente.
+ *  - `CUPOM_DIRETORIA_CODIGO`  nome canônico — o mesmo valor volta em toda
+ *                              resposta ao cliente e é o que fica gravado na
+ *                              planilha do pedido (coluna Cupom), igual a
+ *                              qualquer outro cupom do sistema.
  *
- * Só funciona com `ENABLE_TEST_COUPON=true` no ambiente. Ausente, vazia ou
+ * Só funciona com `ENABLE_TEST_COUPON=true` no ambiente (nome histórico da
+ * variável — é o que já está configurado em produção). Ausente, vazia ou
  * qualquer valor diferente da string exata "true" desativa o cupom por
  * completo — ele passa a não existir, como se o código nunca tivesse sido
  * cadastrado (mesma resposta genérica "invalido" de um código qualquer).
  */
-const TEST_FIXED_TOTAL_CODE = "1real";
-const TEST_FIXED_TOTAL_CODIGO_REAL = "1REAL";
-export const TEST_FIXED_TOTAL_LABEL = "Teste";
-export const TEST_FIXED_TOTAL_CENTS = 100;
+const CUPOM_DIRETORIA_CODE = "1real";
+const CUPOM_DIRETORIA_CODIGO = "1REAL";
+export const CUPOM_DIRETORIA_CENTS = 100;
 
-function cupomDeValorFixoHabilitado() {
+function cupomDiretoriaHabilitado() {
   return process.env.ENABLE_TEST_COUPON === "true";
 }
 
@@ -109,15 +108,10 @@ export class CupomPrecoError extends Error {
 export async function checkCoupon(codigo) {
   const key = normalizeCoupon(codigo);
   if (!key) return { valido: false, motivo: "invalido" };
-  if (key === TEST_FIXED_TOTAL_CODE) {
+  if (key === CUPOM_DIRETORIA_CODE) {
     // Variável ausente/vazia/diferente de "true": o cupom nem existe.
-    if (!cupomDeValorFixoHabilitado()) return { valido: false, motivo: "invalido" };
-    return {
-      valido: true,
-      tipo: "valorFixo",
-      codigo: TEST_FIXED_TOTAL_LABEL, // rótulo genérico — nunca o código real
-      codigoInterno: TEST_FIXED_TOTAL_CODIGO_REAL, // só para gravar na planilha
-    };
+    if (!cupomDiretoriaHabilitado()) return { valido: false, motivo: "invalido" };
+    return { valido: true, tipo: "valorFixo", codigo: CUPOM_DIRETORIA_CODIGO };
   }
   if (TEST_COUPONS.has(key)) {
     return { valido: true, tipo: "teste", codigo: TEST_COUPONS.get(key) };
@@ -136,7 +130,7 @@ export async function checkCoupon(codigo) {
 export async function marcarCupomUsado(codigo, orderId) {
   const key = normalizeCoupon(codigo);
   if (!key) return { ok: false, motivo: "parametros" };
-  if (key === TEST_FIXED_TOTAL_CODE) return { ok: true, tipo: "valorFixo" };
+  if (key === CUPOM_DIRETORIA_CODE) return { ok: true, tipo: "valorFixo" };
   if (TEST_COUPONS.has(key)) return { ok: true, tipo: "teste" };
   if (PERCENT_COUPONS.has(key)) return { ok: true, tipo: "percentual" };
   return contabilizarUsoCupom(codigo, orderId);
@@ -182,14 +176,14 @@ export function aplicarDescontoPercentual(order, percentual) {
 }
 
 /**
- * Colapsa o total dos PRODUTOS para `TEST_FIXED_TOTAL_CENTS` — não é uma
+ * Colapsa o total dos PRODUTOS para `CUPOM_DIRETORIA_CENTS` — não é uma
  * porcentagem nem depende de quantidade, produto ou subtotal: é uma
  * substituição direta, sempre R$ 1,00. A rota de checkout ainda zera o
  * acréscimo do pagamento por cima (`loja-pagamento.js`), porque o gross-up de
  * R$ 1,00 empurraria o total cobrado pra além de R$ 1,00.
  */
 export function aplicarValorFixo(order) {
-  order.totalCents = TEST_FIXED_TOTAL_CENTS;
+  order.totalCents = CUPOM_DIRETORIA_CENTS;
   order.totalAmount = centsToAmount(order.totalCents);
 }
 

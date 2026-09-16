@@ -538,8 +538,12 @@ await test("programador5 não é cumulativo: um único campo `cupom`, dois códi
   assert.equal(soProgramador5.descontoCents, 1600, "só o desconto de 5% — nada somado");
 });
 
-/* ── Cupom interno de teste (1REAL): total final sempre R$ 1,00 ──
-   Nome do código só existe aqui, no servidor de testes — nunca no frontend. */
+/* ── Cupom Diretoria (código "1REAL"): total final sempre R$ 1,00, cobrança
+   REAL — não é simulação. O rótulo "Cupom Diretoria" é decisão só do
+   frontend (a partir de `cupomTipo`); aqui testamos o que o backend garante:
+   o código volta igual em toda resposta (é o que faz o carrinho→checkout não
+   perder o desconto — bug corrigido nesta rodada) e o total fecha em R$ 1,00
+   sempre, em qualquer carrinho, método ou parcela. */
 
 const CUPOM_1REAL = "1REAL";
 const umCaneca = { caneca: { quantity: 1 } }; // R$ 40,00
@@ -705,47 +709,51 @@ await test("1REAL: código funciona em maiúsculas, minúsculas e com espaços",
       ).json();
       assert.equal(body.cupomAplicado, true, `variação "${variacao}" deveria aplicar o cupom`);
       assert.equal(body.pix.totalCents, 100);
-      // Nunca o código real — só o rótulo genérico, em qualquer variação de escrita.
-      assert.equal(body.cupom, "Teste");
-      assert.notEqual(String(body.cupom).toLowerCase(), "1real");
+      assert.equal(body.cupom, "1REAL", "sempre o nome canônico, não o que foi digitado");
+      assert.equal(body.cupomTipo, "valorFixo");
     }
   } finally {
     desligarCupomTeste();
   }
 });
 
-await test("1REAL nunca aparece em nenhuma resposta de API — só o rótulo genérico \"Teste\"", async () => {
+await test("1REAL: o código devolvido pelo carrinho continua válido quando o checkout reenvia — regressão do bug do desconto que sumia", async () => {
   resetTudo();
   ligarCupomTeste();
   try {
-    // checkCoupon() é a regra pura (sem HTTP) — /api/validar-cupom (index.js)
-    // só devolve ao cliente `{valido, tipo, codigo}`: o teste HTTP completo
-    // dessa rota (confirmando que só esses três campos saem) vive em
-    // _test_loja.mjs. Aqui confere que `codigo` (o campo que a rota expõe)
-    // já vem genérico — `codigoInterno` (não exposto por nenhuma rota) pode
-    // e deve carregar o código real, é assim que a planilha grava a auditoria.
+    // Passo 1 — o carrinho valida o que o cliente digitou (minúsculo, com espaço).
     const { checkCoupon: checkCoupomDireto } = await import("./cupons.js");
-    const validado = await checkCoupomDireto(CUPOM_1REAL);
+    const validado = await checkCoupomDireto("  1real ");
     assert.equal(validado.valido, true);
     assert.equal(validado.tipo, "valorFixo");
-    assert.equal(validado.codigo, "Teste");
-    assert.equal(validado.codigoInterno, "1REAL");
+    // Passo 2 — o carrinho guarda esse `codigo` (é o que ele reenvia depois).
+    const codigoGuardadoNoCarrinho = validado.codigo;
 
+    // Passo 3 — o checkout (tela diferente, revalida do zero) reenvia EXATAMENTE
+    // esse valor. Antes da correção, o backend devolvia um rótulo genérico que
+    // não batia com nenhum cupom real — o /quote da tela de pagamento falhava,
+    // `cupomInvalido` disparava e o desconto sumia. Agora tem que continuar valendo.
     const quote = await (
-      await post("/api/loja/checkout/quote", { selection: umCaneca, paymentMethod: "pix", cupom: CUPOM_1REAL })
+      await post("/api/loja/checkout/quote", {
+        selection: umCaneca,
+        paymentMethod: "pix",
+        cupom: codigoGuardadoNoCarrinho,
+      })
     ).json();
-    assert.ok(!JSON.stringify(quote).toLowerCase().includes("1real"), "quote vazou o código real");
+    assert.equal(quote.ok, true, "o checkout recusou o cupom que o próprio carrinho validou");
+    assert.equal(quote.cupomAplicado, true);
+    assert.equal(quote.pix.totalCents, 100);
 
-    const { body: checkoutBody } = await checkoutCartao({
-      selection: umCaneca,
-      paymentMethod: "pix",
-      cupom: CUPOM_1REAL,
-    });
-    assert.ok(!JSON.stringify(checkoutBody).toLowerCase().includes("1real"), "checkout vazou o código real");
-    assert.ok(
-      !JSON.stringify(checkoutBody).toLowerCase().includes("istestorder"),
-      "isTestOrder não pode aparecer na resposta ao cliente"
-    );
+    // E o checkout consegue reenviar de novo (ex.: trocar Pix por cartão) e continua valendo.
+    const segundaChamada = await (
+      await post("/api/loja/checkout/quote", {
+        selection: umCaneca,
+        paymentMethod: "credit_card",
+        installments: 1,
+        cupom: quote.cupom, // o mesmo valor que veio na resposta anterior
+      })
+    ).json();
+    assert.equal(segundaChamada.cartao.totalCents, 100);
   } finally {
     desligarCupomTeste();
   }
@@ -853,7 +861,7 @@ await test("1REAL com ENABLE_TEST_COUPON ausente é recusado (comportamento padr
   assert.deepEqual(await checkCoupomDireto(CUPOM_1REAL), { valido: false, motivo: "invalido" });
 });
 
-await test("checkout com 1REAL: pedido cobra exatamente R$ 1,00 no Mercado Pago e grava o snapshot completo na planilha", async () => {
+await test("checkout Pix com 1REAL: pedido cobra exatamente R$ 1,00 no Mercado Pago e grava o snapshot completo na planilha", async () => {
   resetTudo();
   ligarCupomTeste();
   try {
@@ -863,7 +871,8 @@ await test("checkout com 1REAL: pedido cobra exatamente R$ 1,00 no Mercado Pago 
       cupom: CUPOM_1REAL,
     });
     assert.equal(res.status, 201);
-    assert.equal(body.cupom, "Teste", "nunca o código real na resposta");
+    assert.equal(body.cupom, "1REAL");
+    assert.equal(body.cupomTipo, "valorFixo");
     assert.equal(body.subtotalOriginalCents, 24000);
     assert.equal(body.descontoCents, 23900);
     assert.equal(body.subtotalCents, 100);
@@ -875,22 +884,42 @@ await test("checkout com 1REAL: pedido cobra exatamente R$ 1,00 no Mercado Pago 
     assert.equal(chamada.body.transactions.payments[0].amount, "1.00");
     assert.equal(chamada.body.total_amount, "1.00");
 
-    // A planilha guarda o código REAL (auditoria interna) e a marca de teste —
-    // nenhum dos dois nunca aparece numa resposta ao cliente.
+    // Snapshot completo na planilha — pedido REAL, não marcado como teste/fictício.
     assert.equal(sheet.rows[0][23], "1REAL"); // X — Cupom
     assert.match(sheet.rows[0][24], /R\$ 240,00/); // Y — Subtotal sem cupom
     assert.match(sheet.rows[0][25], /R\$ 239,00/); // Z — Desconto do cupom
     assert.match(sheet.rows[0][6], /R\$ 1,00/); // G — Subtotal (o que a Atlética recebe)
     assert.match(sheet.rows[0][11], /R\$ 1,00/); // L — Total cobrado
-    assert.equal(sheet.rows[0][26], "Sim"); // AA — Pedido de teste
+    assert.equal(sheet.rows[0][26], "valorFixo"); // AA — Tipo do cupom
 
-    // Consulta de status: o mesmo — nunca o código real, nunca a marca de teste.
     const status = await (
       await get(`/api/loja/pedidos/${encodeURIComponent(body.orderId)}/status`, { "X-Pedido-Token": body.token })
     ).json();
-    assert.equal(status.cupom, "Teste");
+    assert.equal(status.cupom, "1REAL");
+    assert.equal(status.cupomTipo, "valorFixo");
     assert.equal(status.totalCents, 100);
-    assert.ok(!("isTestOrder" in status));
+  } finally {
+    desligarCupomTeste();
+  }
+});
+
+await test("checkout cartão com 1REAL: cobra exatamente R$ 1,00, mesmo pedindo parcelamento", async () => {
+  resetTudo();
+  ligarCupomTeste();
+  try {
+    const { res, body } = await checkoutCartao({
+      selection: doisProdutosDiferentes,
+      paymentMethod: "credit_card",
+      installments: 6, // pedido de 6x — o cupom ignora e cobra 1x
+      cupom: CUPOM_1REAL,
+    });
+    assert.equal(res.status, 201);
+    assert.equal(body.totalCents, 100);
+    assert.equal(body.installments, 1);
+
+    const chamada = requisicoesPara("POST", "/v1/orders").at(-1);
+    assert.equal(chamada.body.transactions.payments[0].amount, "1.00");
+    assert.equal(chamada.body.transactions.payments[0].payment_method.installments, 1);
   } finally {
     desligarCupomTeste();
   }
@@ -931,11 +960,11 @@ await test("checkout Pix com 1REAL: webhook confirma o pagamento de R$ 1,00 e n�
     ).json();
     assert.equal(status.status, "pago");
     assert.equal(status.totalCents, 100, "o pedido pago continua congelado em R$ 1,00");
-    assert.equal(status.cupom, "Teste");
+    assert.equal(status.cupom, "1REAL");
 
     assert.equal(sheet.rows[0][12], "Pago"); // M — Status
-    assert.equal(sheet.rows[0][23], "1REAL"); // X — Cupom (código real, só na planilha)
-    assert.equal(sheet.rows[0][26], "Sim"); // AA — Pedido de teste
+    assert.equal(sheet.rows[0][23], "1REAL"); // X — Cupom
+    assert.equal(sheet.rows[0][26], "valorFixo"); // AA — Tipo do cupom
   } finally {
     desligarCupomTeste();
   }
