@@ -200,6 +200,46 @@ await test("cupom programador5 (5% do subtotal): case-insensitive, sem limite de
   });
 });
 
+await test("POST /api/validar-cupom nunca devolve o código real do cupom de teste (1REAL)", async () => {
+  const codigoSecreto = ["1", "real"].join(""); // nunca escrito por extenso no arquivo
+  const original = process.env.ENABLE_TEST_COUPON;
+
+  try {
+    // Ausente: rejeitado, resposta idêntica à de um código qualquer inexistente.
+    delete process.env.ENABLE_TEST_COUPON;
+    assert.deepEqual(await post("/api/validar-cupom", { codigo: codigoSecreto }).then((r) => r.json()), {
+      valido: false,
+      motivo: "invalido",
+    });
+
+    // Valor diferente de "true" (mesmo "1" ou "TRUE"): também rejeitado.
+    process.env.ENABLE_TEST_COUPON = "1";
+    assert.equal(
+      (await post("/api/validar-cupom", { codigo: codigoSecreto }).then((r) => r.json())).valido,
+      false
+    );
+    process.env.ENABLE_TEST_COUPON = "TRUE";
+    assert.equal(
+      (await post("/api/validar-cupom", { codigo: codigoSecreto }).then((r) => r.json())).valido,
+      false
+    );
+
+    // Habilitado: válido, mas a resposta HTTP nunca contém o código real —
+    // só o rótulo genérico "Teste", em qualquer variação de maiúsculas.
+    process.env.ENABLE_TEST_COUPON = "true";
+    for (const variacao of [codigoSecreto, codigoSecreto.toUpperCase(), `  ${codigoSecreto} `]) {
+      const res = await post("/api/validar-cupom", { codigo: variacao });
+      const texto = await res.text();
+      assert.ok(!texto.toLowerCase().includes(codigoSecreto), "a resposta HTTP vazou o código real do cupom");
+      const corpo = JSON.parse(texto);
+      assert.deepEqual(corpo, { valido: true, tipo: "valorFixo", codigo: "Teste" });
+    }
+  } finally {
+    if (original === undefined) delete process.env.ENABLE_TEST_COUPON;
+    else process.env.ENABLE_TEST_COUPON = original;
+  }
+});
+
 await test("o checkout da loja continua validando antes de chamar a InfinitePay", async () => {
   // Sem nome, sem telefone e sem itens a rota recusa localmente — nenhuma
   // chamada externa acontece (o fetch deste teste bloquearia).

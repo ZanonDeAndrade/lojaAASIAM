@@ -28,7 +28,14 @@
  */
 import crypto from "node:crypto";
 
-import { CupomPrecoError, aplicarCupom, checkCoupon, marcarCupomUsado } from "./cupons.js";
+import {
+  CupomPrecoError,
+  TEST_FIXED_TOTAL_CENTS,
+  TEST_FIXED_TOTAL_LABEL,
+  aplicarCupom,
+  checkCoupon,
+  marcarCupomUsado,
+} from "./cupons.js";
 import { listarCupons } from "./cupons-store.js";
 import { clientIp, rateLimit } from "./rate-limit.js";
 import { formatDateTime } from "./google-sheets.js";
@@ -292,7 +299,12 @@ async function reconstruirPedido(body) {
 
   return {
     order,
-    cupom: cupom.valido ? cupom.codigo || cupomBruto : null,
+    // `cupom` é o que vai pra planilha (auditoria interna) — o código REAL do
+    // cupom de valor fixo (`codigoInterno`), nunca o rótulo genérico. `cupomPublico`
+    // é o que pode voltar numa resposta ao cliente: para todo cupom normal os
+    // dois são iguais; só o cupom de valor fixo os separa (ver cupons.js).
+    cupom: cupom.valido ? cupom.codigoInterno || cupom.codigo || cupomBruto : null,
+    cupomPublico: cupom.valido ? cupom.codigo || cupomBruto : null,
     cupomTipo: cupom.valido ? cupom.tipo : null,
     subtotalOriginalCents,
     descontoCents,
@@ -463,6 +475,12 @@ function pedidoView(pedido, leitura = null) {
         }
       : null;
 
+  // O cupom de valor fixo grava o código REAL na planilha (auditoria interna)
+  // mas NUNCA pode sair numa resposta ao cliente — aqui, o único lugar onde a
+  // planilha vira JSON pro navegador, ele é trocado pelo rótulo genérico.
+  // `isTestOrder` em si também nunca entra nesta resposta (só no painel/planilha).
+  const cupomExibido = pedido.isTestOrder ? TEST_FIXED_TOTAL_LABEL : pedido.cupom || null;
+
   return {
     ok: true,
     orderId: pedido.id,
@@ -478,16 +496,35 @@ function pedidoView(pedido, leitura = null) {
     paymentFeeCents: pedido.paymentFeeCents,
     paymentFee: formatBRL(pedido.paymentFeeCents),
     feeBps: pedido.feeBps,
-    cupom: pedido.cupom || null,
+    cupom: cupomExibido,
     subtotalOriginalCents: pedido.subtotalOriginalCents ?? null,
-    subtotalOriginal: pedido.cupom ? formatBRL(pedido.subtotalOriginalCents ?? 0) : null,
+    subtotalOriginal: cupomExibido ? formatBRL(pedido.subtotalOriginalCents ?? 0) : null,
     descontoCents: pedido.descontoCents ?? null,
-    desconto: pedido.cupom ? formatBRL(pedido.descontoCents ?? 0) : null,
+    desconto: cupomExibido ? formatBRL(pedido.descontoCents ?? 0) : null,
     totalCents: pedido.totalChargedCents,
     total: formatBRL(pedido.totalChargedCents),
     receiptUrl: leitura?.ticketUrl || null,
     pagoEm: pedido.pagoEm || null,
     pix,
+  };
+}
+
+/**
+ * Cobrança do cupom de valor fixo — mesmo formato de `simularCobranca`, mas
+ * sem gross-up: o acréscimo do pagamento é zerado, senão o total cobrado
+ * passaria de `TEST_FIXED_TOTAL_CENTS`. Sempre 1x — parcelar R$ 1,00 não faz
+ * sentido e o Mercado Pago provavelmente recusaria parcelas centavos.
+ */
+function cobrancaValorFixo(paymentMethod) {
+  return {
+    subtotalCents: TEST_FIXED_TOTAL_CENTS,
+    paymentMethod,
+    installments: 1,
+    feeBps: 0,
+    feeRate: 0,
+    paymentFeeCents: 0,
+    totalCents: TEST_FIXED_TOTAL_CENTS,
+    installmentCents: TEST_FIXED_TOTAL_CENTS,
   };
 }
 
@@ -620,28 +657,34 @@ export function registerLojaRoutes(app) {
     }
 
     const subtotalCents = reconstruido.order.totalCents;
+    const ehValorFixo = reconstruido.cupomTipo === "valorFixo";
     const metodo = String(req.body?.paymentMethod || METODO_CARTAO);
     const cupomInfo = {
-      cupomAplicado: Boolean(reconstruido.cupom),
-      cupom: reconstruido.cupom,
+      cupomAplicado: Boolean(reconstruido.cupomPublico),
+      cupom: reconstruido.cupomPublico,
       subtotalOriginalCents: reconstruido.subtotalOriginalCents,
       descontoCents: reconstruido.descontoCents,
     };
 
     try {
       if (metodo === METODO_PIX) {
-        const pix = simularCobranca({ subtotalCents, paymentMethod: METODO_PIX });
+        const pix = ehValorFixo
+          ? cobrancaValorFixo(METODO_PIX)
+          : simularCobranca({ subtotalCents, paymentMethod: METODO_PIX });
         return res.json({ ok: true, subtotalCents, ...cupomInfo, pix, cartao: null });
       }
 
-      const installments = Math.trunc(Number(req.body?.installments) || 1);
-      const cartao = simularCobranca({ subtotalCents, paymentMethod: METODO_CARTAO, installments });
+      // O cupom de valor fixo sempre cobra 1x — nunca o que o navegador mandar.
+      const installments = ehValorFixo ? 1 : Math.trunc(Number(req.body?.installments) || 1);
+      const cartao = ehValorFixo
+        ? cobrancaValorFixo(METODO_CARTAO)
+        : simularCobranca({ subtotalCents, paymentMethod: METODO_CARTAO, installments });
       return res.json({
         ok: true,
         subtotalCents,
         ...cupomInfo,
         cartao,
-        opcoes: opcoesDeParcelamento(subtotalCents),
+        opcoes: ehValorFixo ? [cobrancaValorFixo(METODO_CARTAO)] : opcoesDeParcelamento(subtotalCents),
       });
     } catch (err) {
       if (err instanceof FeeError) {
@@ -683,14 +726,20 @@ export function registerLojaRoutes(app) {
     }
 
     const subtotalCents = reconstruido.order.totalCents;
+    const ehValorFixo = reconstruido.cupomTipo === "valorFixo";
 
     let cobranca;
     try {
-      cobranca = simularCobranca({
-        subtotalCents,
-        paymentMethod: pagamento.data.metodo,
-        installments: pagamento.data.installments,
-      });
+      // Cupom de valor fixo: nunca chama o gross-up — o total é sempre
+      // TEST_FIXED_TOTAL_CENTS, sem acréscimo, em 1x, seja qual for o método
+      // ou o número de parcelas que o navegador mandou.
+      cobranca = ehValorFixo
+        ? cobrancaValorFixo(pagamento.data.metodo)
+        : simularCobranca({
+            subtotalCents,
+            paymentMethod: pagamento.data.metodo,
+            installments: pagamento.data.installments,
+          });
     } catch (err) {
       if (err instanceof FeeError) {
         return res.status(400).json({ ok: false, error: err.message, code: err.code });
@@ -723,8 +772,9 @@ export function registerLojaRoutes(app) {
           feeBps: cobranca.feeBps,
           paymentFeeCents: cobranca.paymentFeeCents,
           totalChargedCents: cobranca.totalCents,
+          isTestOrder: ehValorFixo,
         });
-        const pedido = { ...existentePlanilha, cupom: reconstruido.cupom };
+        const pedido = { ...existentePlanilha, cupom: reconstruido.cupom, isTestOrder: ehValorFixo };
 
         // A order desta tentativa já existe (retry com o mesmo attemptId, ou
         // restart do backend no meio): nunca cria uma segunda — relê a que há.

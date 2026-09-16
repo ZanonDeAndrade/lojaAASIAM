@@ -119,9 +119,20 @@ function catSectionId(catId) {
 // Preço unitário do cupom de teste — o backend é a autoridade (cupons.js).
 const PRECO_TESTE_CENTS = 100;
 
+// Prévia do cupom de valor fixo (só exibição — o backend é quem decide de
+// verdade em /api/loja/checkout/quote e /api/loja/checkout). O mecanismo é
+// genérico; o código secreto que ativa esse tipo nunca aparece aqui.
+const TOTAL_FIXO_CUPOM_TESTE_CENTS = 100;
+
 function cartTotals(cart, cupom = null) {
 	const subtotal = cart.reduce((t, i) => t + i.unitCents * i.qty, 0);
 	if (!cupom) return { subtotal, total: subtotal, discount: 0 };
+	if (cupom.tipo === 'valorFixo') {
+		// Nunca sobe o preço: se por algum motivo o subtotal já fosse menor que
+		// o valor fixo, o total fica no subtotal (desconto zero), nunca acima.
+		const total = Math.min(subtotal, TOTAL_FIXO_CUPOM_TESTE_CENTS);
+		return { subtotal, total, discount: subtotal - total };
+	}
 	if (cupom.tipo === 'percentual') {
 		// Mesmo arredondamento do backend (cupons.js: aplicarDescontoPercentual) —
 		// sobre o subtotal inteiro, nunca por item, pra não haver deriva de centavo.
@@ -1693,9 +1704,19 @@ function CartView({ cart, onQty, onRemove, onShop, onCheckout, appliedCupom, onA
 			const data = await res.json();
 			if (data.valido) {
 				// Preserva o nome canônico do backend para exibir ("Cupom Zanon aplicado").
+				// Para o tipo "valorFixo" o backend nunca devolve o código real — só
+				// um rótulo genérico — então não há nada sensível para vazar aqui.
 				onApplyCupom({ codigo: data.codigo || codigo, tipo: data.tipo, percentual: data.percentual });
 				setCupomInput(data.codigo || codigo);
-				setCupomMsg(data.tipo === 'teste' ? 'teste' : data.tipo === 'percentual' ? 'percentual' : 'success');
+				setCupomMsg(
+					data.tipo === 'valorFixo'
+						? 'valorFixo'
+						: data.tipo === 'teste'
+						? 'teste'
+						: data.tipo === 'percentual'
+						? 'percentual'
+						: 'success'
+				);
 			} else if (data.motivo === 'esgotado') {
 				onApplyCupom(null);
 				setCupomMsg('esgotado');
@@ -1760,7 +1781,10 @@ function CartView({ cart, onQty, onRemove, onShop, onCheckout, appliedCupom, onA
 							{appliedCupom ? (
 								<div className="cupom-aplicado">
 									<span className="cupom-aplicado-nome">
-										<Check size={15} /> Cupom {appliedCupom.codigo} aplicado
+										<Check size={15} />{' '}
+										{appliedCupom.tipo === 'valorFixo'
+											? 'Cupom de teste aplicado'
+											: `Cupom ${appliedCupom.codigo} aplicado`}
 									</span>
 									<button
 										type="button"
@@ -1803,6 +1827,11 @@ function CartView({ cart, onQty, onRemove, onShop, onCheckout, appliedCupom, onA
 									Cupom aplicado: {appliedCupom.percentual}% de desconto sobre os produtos.
 								</p>
 							)}
+							{appliedCupom && cupomMsg === 'valorFixo' && (
+								<p className="cupom-msg cupom-msg-ok">
+									Cupom de teste aplicado: o total deste pedido passa a ser R$ 1,00.
+								</p>
+							)}
 							{cupomMsg === 'esgotado' && (
 								<p className="cupom-msg cupom-msg-err">
 									Este cupom atingiu o limite de utilizações.
@@ -1830,7 +1859,11 @@ function CartView({ cart, onQty, onRemove, onShop, onCheckout, appliedCupom, onA
 							</div>
 							{appliedCupom && t.discount > 0 && (
 								<div className="summary-row cupom-discount-row">
-									<span>Cupom {appliedCupom.codigo}</span>
+									<span>
+										{appliedCupom.tipo === 'valorFixo'
+											? 'Cupom de teste'
+											: `Cupom ${appliedCupom.codigo}`}
+									</span>
 									<strong>- {fmt(t.discount)}</strong>
 								</div>
 							)}

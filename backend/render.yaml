@@ -28,6 +28,8 @@ services:
         sync: false   # Public Key — servida ao front por /api/loja/config
       - key: LOJA_SHEET_NAME
         value: Pedidos Loja
+      - key: ENABLE_TEST_COUPON
+        sync: false   # Cupom interno de teste (total = R$ 1,00). Deixe SEM VALOR fora da janela de teste.
       - key: LOJA_FEE_PIX_BPS
         sync: false   # Taxa do Pix da loja em pontos-base (vazio = 0)
       - key: CUPONS_SHEET_NAME

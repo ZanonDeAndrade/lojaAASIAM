@@ -69,6 +69,7 @@ export const LOJA_SHEET_HEADERS = [
   "Cupom", // X — nome do cupom pessoal, vazio quando não há
   "Subtotal sem cupom", // Y — subtotal aos preços de venda (auditoria)
   "Desconto do cupom", // Z — Y − G, congelado no pedido
+  "Pedido de teste", // AA — "Sim" só com o cupom interno de valor fixo; nunca mostrado ao cliente
 ];
 
 const COL = {
@@ -98,6 +99,7 @@ const COL = {
   cupom: 23,
   subtotalOriginal: 24,
   desconto: 25,
+  isTestOrder: 26,
 };
 
 const LAST_COLUMN = columnLetter(LOJA_SHEET_HEADERS.length);
@@ -195,6 +197,7 @@ function rowToPedido(row, rowNumber) {
     cupom: row[COL.cupom] || "",
     subtotalOriginalCents: centsDaPlanilha(row[COL.subtotalOriginal]),
     descontoCents: centsDaPlanilha(row[COL.desconto]),
+    isTestOrder: String(row[COL.isTestOrder] || "").trim().toLowerCase() === "sim",
   };
 }
 
@@ -229,6 +232,7 @@ function pedidoToRow(pedido) {
     20
   );
   row[COL.desconto] = sheetSafe(pedido.cupom ? formatBRL(pedido.descontoCents ?? 0) : "", 20);
+  row[COL.isTestOrder] = sheetSafe(pedido.isTestOrder ? "Sim" : "", 10);
   return row;
 }
 
@@ -274,7 +278,8 @@ export async function findPedido(id, { fresh = false } = {}) {
  *
  * @param {object} dados - { id, nome, telefone, email, itens, shirtSizes,
  *   shortsSizes, personalizacaoNomes, personalizacaoNumeros, subtotalCents,
- *   paymentMethod, installments, feeBps, paymentFeeCents, totalChargedCents }
+ *   paymentMethod, installments, feeBps, paymentFeeCents, totalChargedCents,
+ *   isTestOrder }
  */
 export async function criarPedidoPendente(dados) {
   exigirPlanilha();
@@ -307,6 +312,7 @@ export async function criarPedidoPendente(dados) {
     pagoEm: "",
     atualizadoEm: agora,
     observacoes: dados.observacoes || "",
+    isTestOrder: Boolean(dados.isTestOrder),
   };
 
   return serialize(async () => {
