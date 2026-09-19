@@ -1,11 +1,16 @@
 /**
  * Cupons de desconto da loja — REGRA DE PREÇO.
  *
- * Quatro tipos:
+ * Cinco tipos:
  *  - "custo"      → cada produto do carrinho passa a ser vendido pelo seu
  *                   `costCents` (preço de custo real cadastrado). O cadastro e
  *                   o limite de 2 utilizações vivem em `cupons-store.js` (aba
  *                   "Cupons" do Google Sheets) — nada em memória.
+ *  - "custoDireto" → cupom PROFESSOR: mesmo preço de custo (`costCents`) de
+ *                   todos os produtos, mas o valor cobrado no Mercado Pago é
+ *                   EXATAMENTE esse subtotal — sem gross-up de taxa, sempre em
+ *                   1x (Pix e cartão). Cadastro fixo em `CUSTO_DIRETO_COUPONS`:
+ *                   sem expiração, sem limite de uso, sem planilha.
  *  - "teste"      → zera tudo para R$ 1,00/unidade, para os testes de
  *                   pagamento. Ilimitados, sem persistência. Apagar quando os
  *                   testes acabarem.
@@ -58,6 +63,18 @@ const TEST_COUPONS = new Map([
  * planilha (`cupons-store.js`), igual aos cupons de teste.
  */
 const PERCENT_COUPONS = new Map([["programador5", { codigo: "programador5", percentual: 5 }]]);
+
+/**
+ * Cupons de CUSTO DIRETO: preço de custo em todos os produtos e o total do
+ * checkout do Mercado Pago é o próprio subtotal a custo (`loja-pagamento.js`
+ * zera o acréscimo de taxa e força 1x quando o tipo é "custoDireto").
+ */
+const CUSTO_DIRETO_COUPONS = new Map([["professor", "PROFESSOR"]]);
+
+/** Tipos cujo total cobrado é o subtotal do pedido, sem repasse de taxa. */
+export function cupomSemTaxa(tipo) {
+  return tipo === "valorFixo" || tipo === "custoDireto";
+}
 
 /**
  * Cupom Diretoria — pedido REAL, cobrado por exatamente R$ 1,00. Chave
@@ -116,6 +133,9 @@ export async function checkCoupon(codigo) {
   if (TEST_COUPONS.has(key)) {
     return { valido: true, tipo: "teste", codigo: TEST_COUPONS.get(key) };
   }
+  if (CUSTO_DIRETO_COUPONS.has(key)) {
+    return { valido: true, tipo: "custoDireto", codigo: CUSTO_DIRETO_COUPONS.get(key) };
+  }
   if (PERCENT_COUPONS.has(key)) {
     const { codigo: canonico, percentual } = PERCENT_COUPONS.get(key);
     return { valido: true, tipo: "percentual", codigo: canonico, percentual };
@@ -132,6 +152,7 @@ export async function marcarCupomUsado(codigo, orderId) {
   if (!key) return { ok: false, motivo: "parametros" };
   if (key === CUPOM_DIRETORIA_CODE) return { ok: true, tipo: "valorFixo" };
   if (TEST_COUPONS.has(key)) return { ok: true, tipo: "teste" };
+  if (CUSTO_DIRETO_COUPONS.has(key)) return { ok: true, tipo: "custoDireto" };
   if (PERCENT_COUPONS.has(key)) return { ok: true, tipo: "percentual" };
   return contabilizarUsoCupom(codigo, orderId);
 }
@@ -205,5 +226,6 @@ export function aplicarCupom(order, tipo, codigo) {
     aplicarDescontoPercentual(order, entrada?.percentual ?? 0);
     return;
   }
+  // "custo" e "custoDireto" (PROFESSOR): preço de custo em todas as linhas.
   aplicarPrecoCusto(order);
 }

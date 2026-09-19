@@ -33,6 +33,7 @@ import {
   CupomPrecoError,
   aplicarCupom,
   checkCoupon,
+  cupomSemTaxa,
   marcarCupomUsado,
 } from "./cupons.js";
 import { listarCupons } from "./cupons-store.js";
@@ -499,21 +500,22 @@ function pedidoView(pedido, leitura = null) {
 }
 
 /**
- * Cobrança do cupom Diretoria — mesmo formato de `simularCobranca`, mas sem
+ * Cobrança sem repasse de taxa — cupom Diretoria (R$ 1,00) e cupom PROFESSOR
+ * (subtotal a preço de custo). Mesmo formato de `simularCobranca`, mas sem
  * gross-up: o acréscimo do pagamento é zerado, senão o total cobrado passaria
  * de `CUPOM_DIRETORIA_CENTS`. Sempre 1x — parcelar R$ 1,00 não faz sentido e o
  * Mercado Pago provavelmente recusaria parcelas de centavos.
  */
-function cobrancaValorFixo(paymentMethod) {
+function cobrancaValorFixo(paymentMethod, totalCents = CUPOM_DIRETORIA_CENTS) {
   return {
-    subtotalCents: CUPOM_DIRETORIA_CENTS,
+    subtotalCents: totalCents,
     paymentMethod,
     installments: 1,
     feeBps: 0,
     feeRate: 0,
     paymentFeeCents: 0,
-    totalCents: CUPOM_DIRETORIA_CENTS,
-    installmentCents: CUPOM_DIRETORIA_CENTS,
+    totalCents,
+    installmentCents: totalCents,
   };
 }
 
@@ -646,7 +648,7 @@ export function registerLojaRoutes(app) {
     }
 
     const subtotalCents = reconstruido.order.totalCents;
-    const ehValorFixo = reconstruido.cupomTipo === "valorFixo";
+    const ehValorFixo = cupomSemTaxa(reconstruido.cupomTipo);
     const metodo = String(req.body?.paymentMethod || METODO_CARTAO);
     const cupomInfo = {
       cupomAplicado: Boolean(reconstruido.cupom),
@@ -659,7 +661,7 @@ export function registerLojaRoutes(app) {
     try {
       if (metodo === METODO_PIX) {
         const pix = ehValorFixo
-          ? cobrancaValorFixo(METODO_PIX)
+          ? cobrancaValorFixo(METODO_PIX, subtotalCents)
           : simularCobranca({ subtotalCents, paymentMethod: METODO_PIX });
         return res.json({ ok: true, subtotalCents, ...cupomInfo, pix, cartao: null });
       }
@@ -667,14 +669,14 @@ export function registerLojaRoutes(app) {
       // O cupom de valor fixo sempre cobra 1x — nunca o que o navegador mandar.
       const installments = ehValorFixo ? 1 : Math.trunc(Number(req.body?.installments) || 1);
       const cartao = ehValorFixo
-        ? cobrancaValorFixo(METODO_CARTAO)
+        ? cobrancaValorFixo(METODO_CARTAO, subtotalCents)
         : simularCobranca({ subtotalCents, paymentMethod: METODO_CARTAO, installments });
       return res.json({
         ok: true,
         subtotalCents,
         ...cupomInfo,
         cartao,
-        opcoes: ehValorFixo ? [cobrancaValorFixo(METODO_CARTAO)] : opcoesDeParcelamento(subtotalCents),
+        opcoes: ehValorFixo ? [cobrancaValorFixo(METODO_CARTAO, subtotalCents)] : opcoesDeParcelamento(subtotalCents),
       });
     } catch (err) {
       if (err instanceof FeeError) {
@@ -716,7 +718,7 @@ export function registerLojaRoutes(app) {
     }
 
     const subtotalCents = reconstruido.order.totalCents;
-    const ehValorFixo = reconstruido.cupomTipo === "valorFixo";
+    const ehValorFixo = cupomSemTaxa(reconstruido.cupomTipo);
 
     let cobranca;
     try {
@@ -724,7 +726,7 @@ export function registerLojaRoutes(app) {
       // CUPOM_DIRETORIA_CENTS, sem acréscimo, em 1x, seja qual for o método
       // ou o número de parcelas que o navegador mandou.
       cobranca = ehValorFixo
-        ? cobrancaValorFixo(pagamento.data.metodo)
+        ? cobrancaValorFixo(pagamento.data.metodo, subtotalCents)
         : simularCobranca({
             subtotalCents,
             paymentMethod: pagamento.data.metodo,

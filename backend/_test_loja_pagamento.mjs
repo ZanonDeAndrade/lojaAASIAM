@@ -538,6 +538,77 @@ await test("programador5 não é cumulativo: um único campo `cupom`, dois códi
   assert.equal(soProgramador5.descontoCents, 1600, "só o desconto de 5% — nada somado");
 });
 
+/* ── Cupom PROFESSOR: preço de custo em todos os produtos e o valor cobrado no
+   Mercado Pago é EXATAMENTE esse subtotal — sem gross-up de taxa, sempre 1x. */
+
+await test("PROFESSOR: reconhecido sem depender de maiúsculas/espaços, tipo custoDireto", async () => {
+  resetTudo();
+  for (const variacao of ["PROFESSOR", "professor", "  Professor "]) {
+    const body = await (
+      await post("/api/loja/checkout/quote", { selection: selecaoMoletom, paymentMethod: "pix", cupom: variacao })
+    ).json();
+    assert.equal(body.cupomAplicado, true, `"${variacao}" deveria ser aceito`);
+    assert.equal(body.cupom, "PROFESSOR");
+    assert.equal(body.cupomTipo, "custoDireto");
+  }
+});
+
+await test("PROFESSOR: subtotal a preço de custo e Pix/cartão cobram exatamente esse valor (sem taxa, 1x)", async () => {
+  resetTudo();
+  const body = await (
+    await post("/api/loja/checkout/quote", {
+      selection: selecaoMoletom, // 2 moletons: venda R$ 320,00 / custo 2 × R$ 130,00
+      paymentMethod: "credit_card",
+      installments: 5, // pedido de 5x — o cupom ignora e força 1x
+      cupom: "PROFESSOR",
+    })
+  ).json();
+  assert.equal(body.subtotalOriginalCents, 32000);
+  assert.equal(body.subtotalCents, 26000);
+  assert.equal(body.descontoCents, 6000);
+  assert.equal(body.cartao.paymentFeeCents, 0);
+  assert.equal(body.cartao.installments, 1);
+  assert.equal(body.cartao.totalCents, 26000, "valor do checkout = preço de custo");
+  assert.deepEqual(body.opcoes, [body.cartao]);
+
+  const pix = await (
+    await post("/api/loja/checkout/quote", { selection: selecaoMoletom, paymentMethod: "pix", cupom: "PROFESSOR" })
+  ).json();
+  assert.equal(pix.pix.totalCents, 26000);
+  assert.equal(pix.pix.paymentFeeCents, 0);
+});
+
+await test("PROFESSOR: vale para todos os produtos do catálogo com custo cadastrado, incluindo combos", async () => {
+  resetTudo();
+  const body = await (
+    await post("/api/loja/checkout/quote", { selection: selecaoComboWolf, paymentMethod: "pix", cupom: "PROFESSOR" })
+  ).json();
+  assert.equal(body.subtotalCents, 37800, "combo-wolf a custo = soma das peças");
+  assert.equal(body.pix.totalCents, 37800);
+
+  const umaCaneca = await (
+    await post("/api/loja/checkout/quote", { selection: { caneca: { quantity: 1 } }, paymentMethod: "pix", cupom: "PROFESSOR" })
+  ).json();
+  assert.equal(umaCaneca.pix.totalCents, 2800);
+});
+
+await test("checkout com PROFESSOR: o Mercado Pago recebe o preço de custo, sem acréscimo, em cartão e Pix", async () => {
+  resetTudo();
+  const cartao = await checkoutCartao({ cupom: "professor", installments: 4 });
+  assert.equal(cartao.res.status, 201);
+  assert.equal(cartao.body.cupom, "PROFESSOR");
+  assert.equal(cartao.body.totalCents, 26000);
+  assert.equal(cartao.body.installments, 1);
+  const chamadaCartao = requisicoesPara("POST", "/v1/orders").at(-1);
+  assert.equal(chamadaCartao.body.transactions.payments[0].amount, "260.00");
+
+  const pix = await checkoutCartao({ cupom: "PROFESSOR", paymentMethod: "pix" });
+  assert.equal(pix.res.status, 201);
+  assert.equal(pix.body.totalCents, 26000);
+  const chamadaPix = requisicoesPara("POST", "/v1/orders").at(-1);
+  assert.equal(chamadaPix.body.transactions.payments[0].amount, "260.00");
+});
+
 /* ── Cupom Diretoria (código "1REAL"): total final sempre R$ 1,00, cobrança
    REAL — não é simulação. O rótulo "Cupom Diretoria" é decisão só do
    frontend (a partir de `cupomTipo`); aqui testamos o que o backend garante:
