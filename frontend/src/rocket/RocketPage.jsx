@@ -2,8 +2,42 @@ import { AlertCircle, ArrowLeft, Award, CheckCircle2, Copy, Download, ExternalLi
 import { useEffect, useState } from 'react';
 
 import rocketBanner from '../../../BannerRocket.png';
+import trofeuImg from '../../../Trofeu-card.png';
 import officialRegulation from '../../../Regulamento Oficial - Campeonato Rocket League AASIAM.pdf_20260925_153129_0000.pdf';
 import './rocket.css';
+
+const TROFEU_AVISO = 'Imagem do troféu meramente ilustrativa. O modelo final pode sofrer alterações.';
+
+/* Fotos reais dos produtos da AASIAM — a mesma Jersey branca, Camiseta e
+   Caneca vendidas na loja. O troféu é o único mock-up disponível (por isso o
+   aviso ao lado dele); nenhuma imagem de produto diferente foi usada no lugar
+   do prêmio real. */
+const PRIZES = [
+	{
+		place: '1º lugar',
+		medal: 'ouro',
+		text: 'Troféu personalizado + 2 Jerseys Brancas AASIAM.',
+		productImage: '/imgs/jersey-branca-aasiam.png',
+		productAlt: 'Jersey branca oficial da AASIAM, a mesma entregue como prêmio ao time campeão',
+		productFit: 'contain',
+	},
+	{
+		place: '2º lugar',
+		medal: 'prata',
+		text: 'Troféu personalizado + 2 Camisetas AASIAM.',
+		productImage: '/imgs/camiseta-aasiam.png',
+		productAlt: 'Camiseta oficial da AASIAM, a mesma entregue como prêmio ao vice-campeão',
+		productFit: 'contain',
+	},
+	{
+		place: '3º lugar',
+		medal: 'bronze',
+		text: 'Troféu personalizado + 2 Canecas AASIAM.',
+		productImage: '/imgs/caneca-aasiam-premio.jpg',
+		productAlt: 'Caneca oficial da AASIAM, a mesma entregue como prêmio ao terceiro colocado',
+		productFit: 'cover',
+	},
+];
 
 const API_BASE = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
 const STORAGE_ORDER = 'aasiam-rocket-registration';
@@ -23,9 +57,11 @@ const TORNEIO_INFO = [
 	{ label: 'Modalidade', value: '2x2', hint: 'Até 20 equipes' },
 ];
 
-/* Transcrição fiel do Regulamento Oficial (PDF anexo). Estrutura em dados —
-   e não em texto solto — só para reaproveitar o mesmo componente de seção em
-   todo o documento; nenhuma regra, número ou palavra foi alterada. */
+/* Transcrição fiel do Regulamento Oficial (PDF anexo) — nenhuma regra, número
+   ou palavra das seções 1 a 4 foi alterada. A seção 5 (Premiação) é a
+   exceção deliberada: veja a nota junto a ela. Estrutura em dados, e não em
+   texto solto, só para reaproveitar o mesmo componente de seção no documento
+   inteiro. */
 const REGULATION_SECTIONS = [
 	{
 		title: '1. Organização e apresentação',
@@ -73,11 +109,14 @@ const REGULATION_SECTIONS = [
 		],
 	},
 	{
+		/* Lista atualizada em 2026-09-28 (troféu para as três colocações). O PDF
+		   oficial para download ainda traz a premiação anterior — substituir o
+		   arquivo por uma versão atualizada antes de divulgar as inscrições. */
 		title: '5. Premiação oficial',
 		items: [
-			{ icon: Trophy, label: '1º Lugar (Campeões)', text: 'Troféu personalizado + Duas Camisas Jersey Oficiais da AASIAM.' },
-			{ icon: Medal, label: '2º Lugar (Vice-campeões)', text: 'Duas Camisas Oficiais da AASIAM (verde/cinza).' },
-			{ icon: Award, label: '3º Lugar', text: 'Duas Canecas Oficiais da AASIAM.' },
+			{ icon: Trophy, label: '1º Lugar (Campeões)', text: 'Troféu personalizado + 2 Jerseys Brancas AASIAM.' },
+			{ icon: Medal, label: '2º Lugar (Vice-campeões)', text: 'Troféu personalizado + 2 Camisetas AASIAM.' },
+			{ icon: Award, label: '3º Lugar', text: 'Troféu personalizado + 2 Canecas AASIAM.' },
 		],
 	},
 ];
@@ -136,6 +175,29 @@ function About({ availability }) {
 		{ label: 'Formação', value: '2 titulares', hint: '+ 1 reserva opcional' },
 	];
 	return <section className="rl-about"><div className="rl-panel-head"><span className="rl-eyebrow"><Trophy size={16} /> Sobre o torneio</span><h2>Grupos e mata-mata online, grande final presencial</h2><p>Rocket League 2x2 promovido pela AASIAM — Alcateia de Chernobyl. As 20 equipes se enfrentam em grupos e mata-mata online; a grande final acontece presencialmente na faculdade.</p></div><InfoStrip items={info} /></section>;
+}
+
+function PrizeCard({ prize }) {
+	return <article className={`rl-prize-card rl-prize-${prize.medal}`}>
+		<div className="rl-prize-media">
+			<div className="rl-prize-product"><img src={prize.productImage} alt={prize.productAlt} loading="lazy" style={{ objectFit: prize.productFit }} /></div>
+			<div className="rl-prize-trophy">
+				<img src={trofeuImg} alt="Troféu personalizado do torneio" loading="lazy" />
+				<p className="rl-prize-trophy-note">{TROFEU_AVISO}</p>
+			</div>
+		</div>
+		<div className="rl-prize-body">
+			<span className="rl-prize-place">{prize.place}</span>
+			<p>{prize.text}</p>
+		</div>
+	</article>;
+}
+
+/* Premiação em cards — um por colocação. O troféu é a mesma imagem nos três
+   (único mock-up disponível), sempre com o aviso de que é ilustrativo; as
+   Jerseys, camisetas e canecas são fotos reais dos produtos da loja. */
+function Prizes() {
+	return <section className="rl-prizes"><div className="rl-panel-head"><span className="rl-eyebrow"><Award size={16} /> Premiação oficial</span><h2>O que sua equipe leva pra casa</h2></div><div className="rl-prize-grid">{PRIZES.map(prize => <PrizeCard key={prize.place} prize={prize} />)}</div></section>;
 }
 
 /* Fecha a hierarquia da página: depois de ler sobre o torneio e preencher a
@@ -213,5 +275,5 @@ export default function RocketPage() {
 		try { const response = await fetch(`${API_BASE}/api/rocket-league/checkout`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }); const data = await response.json(); if (!response.ok || !data.ok) return { ok: false, error: data.error, field: data.field }; const next = { registrationId: data.registrationId, token: data.token }; setOrder(next); save(STORAGE_ORDER, next); setAvailability(prev => prev ? { ...prev, seatsRemaining: data.seatsRemaining, open: data.seatsRemaining > 0 } : prev); scrollTop(); return { ok: true }; } catch { return { ok: false, error: 'Não foi possível conectar ao servidor. Tente novamente.' }; }
 	}
 	function edit() { setOrder(null); clear(STORAGE_ORDER); scrollTop(); }
-	return <div className="rl-page"><Header /><main className="rl-main">{order ? <PaymentPanel order={order} onBack={edit} /> : <div className="rl-layout"><Hero availability={availability} onRegister={() => document.getElementById('inscricao')?.scrollIntoView({ behavior: 'smooth' })} /><About availability={availability} /><RegistrationForm draft={draft} setDraft={setDraft} availability={availability} onCheckout={checkout} /><RegulationAccess /></div>}</main><footer className="rl-footer">© 2026 AASIAM · Torneio Rocket League 2x2</footer></div>;
+	return <div className="rl-page"><Header /><main className="rl-main">{order ? <PaymentPanel order={order} onBack={edit} /> : <div className="rl-layout"><Hero availability={availability} onRegister={() => document.getElementById('inscricao')?.scrollIntoView({ behavior: 'smooth' })} /><About availability={availability} /><Prizes /><RegistrationForm draft={draft} setDraft={setDraft} availability={availability} onCheckout={checkout} /><RegulationAccess /></div>}</main><footer className="rl-footer">© 2026 AASIAM · Torneio Rocket League 2x2</footer></div>;
 }

@@ -67,7 +67,7 @@
 .rl-hero-intro p { color: var(--rl-text-dim); font-size: 1.05rem; margin: 0 0 22px; }
 
 /* ─── sobre o torneio: informações principais + valor/vagas ─── */
-.rl-about, .rl-form-card, .rl-payment-card { background: var(--rl-panel); border: 1px solid var(--rl-line); border-radius: var(--rl-r-lg); padding: 28px; box-shadow: 0 22px 60px -30px rgba(0, 0, 0, 0.7); }
+.rl-about, .rl-prizes, .rl-form-card, .rl-payment-card { background: var(--rl-panel); border: 1px solid var(--rl-line); border-radius: var(--rl-r-lg); padding: 28px; box-shadow: 0 22px 60px -30px rgba(0, 0, 0, 0.7); }
 .rl-panel-head { margin-bottom: 20px; }
 .rl-panel-head h2, .rl-payment-card h2 { font-size: 1.5rem; letter-spacing: -0.03em; margin: 9px 0 8px; }
 .rl-panel-head p, .rl-captain > p { margin: 0; color: var(--rl-text-dim); font-size: 0.9rem; line-height: 1.55; max-width: 62ch; }
@@ -78,6 +78,30 @@
 .rl-info-grid span, .rl-info-grid small { display: block; color: var(--rl-muted); font-size: 0.77rem; }
 .rl-info-grid b { display: block; font-size: 1.08rem; margin: 7px 0 3px; color: var(--rl-text); }
 .rl-info-grid small { line-height: 1.25; }
+
+/* ─── premiação: um card por colocação. A cor de ouro/prata/bronze na borda
+   e no rótulo é a mesma linguagem de pódio do troféu — não decoração solta.
+   Cada card é uma faixa horizontal (produto maior + troféu menor) para as
+   fotos renderizarem nítidas; empilha em coluna no celular. ─── */
+.rl-prize-grid { display: flex; flex-direction: column; gap: 18px; margin-top: 4px; }
+.rl-prize-card { display: flex; align-items: stretch; gap: 22px; padding: 16px; border: 1px solid var(--rl-line); border-top: 3px solid var(--rl-line-strong); border-radius: 16px; background: var(--rl-panel-2); }
+.rl-prize-ouro { border-top-color: #e8c15c; }
+.rl-prize-prata { border-top-color: #c7ccd1; }
+.rl-prize-bronze { border-top-color: #d99a5b; }
+
+.rl-prize-media { display: flex; align-items: flex-start; gap: 12px; flex: 0 0 auto; width: 46%; max-width: 320px; }
+.rl-prize-product { flex: 1.3; aspect-ratio: 4 / 5; border-radius: 12px; overflow: hidden; background: var(--rl-field); border: 1px solid var(--rl-line); }
+.rl-prize-product img { display: block; width: 100%; height: 100%; }
+.rl-prize-trophy { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.rl-prize-trophy img { width: 100%; aspect-ratio: 2 / 3; object-fit: contain; border-radius: 10px; background: var(--rl-bg); border: 1px solid var(--rl-line); }
+.rl-prize-trophy-note { margin: 0; color: var(--rl-muted); font-size: 0.68rem; line-height: 1.35; text-align: center; }
+
+.rl-prize-body { flex: 1; display: flex; flex-direction: column; justify-content: center; min-width: 0; }
+.rl-prize-place { font-weight: 800; font-size: 1.05rem; letter-spacing: -0.01em; margin-bottom: 6px; }
+.rl-prize-ouro .rl-prize-place { color: #e8c15c; }
+.rl-prize-prata .rl-prize-place { color: #c7ccd1; }
+.rl-prize-bronze .rl-prize-place { color: #d99a5b; }
+.rl-prize-body p { margin: 0; color: var(--rl-text); font-size: 0.95rem; line-height: 1.45; }
 
 .rl-regulation-cta { background: var(--rl-panel); border: 1px solid var(--rl-line); border-radius: 16px; padding: 20px 22px; display: flex; align-items: center; justify-content: space-between; gap: 20px; }
 .rl-regulation-cta > div { display: flex; align-items: center; gap: 13px; color: var(--rl-green-soft); }
@@ -165,11 +189,14 @@
   .rl-store-link { font-size: 0.78rem; }
   .rl-layout { gap: 22px; }
   .rl-hero-intro h1 { font-size: 2.1rem; }
-  .rl-about, .rl-form-card, .rl-payment-card { padding: 20px 16px; border-radius: 17px; }
+  .rl-about, .rl-prizes, .rl-form-card, .rl-payment-card { padding: 20px 16px; border-radius: 17px; }
   .rl-info-grid { grid-template-columns: 1fr 1fr; }
   .rl-info-grid article { padding: 14px; }
   .rl-info-grid b { font-size: 1rem; }
   .rl-regulation-cta { align-items: flex-start; flex-direction: column; }
+  .rl-prize-card { flex-direction: column; padding: 14px; }
+  .rl-prize-media { width: 100%; max-width: none; }
+  .rl-prize-body { margin-top: 4px; }
   .rl-fields-grid { grid-template-columns: 1fr; }
   .rl-player { padding: 15px 11px 1px; }
   .rl-regulation-wrap { padding-top: 4px; }
