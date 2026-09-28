@@ -320,6 +320,47 @@ a { color: inherit; }
 /* ─── PAGE CONTENT ─── */
 .content-pad { padding-top: 40px; padding-bottom: 96px; }
 
+/* ─── BANNER DO TORNEIO ROCKET LEAGUE ───
+   Um único banner, sem palco 3D e sem altura fixa: a altura vem da proporção
+   da arte (1600×584), então nada é cortado nem esticado em largura nenhuma.
+   Mesmo tratamento do antigo banner do Churrasco: moldura verde no foco e no
+   hover, e nenhum texto por cima — a arte já diz tudo. */
+.rocket-home-banner {
+  display: block;
+  position: relative;
+  width: 100%;
+  margin: 0 0 40px;
+  border-radius: var(--r-lg);
+  overflow: hidden;
+  /* Reserva o espaço antes da imagem chegar: sem isso a página pula. */
+  aspect-ratio: 1600 / 584;
+  background: var(--panel-2);
+  box-shadow: var(--shadow-sm);
+  outline-offset: 3px;
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+
+.rocket-home-banner img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+/* A arte é o conteúdo; a resposta ao ponteiro é só a moldura. */
+.rocket-home-banner:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 22px 48px -20px rgba(0, 0, 0, 0.55);
+}
+
+.rocket-home-banner:focus-visible {
+  outline: 3px solid var(--green-bright);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rocket-home-banner { transition: none; }
+  .rocket-home-banner:hover { transform: none; }
+}
+
 /* ─── CARROSSEL DE DESTAQUE ───
    Pôsteres 4:5 (1080×1350): a caixa usa a mesma proporção da arte, então
    `cover` nunca precisa cortar nem deixar vão — é só uma rede de segurança

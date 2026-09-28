@@ -756,6 +756,27 @@ function SiteHeader({
    CATALOG VIEW — all categories on one page
 ══════════════════════════════════════════════════════ */
 /* ══════════════════════════════════════════════════════
+   BANNER DO TORNEIO ROCKET LEAGUE — destaque da home
+══════════════════════════════════════════════════════ */
+/* A arte já traz nome, formato e chamada para ação pintados, então nada é
+   escrito por cima dela. O banner inteiro é o link para a inscrição, e a
+   única resposta ao ponteiro é a moldura verde — mesmo padrão do banner do
+   Churrasco que ocupou este lugar antes: largura total do container e
+   `aspect-ratio` no lugar de altura fixa, então a proporção se mantém em
+   qualquer tela e nada é cortado nem esticado. */
+function RocketHomeBanner() {
+	return (
+		<a className="rocket-home-banner" href="/torneio-rocket-league">
+			<SmartImage
+				src="/imgs/banner-torneio-rocket-league.png"
+				alt="Torneio Rocket League 2x2 da AASIAM — inscreva sua equipe"
+				priority="high"
+			/>
+		</a>
+	);
+}
+
+/* ══════════════════════════════════════════════════════
    CARROSSEL DE DESTAQUE — abertura da home
 ══════════════════════════════════════════════════════ */
 
@@ -930,6 +951,8 @@ function CatalogView({ onOpen, className }) {
 
 	return (
 		<div className={`page content-pad ${className || ''}`}>
+			<RocketHomeBanner />
+
 			<div className="cat-filter">
 				<button
 					type="button"

@@ -1,5 +1,5 @@
-import { AlertCircle, ArrowLeft, CheckCircle2, Copy, Download, ExternalLink, FileText, Gamepad2, Loader2, QrCode, ShieldCheck, Users } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { AlertCircle, ArrowLeft, Award, CheckCircle2, Copy, Download, ExternalLink, FileText, Gamepad2, Loader2, Medal, QrCode, ShieldCheck, Trophy, Users } from 'lucide-react';
+import { useEffect, useState } from 'react';
 
 import rocketBanner from '../../../BannerRocket.png';
 import officialRegulation from '../../../Regulamento Oficial - Campeonato Rocket League AASIAM.pdf_20260925_153129_0000.pdf';
@@ -14,6 +14,73 @@ const EMPTY_DRAFT = {
 	nomeEquipe: '', jogadores: [{ ...EMPTY_PLAYER }, { ...EMPTY_PLAYER }, { ...EMPTY_PLAYER }], temReserva: false,
 	capitao: { nome: '', whatsapp: '', email: '' }, aceiteRegulamento: false,
 };
+
+/* Os três destaques que o PDF oficial traz logo abaixo do título — abrem
+   também o regulamento nesta página. */
+const TORNEIO_INFO = [
+	{ label: 'Valor por equipe', value: 'R$ 50,00', hint: 'Com ou sem reserva' },
+	{ label: 'Prazo de inscrição', value: '10/10/2026', hint: 'Consulte o regulamento' },
+	{ label: 'Modalidade', value: '2x2', hint: 'Até 20 equipes' },
+];
+
+/* Transcrição fiel do Regulamento Oficial (PDF anexo). Estrutura em dados —
+   e não em texto solto — só para reaproveitar o mesmo componente de seção em
+   todo o documento; nenhuma regra, número ou palavra foi alterada. */
+const REGULATION_SECTIONS = [
+	{
+		title: '1. Organização e apresentação',
+		paragraphs: [
+			'O presente regulamento rege o campeonato de Rocket League 2x2 promovido pela AASIAM (Associação Atlética de Sistemas de Informação Antonio Meneghetti - Alcateia de Chernobyl). O evento tem como objetivos integrar a comunidade acadêmica, fomentar os e-sports na instituição e arrecadar fundos para as iniciativas da atlética.',
+		],
+	},
+	{
+		title: '2. Inscrições, elegibilidade e jogador reserva',
+		items: [
+			{ label: 'Composição da Equipe', text: 'Cada equipe deve ser formada obrigatoriamente por 2 (dois) jogadores titulares.' },
+			{ label: 'Atleta Reserva (Opcional)', text: 'A inscrição de 1 (um) jogador reserva por equipe é totalmente opcional, não sendo obrigatória para a participação no campeonato. Caso inscrito, o reserva deve ser cadastrado previamente junto aos titulares.' },
+			{ label: 'Requisito Acadêmico', text: 'Todos os integrantes (titulares e eventuais reservas) devem ser alunos atuais, professores ou egressos (ex-alunos) da instituição de ensino.' },
+			{ label: 'Dados Obrigatórios', text: 'No ato da inscrição, a equipe deve fornecer: Nome da Equipe, Nome Completo e RA de todos os integrantes (e do reserva, se houver), além do contato do capitão.' },
+			{ label: 'Confirmação de Vaga', text: 'A inscrição é validada estritamente mediante o envio do comprovante de pagamento da taxa de R$ 50,00 aos canais oficiais da AASIAM (https://www.aasiam.com.br/) até 10/10/2026.' },
+		],
+		callout: 'Atenção: Vagas limitadas a 20 equipes. O preenchimento obedece à ordem de envio do comprovante de pagamento à organização.',
+	},
+	{
+		title: '3. Formato do campeonato e sistema de pontuação',
+		items: [
+			{ label: 'Fase de Grupos (Online)', text: 'As 20 equipes serão divididas em 4 grupos de 5 equipes. Todos jogam contra todos em partida única. Cada vitória soma +1 ponto na tabela de classificação. Para agilidade, 4 partidas simultâneas ocorrerão por blocos de horários. Avançam os 2 melhores de cada grupo (Total: 8 equipes).' },
+			{
+				label: 'Critérios de Desempate (Fase de Grupos)',
+				text: 'Em caso de empate em pontos entre duas ou mais equipes, os critérios aplicados em ordem estrita são:',
+				list: [
+					'1) Confronto Direto;',
+					'2) Saldo de Gols (SG);',
+					'3) Maior Número de Gols Marcados (GM);',
+					'4) Menor Número de Gols Sofridos (GS);',
+					'5) Partida de desempate (Tiebreaker) organizada pela Comissão Organizador.',
+				],
+			},
+			{ label: 'Quartas de Final e Semifinais (Online)', text: 'Sistema eliminatório simples em MD3 (Melhor de 3 partidas).' },
+			{ label: 'Grande Final (Presencial)', text: 'Realizada na faculdade em confronto decisivo MD5 (Melhor de 5 partidas).' },
+		],
+	},
+	{
+		title: '4. Regras de queda de conexão e W.O.',
+		callout: 'Regra de Queda de Conexão: Se houver queda de conexão, a partida será reiniciada mantendo o placar atual proporcional ao momento da queda. Caso a queda ocorra com menos de 1 minuto de jogo decorrido, a partida será reiniciada do zero. Se a queda do mesmo jogador ocorrer mais de uma vez na mesma série, o uso do jogador reserva (caso cadastrado) será obrigatório para a continuidade.',
+		calloutFirst: true,
+		items: [
+			{ label: 'Regra Rigorosa de W.O.', text: 'Tolerância máxima de 15 minutos a partir do horário oficial da partida. A ausência de jogadores suficientes acarreta W.O. (derrota por 1x0) ou seja o time que ganhar a partida por W.O soma +1 ponto e +1x gol para o saldo de gols, consequentemente a equipe penalizada por W.O não soma pontos e recebe -1 gol no saldo de gols.' },
+			{ label: 'Conduta e Integridade', text: 'Ofensas no chat, toxicidade ou tentativas de burlar regras resultam em advertência e desclassificação imediata sem reembolso.' },
+		],
+	},
+	{
+		title: '5. Premiação oficial',
+		items: [
+			{ icon: Trophy, label: '1º Lugar (Campeões)', text: 'Troféu personalizado + Duas Camisas Jersey Oficiais da AASIAM.' },
+			{ icon: Medal, label: '2º Lugar (Vice-campeões)', text: 'Duas Camisas Oficiais da AASIAM (verde/cinza).' },
+			{ icon: Award, label: '3º Lugar', text: 'Duas Canecas Oficiais da AASIAM.' },
+		],
+	},
+];
 
 function load(key, fallback) {
 	try { const value = JSON.parse(localStorage.getItem(key) || ''); return value || fallback; } catch { return fallback; }
@@ -35,13 +102,46 @@ function Header() {
 	return <header className="rl-header"><a href="/" className="rl-brand"><img src="/logo-aasiam.webp" alt="" /><span>AASIAM</span></a><a className="rl-store-link" href="/"><ArrowLeft size={16} /> Loja oficial</a></header>;
 }
 
-export function RocketRegulationPage() {
-	useEffect(() => { document.title = 'Regulamento Oficial | Rocket League AASIAM'; }, []);
-	return <div className="rl-page"><Header /><main className="rl-regulation-wrap"><a className="rl-back-link" href="/torneio-rocket-league"><ArrowLeft size={17} /> Voltar ao torneio</a><div className="rl-regulation-head"><span className="rl-eyebrow"><FileText size={16} /> Documento oficial</span><h1>Regulamento do Torneio Rocket League 2x2</h1><p>Consulte o PDF oficial antes de inscrever sua equipe.</p><a className="rl-button rl-button-primary" href={officialRegulation} download="Regulamento Oficial - Campeonato Rocket League AASIAM.pdf"><Download size={18} /> Baixar regulamento</a></div><section className="rl-pdf-card" aria-label="Leitor do regulamento oficial"><object data={officialRegulation} type="application/pdf" className="rl-pdf"><p>Seu navegador não conseguiu abrir o PDF. <a href={officialRegulation} download>Baixe o Regulamento Oficial</a>.</p></object></section></main></div>;
+/* Faixa reaproveitada em cima da inscrição (valor/prazo/vagas) e do
+   regulamento (valor/prazo/modalidade) — mesmos três destaques do PDF oficial. */
+function InfoStrip({ items }) {
+	return <div className="rl-info-grid">{items.map(item => <article key={item.label}><span>{item.label}</span><b>{item.value}</b><small>{item.hint}</small></article>)}</div>;
 }
 
-function Overview({ availability, onRegister }) {
-	return <section className="rl-overview"><div className="rl-banner" style={{ backgroundImage: `linear-gradient(90deg, rgba(3, 9, 6, .9), rgba(3, 9, 6, .28)), url(${rocketBanner})` }}><div><span className="rl-eyebrow"><Gamepad2 size={16} /> AASIAM apresenta</span><h1>Torneio Rocket League <strong>2x2</strong></h1><p>Monte sua dupla e entre na arena.</p><button className="rl-button rl-button-primary" type="button" onClick={onRegister} disabled={availability && !availability.open}>{availability?.reason === 'esgotadas' ? 'Vagas esgotadas' : availability?.reason === 'encerradas' ? 'Inscrições encerradas' : 'Inscrever equipe'}</button></div></div><div className="rl-info-grid"><article><span>Valor por equipe</span><b>R$ 50,00</b><small>Com ou sem reserva</small></article><article><span>Prazo de inscrição</span><b>10/10/2026</b><small>Consulte o regulamento</small></article><article><span>Vagas</span><b>20 equipes</b><small>{availability ? `${availability.seatsRemaining} restante${availability.seatsRemaining === 1 ? '' : 's'}` : 'Consultando vagas...'}</small></article><article><span>Formação</span><b>2 titulares</b><small>+ 1 reserva opcional</small></article></div><div className="rl-regulation-cta"><div><FileText size={22} /><span><strong>Leia o regulamento oficial</strong><small>Elegibilidade, formato e premiações estão exclusivamente no documento.</small></span></div><a href="/torneio-rocket-league/regulamento">Abrir regulamento <ExternalLink size={16} /></a></div></section>;
+function RegulationSection({ section }) {
+	const callout = section.callout && <div className="rl-callout"><AlertCircle size={18} aria-hidden="true" /><p>{section.callout}</p></div>;
+	const items = section.items && <ul className="rl-reg-list">{section.items.map(item => { const Icon = item.icon; return <li key={item.label}>{Icon && <Icon size={18} className="rl-reg-icon" aria-hidden="true" />}<div><strong>{item.label}:</strong> {item.text}{item.list && <ul className="rl-reg-sublist">{item.list.map(entry => <li key={entry}>{entry}</li>)}</ul>}</div></li>; })}</ul>;
+	return <section className="rl-reg-section"><h2>{section.title}</h2>{section.paragraphs?.map(p => <p key={p}>{p}</p>)}{section.calloutFirst ? <>{callout}{items}</> : <>{items}{callout}</>}</section>;
+}
+
+export function RocketRegulationPage() {
+	useEffect(() => { document.title = 'Regulamento Oficial | Rocket League AASIAM'; }, []);
+	return <div className="rl-page"><Header /><main className="rl-regulation-wrap"><a className="rl-back-link" href="/torneio-rocket-league"><ArrowLeft size={17} /> Voltar ao torneio</a><div className="rl-regulation-head"><span className="rl-eyebrow"><FileText size={16} /> Documento oficial</span><h1>Regulamento Oficial: Torneio Rocket League 2x2</h1><p>Associação Atlética de Sistemas de Informação Antonio Meneghetti (AASIAM — Alcateia de Chernobyl)</p><a className="rl-button rl-button-primary" href={officialRegulation} download="Regulamento Oficial - Campeonato Rocket League AASIAM.pdf"><Download size={18} /> Baixar regulamento em PDF</a></div><InfoStrip items={TORNEIO_INFO} /><div className="rl-reg-body">{REGULATION_SECTIONS.map(section => <RegulationSection key={section.title} section={section} />)}</div></main><footer className="rl-footer">© 2026 AASIAM · Torneio Rocket League 2x2</footer></div>;
+}
+
+/* A arte já traz o título pintado (TORNEIO DE ROCKET LEAGUE — AASIAM), então
+   ela entra inteira, sem corte e sem legenda por cima — mesmo tratamento do
+   banner da home. O H1 de verdade (para leitor de tela e SEO) vem logo
+   abaixo, sobre o fundo da própria página. */
+function Hero({ availability, onRegister }) {
+	return <section className="rl-hero-block"><div className="rl-hero"><img className="rl-hero-img" src={rocketBanner} alt="Arte oficial do Torneio de Rocket League da AASIAM" /></div><div className="rl-hero-intro"><span className="rl-eyebrow"><Gamepad2 size={16} /> AASIAM apresenta</span><h1>Torneio Rocket League 2x2</h1><p>Monte sua dupla e entre na arena.</p><button className="rl-button rl-button-primary" type="button" onClick={onRegister} disabled={availability && !availability.open}>{availability?.reason === 'esgotadas' ? 'Vagas esgotadas' : availability?.reason === 'encerradas' ? 'Inscrições encerradas' : 'Inscrever equipe'}</button></div></section>;
+}
+
+function About({ availability }) {
+	const vagasHint = availability ? `${availability.seatsRemaining} restante${availability.seatsRemaining === 1 ? '' : 's'}` : 'Consultando vagas...';
+	const info = [
+		{ label: 'Valor por equipe', value: 'R$ 50,00', hint: 'Com ou sem reserva' },
+		{ label: 'Prazo de inscrição', value: '10/10/2026', hint: 'Consulte o regulamento' },
+		{ label: 'Vagas', value: '20 equipes', hint: vagasHint },
+		{ label: 'Formação', value: '2 titulares', hint: '+ 1 reserva opcional' },
+	];
+	return <section className="rl-about"><div className="rl-panel-head"><span className="rl-eyebrow"><Trophy size={16} /> Sobre o torneio</span><h2>Grupos e mata-mata online, grande final presencial</h2><p>Rocket League 2x2 promovido pela AASIAM — Alcateia de Chernobyl. As 20 equipes se enfrentam em grupos e mata-mata online; a grande final acontece presencialmente na faculdade.</p></div><InfoStrip items={info} /></section>;
+}
+
+/* Fecha a hierarquia da página: depois de ler sobre o torneio e preencher a
+   inscrição, o último passo é abrir o regulamento oficial. */
+function RegulationAccess() {
+	return <section className="rl-regulation-cta"><div><FileText size={22} /><span><strong>Leia o regulamento oficial</strong><small>Elegibilidade, formato e premiações, em detalhe.</small></span></div><a href="/torneio-rocket-league/regulamento">Abrir regulamento <ExternalLink size={16} /></a></section>;
 }
 
 function PlayerFields({ index, player, onChange, errors, disabled }) {
@@ -113,5 +213,5 @@ export default function RocketPage() {
 		try { const response = await fetch(`${API_BASE}/api/rocket-league/checkout`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }); const data = await response.json(); if (!response.ok || !data.ok) return { ok: false, error: data.error, field: data.field }; const next = { registrationId: data.registrationId, token: data.token }; setOrder(next); save(STORAGE_ORDER, next); setAvailability(prev => prev ? { ...prev, seatsRemaining: data.seatsRemaining, open: data.seatsRemaining > 0 } : prev); scrollTop(); return { ok: true }; } catch { return { ok: false, error: 'Não foi possível conectar ao servidor. Tente novamente.' }; }
 	}
 	function edit() { setOrder(null); clear(STORAGE_ORDER); scrollTop(); }
-	return <div className="rl-page"><Header /><main className="rl-main">{order ? <PaymentPanel order={order} onBack={edit} /> : <div className="rl-layout"><Overview availability={availability} onRegister={() => document.getElementById('inscricao')?.scrollIntoView({ behavior: 'smooth' })} /><RegistrationForm draft={draft} setDraft={setDraft} availability={availability} onCheckout={checkout} /></div>}</main><footer className="rl-footer">© 2026 AASIAM · Torneio Rocket League 2x2</footer></div>;
+	return <div className="rl-page"><Header /><main className="rl-main">{order ? <PaymentPanel order={order} onBack={edit} /> : <div className="rl-layout"><Hero availability={availability} onRegister={() => document.getElementById('inscricao')?.scrollIntoView({ behavior: 'smooth' })} /><About availability={availability} /><RegistrationForm draft={draft} setDraft={setDraft} availability={availability} onCheckout={checkout} /><RegulationAccess /></div>}</main><footer className="rl-footer">© 2026 AASIAM · Torneio Rocket League 2x2</footer></div>;
 }
