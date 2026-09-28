@@ -223,6 +223,29 @@ a { color: inherit; }
 /* Só uma das duas aparece por vez, então só uma entra na ordem de tabulação. */
 .churrasco-link-topo { display: none; }
 
+/* Acesso ao Torneio Rocket League: evento com fluxo próprio, mas sempre
+   alcançável da navegação da loja. */
+.rocket-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  flex-shrink: 0;
+  height: 38px;
+  padding: 0 14px;
+  border: 1px solid var(--green);
+  border-radius: var(--r-pill);
+  color: var(--green-bright);
+  font-family: var(--font);
+  font-weight: 700;
+  font-size: 0.74rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.rocket-link:hover { background: var(--green-softer); }
+.rocket-link-topo { display: none; }
+
 @media (prefers-reduced-motion: reduce) {
   .churrasco-link { transition: none; }
   .churrasco-link:active { transform: none; }
@@ -1628,6 +1651,7 @@ a { color: inherit; }
   /* A barra de baixo já reparte o espaço entre as quatro categorias: uma
      quinta pílula ali espremeria todas. Aqui em cima sobra a linha inteira. */
   .churrasco-link-barra { display: none; }
+  .rocket-link-barra { display: none; }
 
   .churrasco-link-topo {
     display: inline-flex;
@@ -1636,6 +1660,12 @@ a { color: inherit; }
     padding: 0 14px;
     font-size: 0.7rem;
     letter-spacing: 0.08em;
+  }
+  .rocket-link-topo {
+    display: inline-flex;
+    margin-left: 8px;
+    height: 34px;
+    padding: 0 12px;
   }
 
   /* ── header becomes floating pill bottom nav ── */

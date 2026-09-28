@@ -227,6 +227,25 @@ CHURRASCO_TOKEN_SECRET=       # opcional
   a pagina so renderiza o QR Code que ele devolve. Nao ha SDK do Mercado Pago no
   front-end.
 
+## Torneio Rocket League 2x2
+
+As rotas do torneio reutilizam a mesma integracao de Orders do Mercado Pago e
+o mesmo webhook central, identificadas pelo prefixo `ROCKET-`. Configure apenas
+as variaveis opcionais abaixo se quiser nomes ou segredo exclusivos; as
+credenciais do Mercado Pago e do Google Sheets ja sao as mesmas da loja.
+
+```bash
+ROCKET_SHEET_NAME=Torneio Rocket League 2026
+ROCKET_TOKEN_SECRET= # opcional
+```
+
+A vaga fica reservada por 30 minutos enquanto o Pix esta pendente e so e
+confirmada depois de o backend consultar a order oficial do Mercado Pago. O
+servico deve operar em **uma instancia** enquanto a fonte de verdade for a
+planilha: se o Render for escalado horizontalmente, use um banco/lock
+compartilhado antes de abrir inscricoes, para preservar o limite atomico de 20
+equipes entre replicas.
+
 ## Configurar as credenciais
 
 1. Entre no [painel do Mercado Pago](https://www.mercadopago.com.br/developers/panel).
@@ -256,7 +275,7 @@ O Pix so e liberado depois que a conta tem uma chave cadastrada:
 2. Em **Configurar notificacoes**, informe a URL de producao:
 
    ```text
-   https://SEU-BACKEND.onrender.com/api/churrasco/webhook/mercadopago
+   https://SEU-BACKEND.onrender.com/api/mercadopago/webhook
    ```
 
    Troque `SEU-BACKEND.onrender.com` pelo mesmo valor que esta em `API_URL`. O
@@ -289,7 +308,8 @@ lido nem gravado.**
 4. Salve. O Render reinicia o servico sozinho.
 5. `API_URL` precisa ser a URL **publica** do proprio backend (a que aparece no
    topo da pagina do servico no Render), sem barra final. E ela que voce cadastra
-   no painel do Mercado Pago, com `/api/churrasco/webhook/mercadopago` no fim.
+   no painel do Mercado Pago, com `/api/mercadopago/webhook` no fim. Esse
+   endpoint central recebe loja, churrasco e torneio Rocket League.
 
 O `render.yaml` ja lista todas essas chaves com `sync: false` — os valores nunca
 ficam no repositorio.

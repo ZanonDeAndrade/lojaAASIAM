@@ -38,6 +38,11 @@ import {
   registerLojaRoutes,
   aplicarWebhookLoja,
 } from "./loja-pagamento.js";
+import {
+  ORDER_PREFIX as ROCKET_PREFIX,
+  registerRocketRoutes,
+  aplicarWebhookRocket,
+} from "./rocket.js";
 import { rateLimit } from "./rate-limit.js";
 
 const app = express();
@@ -98,6 +103,7 @@ app.use((req, res, next) => {
     res.setHeader("Access-Control-Allow-Origin", origin || "*");
     res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
     // X-Inscricao-Token: status da inscrição do churrasco.
+    // X-Inscricao-Token: status do churrasco e do torneio Rocket League.
     // X-Pedido-Token: status do pedido da loja (polling do Pix pós-pagamento).
     res.setHeader("Access-Control-Allow-Headers", "Content-Type, X-Inscricao-Token, X-Pedido-Token");
     res.setHeader("Access-Control-Max-Age", "86400");
@@ -123,6 +129,9 @@ registerChurrascoRoutes(app);
 // validação de assinatura com o churrasco.
 registerLojaRoutes(app);
 
+/* ─── TORNEIO ROCKET LEAGUE 2x2 ─── */
+registerRocketRoutes(app);
+
 /* ─── WEBHOOK CENTRAL DO MERCADO PAGO ───
    A API de Orders usa UM único destino por aplicação, configurado no painel
    (tópico "Order"). Este endpoint recebe tudo, valida a assinatura uma vez,
@@ -130,6 +139,7 @@ registerLojaRoutes(app);
    `external_reference` — nunca confia na referência vinda no corpo.
      LOJA-...       → aplicarWebhookLoja
      CHURRASCO-...  → aplicarWebhookChurrasco
+     ROCKET-...     → aplicarWebhookRocket
      qualquer outro → 200 ignorado
    Os endpoints /api/{loja,churrasco}/webhook/mercadopago seguem funcionando
    para compatibilidade e usam os mesmos handlers. */
@@ -162,6 +172,8 @@ app.post("/api/mercadopago/webhook", webhookCentralLimiter, async (req, res) => 
       resultado = await aplicarWebhookLoja(leitura);
     } else if (referencia.startsWith(CHURRASCO_PREFIX)) {
       resultado = await aplicarWebhookChurrasco(leitura);
+    } else if (referencia.startsWith(ROCKET_PREFIX)) {
+      resultado = await aplicarWebhookRocket(leitura);
     } else {
       return res.status(200).json({ ok: true, ignorado: "referencia" });
     }
@@ -188,6 +200,8 @@ app.get("/api/health", (_req, res) => {
     // A loja usa a mesma credencial do Mercado Pago; muda só a Public Key.
     lojaMercadoPagoConfigured: isMercadoPagoConfigured(),
     lojaPublicKeyConfigured: Boolean(process.env.MERCADO_PAGO_PUBLIC_KEY),
+    rocketLeagueConfigured: isMercadoPagoConfigured() && isGoogleSheetsConfigured(),
+    rocketLeagueWebhookConfigured: isWebhookSecretConfigured(),
   });
 });
 

@@ -10,6 +10,7 @@ import {
 	CreditCard,
 	ExternalLink,
 	Flame,
+	Gamepad2,
 	Loader2,
 	Lock,
 	Minus,
@@ -38,6 +39,7 @@ import {
 } from './shared/order.js';
 import ChurrascoPage from './churrasco/ChurrascoPage.jsx';
 import ValidacaoPage from './churrasco/ValidacaoPage.jsx';
+import RocketPage, { RocketRegulationPage } from './rocket/RocketPage.jsx';
 import CheckoutMercadoPago from './loja/CheckoutMercadoPago.jsx';
 import PersonalizationFields from './loja/PersonalizationFields.jsx';
 
@@ -325,6 +327,8 @@ function viewFromLocation() {
 	// antigo /churrasco/pagamento-concluido, que a própria página redireciona
 	// para /churrasco (o pagamento Pix acontece dentro dela, sem sair).
 	if (path === '/churrasco' || path.startsWith('/churrasco/')) return 'churrasco';
+	if (path === '/torneio-rocket-league/regulamento') return 'rocket-regulation';
+	if (path === '/torneio-rocket-league' || path.startsWith('/torneio-rocket-league/')) return 'rocket';
 	if (
 		path === '/pagamento-concluido' ||
 		(params.has('pedido') && params.has('status'))
@@ -484,6 +488,8 @@ export default function App() {
 	// carrinho e sem alternância de tema. Fica fora do app-shell de propósito.
 	if (view === 'churrasco-validacao') return <ValidacaoPage />;
 	if (view === 'churrasco') return <ChurrascoPage />;
+	if (view === 'rocket-regulation') return <RocketRegulationPage />;
+	if (view === 'rocket') return <RocketPage />;
 
 	return (
 		<div className="app-shell">
@@ -602,6 +608,15 @@ function CombosLink({ onIr, className = '' }) {
 	);
 }
 
+function RocketLink({ className = '' }) {
+	return (
+		<a className={`rocket-link ${className}`.trim()} href="/torneio-rocket-league">
+			<Gamepad2 size={15} aria-hidden="true" />
+			<span>Torneio</span>
+		</a>
+	);
+}
+
 function SiteHeader({
 	view,
 	cartCount,
@@ -659,6 +674,7 @@ function SiteHeader({
 				</button>
 
 				<CombosLink onIr={onCombos} className="churrasco-link-topo" />
+				<RocketLink className="rocket-link-topo" />
 			</div>
 
 			<header className="site-header">
@@ -702,6 +718,7 @@ function SiteHeader({
 
 						{/* Theme toggle + cart */}
 						<div className="header-actions">
+							<RocketLink className="rocket-link-barra" />
 							<CombosLink
 								onIr={onCombos}
 								className="churrasco-link-barra"
@@ -913,8 +930,6 @@ function CatalogView({ onOpen, className }) {
 
 	return (
 		<div className={`page content-pad ${className || ''}`}>
-			<HeroCarousel />
-
 			<div className="cat-filter">
 				<button
 					type="button"

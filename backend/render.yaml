@@ -41,6 +41,10 @@ services:
         value: Inscrições Churrasco
       - key: CHURRASCO_TOKEN_SECRET
         sync: false   # Opcional; vazio, é derivado do segredo do webhook
+      - key: ROCKET_SHEET_NAME
+        value: Torneio Rocket League 2026
+      - key: ROCKET_TOKEN_SECRET
+        sync: false   # Opcional; vazio, é derivado do segredo do webhook
       - key: COMPROVANTE_SIGNING_SECRET
         sync: false   # Assina o QR Code do comprovante em PDF (openssl rand -hex 32)
 
