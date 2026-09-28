@@ -28,7 +28,7 @@ import {
 } from 'lucide-react';
 import gsap from 'gsap';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { PRODUCTS, SIZE_GUIDES } from './shared/products.js';
+import { LOJA_ENCERRADA, PRODUCTS, SIZE_GUIDES } from './shared/products.js';
 import {
 	multiPieceBundleConfigurationKey,
 	personalizationKey,
@@ -1058,7 +1058,7 @@ function SmartImage({
 
 function ProductTile({ product, onOpen }) {
 	const img = productCover(product);
-	const soldOut = product.soldOut === true;
+	const soldOut = LOJA_ENCERRADA || product.soldOut === true;
 	const priority = IMG_PRIORITY_BY_ID[product.id] || 'low';
 	// Combos (têm lista `includes`) não exibem badge de texto sobreposto na imagem
 	const isCombo = Array.isArray(product.includes) && product.includes.length > 0;
@@ -1775,6 +1775,7 @@ function CartView({ cart, onQty, onRemove, onShop, onCheckout, appliedCupom, onA
 	const [cupomInput, setCupomInput] = useState(appliedCupom?.codigo || '');
 	const [cupomLoading, setCupomLoading] = useState(false);
 	const [cupomMsg, setCupomMsg] = useState(appliedCupom ? 'success' : '');
+	const lojaEncerrada = LOJA_ENCERRADA;
 
 	const t = cartTotals(cart, appliedCupom);
 
@@ -1831,6 +1832,14 @@ function CartView({ cart, onQty, onRemove, onShop, onCheckout, appliedCupom, onA
 	return (
 		<div className={`page content-pad ${className || ''}`}>
 			<h1 className="page-title">Carrinho</h1>
+			{lojaEncerrada && (
+				<div className="panel" style={{ marginBottom: 18, textAlign: 'center' }}>
+					<strong>Lote encerrado</strong>
+					<p style={{ margin: '8px 0 0', color: 'var(--text-dim)' }}>
+						As vendas desta coleção foram finalizadas.
+					</p>
+				</div>
+			)}
 
 			{cart.length === 0 ? (
 				<div className="panel cart-empty-panel">
@@ -1967,8 +1976,9 @@ function CartView({ cart, onQty, onRemove, onShop, onCheckout, appliedCupom, onA
 							type="button"
 							className="btn btn-primary btn-block"
 							onClick={onCheckout}
+							disabled={lojaEncerrada}
 						>
-							Finalizar Compra
+							{lojaEncerrada ? 'Lote encerrado' : 'Finalizar Compra'}
 						</button>
 					</aside>
 				</div>

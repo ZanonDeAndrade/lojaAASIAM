@@ -47,6 +47,8 @@ const colorAttribute = (options, label = 'Cor') => ({
 });
 const SHIRT_PERSONALIZATION = { noun: 'camiseta' };
 
+export const LOJA_ENCERRADA = process.env.LOJA_ENCERRADA !== "false";
+
 export const BACKPACK_MODELS = [
 	{
 		code: 'listras',

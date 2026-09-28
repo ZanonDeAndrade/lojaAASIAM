@@ -74,6 +74,10 @@ const colorAttribute = (options, label = 'Cor') => ({
 });
 const SHIRT_PERSONALIZATION = { noun: 'camiseta' };
 
+// O lote foi encerrado. O catálogo continua visível, mas nenhum card pode ser
+// aberto para compra. Para reabrir a loja, altere esta constante para `false`.
+export const LOJA_ENCERRADA = true;
+
 export const BACKPACK_MODELS = [
 	{
 		code: 'listras',

@@ -1,4 +1,4 @@
-import { PRODUCT_BY_ID, PRODUCTS } from "./products.js";
+import { LOJA_ENCERRADA, PRODUCT_BY_ID, PRODUCTS } from "./products.js";
 
 /* ─── Personalização: nome + número ───────────────────────────────────────
    REGRA ÚNICA, usada por toda peça personalizável — camiseta avulsa, Jersey,
@@ -89,7 +89,7 @@ export function calculateOrder(selection) {
     /* Esgotado não entra no pedido. O `disabled` do card é só a aparência da
        regra; quem monta a requisição na mão passa por cima dele. Sem linha,
        o checkout devolve "Selecione pelo menos um produto" e nada é cobrado. */
-    if (product.soldOut === true) {
+    if (LOJA_ENCERRADA || product.soldOut === true) {
       continue;
     }
 
