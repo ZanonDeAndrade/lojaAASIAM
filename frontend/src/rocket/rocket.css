@@ -170,9 +170,6 @@
 .rl-reg-sublist > li { color: var(--rl-text-dim); }
 
 .rl-callout { display: flex; gap: 12px; align-items: flex-start; background: var(--rl-panel-2); border: 1px solid var(--rl-line-strong); border-left: 3px solid var(--rl-green-soft); padding: 15px 16px; border-radius: 10px; margin-top: 16px; }
-.rl-pending { display: flex; gap: 9px; align-items: flex-start; margin: 10px 0 0; padding: 10px 12px; border: 1px dashed #d99a5b; border-radius: 10px; background: rgba(217, 154, 91, 0.1); color: var(--rl-text); font-size: 0.85rem; line-height: 1.5; max-width: none; }
-.rl-pending svg { flex: 0 0 auto; margin-top: 2px; color: #d99a5b; }
-.rl-pending strong { color: #e9b783; }
 .rl-callout svg { flex: 0 0 auto; color: var(--rl-green-soft); margin-top: 1px; }
 .rl-callout p { margin: 0; color: var(--rl-text); font-size: 0.9rem; line-height: 1.55; max-width: none; }
 

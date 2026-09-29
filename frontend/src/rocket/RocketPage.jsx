@@ -50,6 +50,11 @@ const TORNEIO_INFO = [
    exceção deliberada: veja a nota junto a ela. Estrutura em dados, e não em
    texto solto, só para reaproveitar o mesmo componente de seção no documento
    inteiro. */
+/* PENDÊNCIAS PARA A ORGANIZAÇÃO (uso interno — não aparecem na página):
+   - O limite de 20 equipes deixou de valer nas inscrições feitas neste site. O trecho acima segue igual ao PDF oficial e precisa de nova versão da organização.
+   - Este formato depende de 20 equipes. Como as inscrições não têm mais limite, a organização precisa definir e publicar o formato oficial atualizado.
+   - O PDF para download ainda traz a premiação anterior: 1º lugar sem medalhas, 2º lugar com "Duas Camisas Oficiais (verde/cinza)" sem medalhas e 3º lugar sem medalhas. A organização precisa publicar uma nova versão do PDF com a lista acima.
+   Os textos abaixo seguem o PDF oficial, exceto a seção 5, que já traz a premiação atual. */
 const REGULATION_SECTIONS = [
 	{
 		title: '1. Organização e apresentação',
@@ -67,12 +72,11 @@ const REGULATION_SECTIONS = [
 			{ label: 'Confirmação de Vaga', text: 'A inscrição é validada estritamente mediante o envio do comprovante de pagamento da taxa de R$ 50,00 aos canais oficiais da AASIAM (https://www.aasiam.com.br/) até 10/10/2026.' },
 		],
 		callout: 'Atenção: Vagas limitadas a 20 equipes. O preenchimento obedece à ordem de envio do comprovante de pagamento à organização.',
-		pendencia: 'O limite de 20 equipes deixou de valer nas inscrições feitas neste site. O trecho acima segue igual ao PDF oficial e precisa de nova versão da organização.',
 	},
 	{
 		title: '3. Formato do campeonato e sistema de pontuação',
 		items: [
-			{ label: 'Fase de Grupos (Online)', text: 'As 20 equipes serão divididas em 4 grupos de 5 equipes. Todos jogam contra todos em partida única. Cada vitória soma +1 ponto na tabela de classificação. Para agilidade, 4 partidas simultâneas ocorrerão por blocos de horários. Avançam os 2 melhores de cada grupo (Total: 8 equipes).', pendencia: 'Este formato depende de 20 equipes. Como as inscrições não têm mais limite, a organização precisa definir e publicar o formato oficial atualizado.' },
+			{ label: 'Fase de Grupos (Online)', text: 'As 20 equipes serão divididas em 4 grupos de 5 equipes. Todos jogam contra todos em partida única. Cada vitória soma +1 ponto na tabela de classificação. Para agilidade, 4 partidas simultâneas ocorrerão por blocos de horários. Avançam os 2 melhores de cada grupo (Total: 8 equipes).' },
 			{
 				label: 'Critérios de Desempate (Fase de Grupos)',
 				text: 'Em caso de empate em pontos entre duas ou mais equipes, os critérios aplicados em ordem estrita são:',
@@ -99,14 +103,13 @@ const REGULATION_SECTIONS = [
 	},
 	{
 		/* Premiação atualizada em 2026-09-29 (igual aos cards da página). O PDF
-		   oficial para download traz outra lista — ver `pendenciaFinal`. */
+		   oficial para download traz outra lista (ver as pendências no topo). */
 		title: '5. Premiação oficial',
 		items: [
 			{ icon: Trophy, label: '1º Lugar (Campeões)', text: '1 troféu, 2 medalhas e 2 Jerseys AASIAM.' },
 			{ icon: Medal, label: '2º Lugar (Vice-campeões)', text: '2 medalhas e 2 camisetas AASIAM.' },
 			{ icon: Award, label: '3º Lugar', text: '2 medalhas e 2 canecas AASIAM.' },
 		],
-		pendenciaFinal: 'O PDF para download ainda traz a premiação anterior: 1º lugar sem medalhas, 2º lugar com "Duas Camisas Oficiais (verde/cinza)" sem medalhas e 3º lugar sem medalhas. A organização precisa publicar uma nova versão do PDF com a lista acima.',
 	},
 ];
 
@@ -136,10 +139,9 @@ function InfoStrip({ items }) {
 }
 
 function RegulationSection({ section }) {
-	const pending = note => <p className="rl-pending" role="note"><AlertCircle size={16} aria-hidden="true" /><span><strong>Pendente de revisão pela organização.</strong> {note}</span></p>;
-	const callout = section.callout && <><div className="rl-callout"><AlertCircle size={18} aria-hidden="true" /><p>{section.callout}</p></div>{section.pendencia && pending(section.pendencia)}</>;
+	const callout = section.callout && <div className="rl-callout"><AlertCircle size={18} aria-hidden="true" /><p>{section.callout}</p></div>;
 	const items = section.items && <ul className="rl-reg-list">{section.items.map(item => { const Icon = item.icon; return <li key={item.label}>{Icon && <Icon size={18} className="rl-reg-icon" aria-hidden="true" />}<div><strong>{item.label}:</strong> {item.text}{item.pendencia && pending(item.pendencia)}{item.list && <ul className="rl-reg-sublist">{item.list.map(entry => <li key={entry}>{entry}</li>)}</ul>}</div></li>; })}</ul>;
-	return <section className="rl-reg-section"><h2>{section.title}</h2>{section.paragraphs?.map(p => <p key={p}>{p}</p>)}{section.calloutFirst ? <>{callout}{items}</> : <>{items}{callout}</>}{section.pendenciaFinal && pending(section.pendenciaFinal)}</section>;
+	return <section className="rl-reg-section"><h2>{section.title}</h2>{section.paragraphs?.map(p => <p key={p}>{p}</p>)}{section.calloutFirst ? <>{callout}{items}</> : <>{items}{callout}</>}</section>;
 }
 
 export function RocketRegulationPage() {
