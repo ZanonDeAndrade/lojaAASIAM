@@ -371,9 +371,13 @@ export default function App() {
 		const salvo = lerArmazenado('aasiam-cart', []);
 		return Array.isArray(salvo) ? salvo : [];
 	});
-	const [theme, setTheme] = useState(
-		() => localStorage.getItem('aasiam-theme') || 'dark',
-	);
+	const [theme, setTheme] = useState(() => {
+		try {
+			return localStorage.getItem('aasiam-theme') || 'dark';
+		} catch {
+			return 'dark'; // armazenamento bloqueado: o site abre no tema padrão
+		}
+	});
 	const [appliedCupom, setAppliedCupom] = useState(() => lerArmazenado('aasiam-cupom', null));
 
 	/* apply theme class to <html> */
@@ -381,7 +385,11 @@ export default function App() {
 		const html = document.documentElement;
 		html.classList.toggle('dark', theme === 'dark');
 		html.classList.toggle('light', theme === 'light');
-		localStorage.setItem('aasiam-theme', theme);
+		try {
+			localStorage.setItem('aasiam-theme', theme);
+		} catch {
+			/* armazenamento indisponível: o tema vale só nesta visita */
+		}
 	}, [theme]);
 
 	useEffect(() => {

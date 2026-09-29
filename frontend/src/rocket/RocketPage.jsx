@@ -1,8 +1,9 @@
 import { AlertCircle, ArrowLeft, Award, CheckCircle2, Copy, Download, ExternalLink, FileText, Gamepad2, Loader2, Medal, QrCode, ShieldCheck, Trophy, Users } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import rocketBanner from '../../../BannerRocket.png';
 import officialRegulation from '../../../Regulamento Oficial - Campeonato Rocket League AASIAM.pdf_20260925_153129_0000.pdf';
+import { formatPhoneBR, validatePhone } from '../shared/churrasco.js';
 import './rocket.css';
 
 const AVISO_TROFEU = 'Imagem do troféu meramente ilustrativa. O modelo final pode sofrer alterações.';
@@ -114,15 +115,14 @@ function load(key, fallback) {
 }
 function save(key, value) { try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* armazenamento opcional */ } }
 function clear(key) { try { localStorage.removeItem(key); } catch { /* idem */ } }
-function formatPhone(value) {
-	const d = String(value || '').replace(/\D/g, '').replace(/^55(?=\d{10,11}$)/, '').slice(0, 11);
-	if (d.length < 3) return d ? `(${d}` : '';
-	if (d.length < 7) return `(${d.slice(0, 2)}) ${d.slice(2)}`;
-	return d.length < 11 ? `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}` : `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}`;
-}
+/* A inscrição em andamento também fica no fragmento da URL (nunca enviado a
+   servidores). Assim a tela de pagamento volta mesmo quando o navegador do
+   celular, um navegador embutido ou uma aba privada não guarda localStorage. */
+const HASH_ORDER = /^#inscricao=(ROCKET-[A-Z0-9-]+):([A-Za-z0-9_-]{16,64})$/;
+function orderFromHash() { const match = HASH_ORDER.exec(window.location.hash); return match ? { registrationId: match[1], token: match[2] } : null; }
+function orderToHash(order) { try { window.history.replaceState(window.history.state, '', order ? `#inscricao=${order.registrationId}:${order.token}` : window.location.pathname + window.location.search); } catch { /* idem */ } }
 function hasName(value) { return String(value).trim().split(/\s+/).filter(Boolean).length >= 2; }
 function validEmail(value) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value).trim()); }
-function validPhone(value) { return String(value).replace(/\D/g, '').replace(/^55/, '').length >= 10; }
 function scrollTop() { window.scrollTo({ top: 0, behavior: 'smooth' }); }
 
 function Header() {
@@ -216,7 +216,8 @@ function validateDraft(draft) {
 		if (Object.keys(entry).length) errors[`jogadores.${index}`] = entry;
 	});
 	if (!hasName(draft.capitao.nome)) errors['capitao.nome'] = 'Informe nome e sobrenome.';
-	if (!validPhone(draft.capitao.whatsapp)) errors['capitao.whatsapp'] = 'Informe WhatsApp com DDD.';
+	const phoneError = validatePhone(draft.capitao.whatsapp);
+	if (phoneError) errors['capitao.whatsapp'] = phoneError;
 	if (!validEmail(draft.capitao.email)) errors['capitao.email'] = 'Informe um e-mail válido.';
 	if (!draft.aceiteRegulamento) errors.aceiteRegulamento = 'Você precisa concordar com o regulamento oficial.';
 	return errors;
@@ -233,33 +234,55 @@ function RegistrationForm({ draft, setDraft, availability, onCheckout }) {
 		finally { setSending(false); }
 	}
 	const closed = availability && !availability.open;
-	return <section className="rl-form-card" id="inscricao"><div className="rl-panel-head"><span className="rl-eyebrow"><Users size={16} /> Inscrição da equipe</span><h2>Dados para a inscrição</h2><p>Os dois titulares são obrigatórios; o reserva não altera o valor.</p></div>{closed ? <div className="rl-alert"><AlertCircle size={18} /> As inscrições foram encerradas.</div> : <form onSubmit={submit} noValidate><Field label="Nome da equipe" error={errors.nomeEquipe}><input value={draft.nomeEquipe} onChange={e => setDraft(prev => ({ ...prev, nomeEquipe: e.target.value }))} maxLength="70" disabled={sending} placeholder="Nome que aparecerá na tabela" /></Field><PlayerFields index={0} player={draft.jogadores[0]} onChange={changePlayer} errors={errors['jogadores.0']} disabled={sending} /><PlayerFields index={1} player={draft.jogadores[1]} onChange={changePlayer} errors={errors['jogadores.1']} disabled={sending} /><label className="rl-toggle"><input type="checkbox" checked={draft.temReserva} onChange={e => setDraft(prev => ({ ...prev, temReserva: e.target.checked }))} disabled={sending} /><span><strong>Adicionar jogador reserva</strong><small>Opcional e sem custo adicional.</small></span></label>{draft.temReserva && <PlayerFields index={2} player={draft.jogadores[2]} onChange={changePlayer} errors={errors['jogadores.2']} disabled={sending} />}<fieldset className="rl-captain"><legend>Capitão da equipe</legend><p>Usaremos estes contatos exclusivamente para comunicações sobre a inscrição.</p><div className="rl-fields-grid"><Field label="Nome completo" error={errors['capitao.nome']}><input value={draft.capitao.nome} onChange={e => setDraft(prev => ({ ...prev, capitao: { ...prev.capitao, nome: e.target.value } }))} disabled={sending} autoComplete="name" /></Field><Field label="WhatsApp" error={errors['capitao.whatsapp']}><input value={draft.capitao.whatsapp} onChange={e => setDraft(prev => ({ ...prev, capitao: { ...prev.capitao, whatsapp: formatPhone(e.target.value) } }))} disabled={sending} inputMode="tel" autoComplete="tel" /></Field><Field label="E-mail" error={errors['capitao.email']}><input value={draft.capitao.email} onChange={e => setDraft(prev => ({ ...prev, capitao: { ...prev.capitao, email: e.target.value } }))} disabled={sending} type="email" autoComplete="email" /></Field></div></fieldset><label className="rl-consent"><input type="checkbox" checked={draft.aceiteRegulamento} onChange={e => setDraft(prev => ({ ...prev, aceiteRegulamento: e.target.checked }))} disabled={sending} /><span>Li e concordo com o <a href="/torneio-rocket-league/regulamento" target="_blank" rel="noreferrer">Regulamento Oficial</a> do Torneio de Rocket League da AASIAM.</span></label>{errors.aceiteRegulamento && <p className="rl-field-error" role="alert">{errors.aceiteRegulamento}</p>}{serverError && <div className="rl-alert" role="alert"><AlertCircle size={18} /> {serverError}</div>}<button className="rl-button rl-button-primary rl-pay" type="submit" disabled={sending}>{sending ? <><Loader2 className="rl-spin" size={18} /> Abrindo pagamento...</> : <>Ir para o pagamento de R$ 50,00</>}</button></form>}</section>;
+	return <section className="rl-form-card" id="inscricao"><div className="rl-panel-head"><span className="rl-eyebrow"><Users size={16} /> Inscrição da equipe</span><h2>Dados para a inscrição</h2><p>Os dois titulares são obrigatórios; o reserva não altera o valor.</p></div>{closed ? <div className="rl-alert"><AlertCircle size={18} /> As inscrições foram encerradas.</div> : <form onSubmit={submit} noValidate><Field label="Nome da equipe" error={errors.nomeEquipe}><input value={draft.nomeEquipe} onChange={e => setDraft(prev => ({ ...prev, nomeEquipe: e.target.value }))} maxLength="70" disabled={sending} placeholder="Nome que aparecerá na tabela" /></Field><PlayerFields index={0} player={draft.jogadores[0]} onChange={changePlayer} errors={errors['jogadores.0']} disabled={sending} /><PlayerFields index={1} player={draft.jogadores[1]} onChange={changePlayer} errors={errors['jogadores.1']} disabled={sending} /><label className="rl-toggle"><input type="checkbox" checked={draft.temReserva} onChange={e => setDraft(prev => ({ ...prev, temReserva: e.target.checked }))} disabled={sending} /><span><strong>Adicionar jogador reserva</strong><small>Opcional e sem custo adicional.</small></span></label>{draft.temReserva && <PlayerFields index={2} player={draft.jogadores[2]} onChange={changePlayer} errors={errors['jogadores.2']} disabled={sending} />}<fieldset className="rl-captain"><legend>Capitão da equipe</legend><p>Usaremos estes contatos exclusivamente para comunicações sobre a inscrição.</p><div className="rl-fields-grid"><Field label="Nome completo" error={errors['capitao.nome']}><input value={draft.capitao.nome} onChange={e => setDraft(prev => ({ ...prev, capitao: { ...prev.capitao, nome: e.target.value } }))} disabled={sending} autoComplete="name" /></Field><Field label="WhatsApp" error={errors['capitao.whatsapp']}><input value={draft.capitao.whatsapp} onChange={e => setDraft(prev => ({ ...prev, capitao: { ...prev.capitao, whatsapp: formatPhoneBR(e.target.value) } }))} disabled={sending} inputMode="tel" autoComplete="tel" /></Field><Field label="E-mail" error={errors['capitao.email']}><input value={draft.capitao.email} onChange={e => setDraft(prev => ({ ...prev, capitao: { ...prev.capitao, email: e.target.value } }))} disabled={sending} type="email" autoComplete="email" /></Field></div></fieldset><label className="rl-consent"><input type="checkbox" checked={draft.aceiteRegulamento} onChange={e => setDraft(prev => ({ ...prev, aceiteRegulamento: e.target.checked }))} disabled={sending} /><span>Li e concordo com o <a href="/torneio-rocket-league/regulamento" target="_blank" rel="noreferrer">Regulamento Oficial</a> do Torneio de Rocket League da AASIAM.</span></label>{errors.aceiteRegulamento && <p className="rl-field-error" role="alert">{errors.aceiteRegulamento}</p>}{serverError && <div className="rl-alert" role="alert"><AlertCircle size={18} /> {serverError}</div>}<button className="rl-button rl-button-primary rl-pay" type="submit" disabled={sending}>{sending ? <><Loader2 className="rl-spin" size={18} /> Abrindo pagamento...</> : <>Ir para o pagamento de R$ 50,00</>}</button></form>}</section>;
 }
 
 function copy(text, onDone) { navigator.clipboard?.writeText(text).then(() => onDone?.()).catch(() => {}); }
 function PaymentPanel({ order, onBack }) {
-	const [data, setData] = useState(null); const [loading, setLoading] = useState(true); const [copied, setCopied] = useState(false); const [error, setError] = useState('');
+	const [data, setData] = useState(null); const [loading, setLoading] = useState(true); const [copied, setCopied] = useState(false); const [error, setError] = useState(''); const [verifying, setVerifying] = useState(false);
+	const checkRef = useRef(async () => {});
+	/* Consulta o status enquanto a página está aberta: a cada 4 s, na hora em que
+	   a pessoa volta do app do banco (o celular congela os timers em segundo
+	   plano) e quando a rede volta. Cada consulta tem prazo de 15 s para que uma
+	   requisição pendurada nunca trave as seguintes. Para de consultar ao chegar
+	   num status final. */
 	useEffect(() => {
-		let alive = true;
-		async function poll() { try { const response = await fetch(`${API_BASE}/api/rocket-league/inscricoes/${encodeURIComponent(order.registrationId)}/status`, { headers: { 'X-Inscricao-Token': order.token } }); const body = await response.json(); if (!response.ok) throw new Error(body.error); if (alive) { setData(body); setError(''); } } catch (e) { if (alive) setError(e.message || 'Não foi possível verificar o pagamento.'); } finally { if (alive) setLoading(false); } }
-		poll(); const timer = setInterval(poll, 7000); return () => { alive = false; clearInterval(timer); };
+		let alive = true; let running = false; let finished = false; let timer = null;
+		async function poll() {
+			if (!alive || running || finished) return;
+			running = true; const controller = new AbortController(); const deadline = setTimeout(() => controller.abort(), 15000);
+			try {
+				const response = await fetch(`${API_BASE}/api/rocket-league/inscricoes/${encodeURIComponent(order.registrationId)}/status`, { headers: { 'X-Inscricao-Token': order.token }, signal: controller.signal, cache: 'no-store' });
+				const body = await response.json(); if (!response.ok) throw new Error(body.error);
+				if (alive) { setData(body); setError(''); }
+				if (body.final) { finished = true; clearInterval(timer); }
+			} catch (e) { if (alive) setError(e.name === 'AbortError' ? 'A verificação demorou. Tentando de novo...' : (e.message || 'Não foi possível verificar o pagamento.')); }
+			finally { clearTimeout(deadline); running = false; if (alive) setLoading(false); }
+		}
+		const wake = () => { if (document.visibilityState !== 'hidden') poll(); };
+		checkRef.current = poll; poll(); timer = setInterval(poll, 4000);
+		document.addEventListener('visibilitychange', wake); window.addEventListener('focus', wake); window.addEventListener('online', wake); window.addEventListener('pageshow', wake);
+		return () => { alive = false; clearInterval(timer); document.removeEventListener('visibilitychange', wake); window.removeEventListener('focus', wake); window.removeEventListener('online', wake); window.removeEventListener('pageshow', wake); };
 	}, [order]);
+	async function verifyNow() { setVerifying(true); try { await checkRef.current(); } finally { setVerifying(false); } }
 	async function download() { const response = await fetch(`${API_BASE}/api/rocket-league/inscricoes/${encodeURIComponent(order.registrationId)}/comprovante.pdf`, { headers: { 'X-Inscricao-Token': order.token } }); if (!response.ok) return setError('Não foi possível gerar o comprovante agora.'); const blob = await response.blob(); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `comprovante-rocket-${order.registrationId}.pdf`; a.click(); setTimeout(() => URL.revokeObjectURL(url), 2000); }
 	if (loading) return <section className="rl-payment-card"><Loader2 className="rl-spin" /> Consultando o pagamento...</section>;
 	if (!data) return <section className="rl-payment-card"><div className="rl-alert"><AlertCircle size={18} /> {error || 'Não encontramos esta inscrição.'}</div><button className="rl-button rl-button-secondary" onClick={onBack}>Voltar à inscrição</button></section>;
-	if (data.confirmed) return <section className="rl-payment-card rl-confirmed"><CheckCircle2 size={48} /><span className="rl-eyebrow">Inscrição confirmada</span><h2>{data.teamName}</h2><p>O pagamento de <strong>{data.amount}</strong> foi confirmado pelo Mercado Pago.</p><div className="rl-summary"><span>Participantes</span>{data.participants.map(p => <p key={`${p.nome}-${p.vinculo}`}>{p.nome} <small>{p.vinculo}</small></p>)}<span>Status</span><p><strong>Confirmada</strong>{data.paidAt && <small>{data.paidAt}</small>}</p></div><button className="rl-button rl-button-primary" onClick={download}><Download size={18} /> Baixar comprovante</button>{error && <p className="rl-field-error">{error}</p>}</section>;
-	const terminal = data.final;
-	return <section className="rl-payment-card"><span className="rl-eyebrow"><ShieldCheck size={16} /> Pagamento {data.statusLabel.toLowerCase()}</span><h2>{data.teamName}</h2>{terminal ? <><div className="rl-alert"><AlertCircle size={18} /> {data.status === 'Expirado' ? 'Esta tentativa expirou e a vaga foi liberada.' : 'O pagamento não foi confirmado. Você pode tentar novamente.'}</div><button className="rl-button rl-button-primary" onClick={onBack}>Voltar à inscrição</button></> : <><p>Sua vaga fica reservada enquanto este Pix estiver válido. A confirmação só ocorre após a verificação do Mercado Pago no servidor.</p>{data.pix?.qrCodeBase64 ? <img className="rl-qr" src={`data:image/png;base64,${data.pix.qrCodeBase64}`} alt="QR Code Pix para pagamento" /> : <QrCode className="rl-qr-placeholder" size={96} />}{data.pix?.qrCode && <div className="rl-copy-code"><code>{data.pix.qrCode}</code><button type="button" onClick={() => { copy(data.pix.qrCode, () => { setCopied(true); setTimeout(() => setCopied(false), 1800); }); }}><Copy size={16} /> {copied ? 'Copiado' : 'Copiar Pix'}</button></div>}<p className="rl-payment-status"><Loader2 className="rl-spin" size={17} /> Aguardando confirmação do pagamento...</p></>}{error && <p className="rl-field-error">{error}</p>}</section>;
+	if (data.confirmed) return <section className="rl-payment-card rl-confirmed" role="status" aria-live="polite"><CheckCircle2 size={48} /><span className="rl-eyebrow">Pagamento efetuado</span><h2>Inscrição confirmada</h2><p>O pagamento de <strong>{data.amount}</strong> foi confirmado pelo Mercado Pago e a equipe <strong>{data.teamName}</strong> está inscrita no torneio.</p><div className="rl-summary"><span>Participantes</span>{data.participants.map(p => <p key={`${p.nome}-${p.vinculo}`}>{p.nome} <small>{p.vinculo}</small></p>)}<span>Status</span><p><strong>Pagamento confirmado</strong>{data.paidAt && <small>{data.paidAt}</small>}</p><span>Código da inscrição</span><p><small>{data.registrationId}</small></p></div><button className="rl-button rl-button-primary" onClick={download}><Download size={18} /> Baixar comprovante</button>{error && <p className="rl-field-error">{error}</p>}</section>;
+	const terminal = data.final; const review = data.status === 'Revisão manual';
+	const heading = review ? 'Pagamento em conferência' : `Pagamento ${data.statusLabel.toLowerCase()}`;
+	const finalMessage = data.status === 'Expirado' ? 'Esta tentativa expirou e a vaga foi liberada.' : review ? 'Recebemos o seu pagamento e a organização vai conferi-lo para confirmar a inscrição. Não faça um novo pagamento.' : 'O pagamento não foi confirmado. Você pode tentar novamente.';
+	return <section className="rl-payment-card" role="status" aria-live="polite"><span className="rl-eyebrow"><ShieldCheck size={16} /> {heading}</span><h2>{data.teamName}</h2>{terminal ? <>{<div className="rl-alert"><AlertCircle size={18} /> {finalMessage}</div>}{review && <p><small>Código da inscrição: {data.registrationId}</small></p>}{!review && <button className="rl-button rl-button-primary" onClick={onBack}>Voltar à inscrição</button>}</> : <><p>Sua vaga fica reservada enquanto este Pix estiver válido. A confirmação só ocorre após a verificação do Mercado Pago no servidor.</p>{data.pix?.qrCodeBase64 ? <img className="rl-qr" src={`data:image/png;base64,${data.pix.qrCodeBase64}`} alt="QR Code Pix para pagamento" /> : <QrCode className="rl-qr-placeholder" size={96} />}{data.pix?.qrCode && <div className="rl-copy-code"><code>{data.pix.qrCode}</code><button type="button" onClick={() => { copy(data.pix.qrCode, () => { setCopied(true); setTimeout(() => setCopied(false), 1800); }); }}><Copy size={16} /> {copied ? 'Copiado' : 'Copiar Pix'}</button></div>}<p className="rl-payment-status"><Loader2 className="rl-spin" size={17} /> Aguardando confirmação do pagamento...</p><button type="button" className="rl-button rl-button-secondary" onClick={verifyNow} disabled={verifying}>{verifying ? 'Verificando...' : 'Já paguei, verificar agora'}</button></>}{error && <p className="rl-field-error">{error}</p>}</section>;
 }
 
 export default function RocketPage() {
-	const [draft, setDraft] = useState(() => load(STORAGE_DRAFT, EMPTY_DRAFT)); const [order, setOrder] = useState(() => load(STORAGE_ORDER, null)); const [availability, setAvailability] = useState(null);
+	const [draft, setDraft] = useState(() => load(STORAGE_DRAFT, EMPTY_DRAFT)); const [order, setOrder] = useState(() => load(STORAGE_ORDER, null) || orderFromHash()); const [availability, setAvailability] = useState(null);
 	useEffect(() => { document.title = 'Torneio Rocket League 2x2 | AASIAM'; fetch(`${API_BASE}/api/rocket-league/availability`).then(r => r.json()).then(data => data.ok && setAvailability(data)).catch(() => {}); }, []);
 	useEffect(() => save(STORAGE_DRAFT, draft), [draft]);
 	async function checkout(values) {
 		const payload = { ...values, jogadores: values.jogadores.map(p => ({ nome: p.nome, ra: p.semRa ? '' : p.ra, vinculo: p.vinculo, identificacaoAlternativa: p.identificacaoAlternativa })), };
-		try { const response = await fetch(`${API_BASE}/api/rocket-league/checkout`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }); const data = await response.json(); if (!response.ok || !data.ok) return { ok: false, error: data.error, field: data.field }; const next = { registrationId: data.registrationId, token: data.token }; setOrder(next); save(STORAGE_ORDER, next); setAvailability(prev => prev ? { ...prev, seatsRemaining: data.seatsRemaining, open: data.seatsRemaining > 0 } : prev); scrollTop(); return { ok: true }; } catch { return { ok: false, error: 'Não foi possível conectar ao servidor. Tente novamente.' }; }
+		try { const response = await fetch(`${API_BASE}/api/rocket-league/checkout`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }); const data = await response.json(); if (!response.ok || !data.ok) return { ok: false, error: data.error, field: data.field }; const next = { registrationId: data.registrationId, token: data.token }; setOrder(next); save(STORAGE_ORDER, next); orderToHash(next); scrollTop(); return { ok: true }; } catch { return { ok: false, error: 'Não foi possível conectar ao servidor. Tente novamente.' }; }
 	}
-	function edit() { setOrder(null); clear(STORAGE_ORDER); scrollTop(); }
+	function edit() { setOrder(null); clear(STORAGE_ORDER); orderToHash(null); scrollTop(); }
 	return <div className="rl-page"><Header /><main className="rl-main">{order ? <PaymentPanel order={order} onBack={edit} /> : <div className="rl-layout"><Hero availability={availability} onRegister={() => document.getElementById('inscricao')?.scrollIntoView({ behavior: 'smooth' })} /><About /><Prizes /><RegistrationForm draft={draft} setDraft={setDraft} availability={availability} onCheckout={checkout} /><RegulationAccess /></div>}</main><footer className="rl-footer">© 2026 AASIAM · Torneio Rocket League 2x2</footer></div>;
 }

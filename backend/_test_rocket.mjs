@@ -129,6 +129,51 @@ await test("pagamento tardio sem conflito é confirmado; com equipe repetida vai
   assert.equal((await findRocketRegistration(lateOk.registrationId, { fresh: true })).status, "Pago");
 });
 
-console.log(`\n${passed}/7 testes passaram.\n`);
+await test("telefone do capitão: aceita DDD brasileiro (inclusive 55) com ou sem máscara e recusa o incompleto", async () => {
+  const com = (whatsapp) => parseRocketRegistration(payload(300, { capitao: { nome: "Capitao Equipe", whatsapp, email: "c300@exemplo.com" } }));
+  for (const [entrada, digitos] of [
+    ["(55) 99999-9999", "55999999999"], ["55999999999", "55999999999"], ["(11) 98888-7777", "11988887777"],
+    ["5511988887777", "11988887777"], ["+55 (51) 3222-1234", "5132221234"], ["(21)987654321", "21987654321"],
+  ]) {
+    const parsed = com(entrada);
+    assert.equal(parsed.error, undefined, `${entrada} deveria ser aceito: ${parsed.error}`);
+    assert.equal(parsed.data.capitaoWhatsapp, digitos);
+  }
+  for (const entrada of ["", "(55) 9999", "(11) 9", "(05) 99999-9999", "(11) 88888-7777"]) {
+    const parsed = com(entrada);
+    assert.equal(parsed.field, "capitao.whatsapp", `${JSON.stringify(entrada)} deveria ser recusado`);
+    assert.ok(parsed.error);
+  }
+});
+
+await test("webhook com Pix pendente não confirma; aprovado confirma; reenvio não duplica nem muda a data", async () => {
+  const pendente = await enroll(payload(301));
+  assert.equal(pendente.response.status, 201);
+  const id = pendente.body.registrationId;
+  const order = orderDe(id);
+  const antes = await aplicarWebhookRocket(lerOrder(order));
+  assert.equal(antes.body.confirmed, false, "Pix pendente foi confirmado");
+  assert.equal((await findRocketRegistration(id, { fresh: true })).status, "Pendente");
+  const status = async () => (await (await fetch(`${base}/api/rocket-league/inscricoes/${id}/status`, { headers: { "X-Inscricao-Token": pendente.body.token } })).json());
+  assert.equal((await status()).confirmed, false);
+
+  creditar(order.id);
+  const primeira = await aplicarWebhookRocket(lerOrder(order));
+  assert.equal(primeira.body.confirmed, true);
+  const registro = await findRocketRegistration(id, { fresh: true });
+  assert.equal(registro.status, "Pago");
+  assert.equal(registro.orderMpId, order.id, "a order do Mercado Pago não ficou associada à inscrição");
+
+  const linhas = () => sheet.rows.filter((row) => row[1] === id).length;
+  const repetida = await aplicarWebhookRocket(lerOrder(order));
+  assert.equal(repetida.body.confirmed, true);
+  assert.equal(linhas(), 1, "o reenvio criou outra linha");
+  assert.equal((await findRocketRegistration(id, { fresh: true })).pagoEm, registro.pagoEm, "o reenvio alterou a data do pagamento");
+  const visto = await status();
+  assert.equal(visto.confirmed, true);
+  assert.equal(visto.status, "Pago");
+});
+
+console.log(`\n${passed}/9 testes passaram.\n`);
 server.close();
 if (process.exitCode) process.exit(process.exitCode);
