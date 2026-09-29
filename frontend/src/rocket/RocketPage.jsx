@@ -5,22 +5,23 @@ import rocketBanner from '../../../BannerRocket.png';
 import officialRegulation from '../../../Regulamento Oficial - Campeonato Rocket League AASIAM.pdf_20260925_153129_0000.pdf';
 import './rocket.css';
 
-const TROFEU_AVISO = 'Imagem do troféu meramente ilustrativa. O modelo final pode sofrer alterações.';
+const AVISO_TROFEU = 'Imagem do troféu meramente ilustrativa. O modelo final pode sofrer alterações.';
+const AVISO_MEDALHAS = 'Imagens das medalhas meramente ilustrativas. Os modelos finais podem sofrer alterações.';
 
-/* Artes oficiais da premiação (1º, 2º e 3º lugar), 4:5, já com o troféu, as
-   medalhas e o selo "IMAGEM ILUSTRATIVA" dentro da própria arte. Ficam em
+/* Artes oficiais da premiação (1º, 2º e 3º lugar), 4:5, com os itens de cada
+   colocação (só o 1º lugar tem troféu) e o selo "IMAGEM ILUSTRATIVA" dentro da própria arte. Ficam em
    /public/imgs (webp com fallback png) e entram inteiras, sem corte. */
 const PRIZES = [
 	{
-		place: '1º lugar', medal: 'ouro', text: 'Troféu personalizado + 2 Jerseys Brancas AASIAM.',
+		place: '1º lugar', medal: 'ouro', text: '1 troféu, 2 medalhas e 2 Jerseys AASIAM.', note: AVISO_TROFEU,
 		image: '/imgs/premio-1o-lugar', alt: 'Premiação do 1º lugar: troféu, duas jerseys oficiais da AASIAM e medalhas',
 	},
 	{
-		place: '2º lugar', medal: 'prata', text: 'Troféu personalizado + 2 Camisetas AASIAM.',
+		place: '2º lugar', medal: 'prata', text: '2 medalhas e 2 camisetas AASIAM.', note: AVISO_MEDALHAS,
 		image: '/imgs/premio-2o-lugar', alt: 'Premiação do 2º lugar: duas camisas oficiais da AASIAM e medalhas',
 	},
 	{
-		place: '3º lugar', medal: 'bronze', text: 'Troféu personalizado + 2 Canecas AASIAM.',
+		place: '3º lugar', medal: 'bronze', text: '2 medalhas e 2 canecas AASIAM.', note: AVISO_MEDALHAS,
 		image: '/imgs/premio-3o-lugar', alt: 'Premiação do 3º lugar: duas canecas com tirante da AASIAM e medalhas',
 	},
 ];
@@ -96,15 +97,15 @@ const REGULATION_SECTIONS = [
 		],
 	},
 	{
-		/* Lista atualizada em 2026-09-28 (troféu para as três colocações). O PDF
-		   oficial para download ainda traz a premiação anterior — substituir o
-		   arquivo por uma versão atualizada antes de divulgar as inscrições. */
+		/* Premiação atualizada em 2026-09-29 (igual aos cards da página). O PDF
+		   oficial para download traz outra lista — ver `pendenciaFinal`. */
 		title: '5. Premiação oficial',
 		items: [
-			{ icon: Trophy, label: '1º Lugar (Campeões)', text: 'Troféu personalizado + 2 Jerseys Brancas AASIAM.' },
-			{ icon: Medal, label: '2º Lugar (Vice-campeões)', text: 'Troféu personalizado + 2 Camisetas AASIAM.' },
-			{ icon: Award, label: '3º Lugar', text: 'Troféu personalizado + 2 Canecas AASIAM.' },
+			{ icon: Trophy, label: '1º Lugar (Campeões)', text: '1 troféu, 2 medalhas e 2 Jerseys AASIAM.' },
+			{ icon: Medal, label: '2º Lugar (Vice-campeões)', text: '2 medalhas e 2 camisetas AASIAM.' },
+			{ icon: Award, label: '3º Lugar', text: '2 medalhas e 2 canecas AASIAM.' },
 		],
+		pendenciaFinal: 'O PDF para download ainda traz a premiação anterior: 1º lugar sem medalhas, 2º lugar com "Duas Camisas Oficiais (verde/cinza)" sem medalhas e 3º lugar sem medalhas. A organização precisa publicar uma nova versão do PDF com a lista acima.',
 	},
 ];
 
@@ -138,7 +139,7 @@ function RegulationSection({ section }) {
 	const pending = note => <p className="rl-pending" role="note"><AlertCircle size={16} aria-hidden="true" /><span><strong>Pendente de revisão pela organização.</strong> {note}</span></p>;
 	const callout = section.callout && <><div className="rl-callout"><AlertCircle size={18} aria-hidden="true" /><p>{section.callout}</p></div>{section.pendencia && pending(section.pendencia)}</>;
 	const items = section.items && <ul className="rl-reg-list">{section.items.map(item => { const Icon = item.icon; return <li key={item.label}>{Icon && <Icon size={18} className="rl-reg-icon" aria-hidden="true" />}<div><strong>{item.label}:</strong> {item.text}{item.pendencia && pending(item.pendencia)}{item.list && <ul className="rl-reg-sublist">{item.list.map(entry => <li key={entry}>{entry}</li>)}</ul>}</div></li>; })}</ul>;
-	return <section className="rl-reg-section"><h2>{section.title}</h2>{section.paragraphs?.map(p => <p key={p}>{p}</p>)}{section.calloutFirst ? <>{callout}{items}</> : <>{items}{callout}</>}</section>;
+	return <section className="rl-reg-section"><h2>{section.title}</h2>{section.paragraphs?.map(p => <p key={p}>{p}</p>)}{section.calloutFirst ? <>{callout}{items}</> : <>{items}{callout}</>}{section.pendenciaFinal && pending(section.pendenciaFinal)}</section>;
 }
 
 export function RocketRegulationPage() {
@@ -158,7 +159,6 @@ function About() {
 	const info = [
 		{ label: 'Valor por equipe', value: 'R$ 50,00', hint: 'Com ou sem reserva' },
 		{ label: 'Prazo de inscrição', value: '10/10/2026', hint: 'Consulte o regulamento' },
-		{ label: 'Vagas', value: 'Sem limite', hint: 'Até o prazo de inscrição' },
 		{ label: 'Formação', value: '2 titulares', hint: '+ 1 reserva opcional' },
 	];
 	return <section className="rl-about"><div className="rl-panel-head"><span className="rl-eyebrow"><Trophy size={16} /> Sobre o torneio</span><h2>Grupos e mata-mata online, grande final presencial</h2><p>Rocket League 2x2 promovido pela AASIAM — Alcateia de Chernobyl. As equipes inscritas se enfrentam em grupos e mata-mata online; a grande final acontece presencialmente na faculdade.</p></div><InfoStrip items={info} /></section>;
@@ -171,7 +171,7 @@ function PrizeCard({ prize }) {
 				<source srcSet={`${prize.image}.webp`} type="image/webp" />
 				<img src={`${prize.image}.png`} alt={prize.alt} width="1080" height="1350" loading="lazy" decoding="async" />
 			</picture>
-			<figcaption className="rl-prize-trophy-note">{TROFEU_AVISO}</figcaption>
+			<figcaption className="rl-prize-trophy-note">{prize.note}</figcaption>
 		</figure>
 		<div className="rl-prize-body">
 			<span className="rl-prize-place">{prize.place}</span>
@@ -181,7 +181,7 @@ function PrizeCard({ prize }) {
 }
 
 /* Premiação em cards — um por colocação, cada um com a arte oficial inteira
-   (4:5) e o aviso de que o troféu é meramente ilustrativo. */
+   (4:5) e o aviso de que os itens mostrados são ilustrativos. */
 function Prizes() {
 	return <section className="rl-prizes"><div className="rl-panel-head"><span className="rl-eyebrow"><Award size={16} /> Premiação oficial</span><h2>O que sua equipe leva pra casa</h2></div><div className="rl-prize-grid">{PRIZES.map(prize => <PrizeCard key={prize.place} prize={prize} />)}</div></section>;
 }
