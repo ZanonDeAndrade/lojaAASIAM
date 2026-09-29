@@ -16,7 +16,6 @@ import {
 } from "./google-sheets.js";
 
 export const ROCKET_SHEET_NAME = process.env.ROCKET_SHEET_NAME || "Torneio Rocket League 2026";
-export const ROCKET_TEAM_LIMIT = 20;
 
 export const ROCKET_SHEET_HEADERS = [
   "Data da inscrição", "ID da inscrição", "Nome da equipe", "Chave da equipe", "Status",
@@ -188,9 +187,10 @@ export async function findRocketRegistration(id, { fresh = false } = {}) {
 }
 
 /**
- * Reserva uma vaga e grava a equipe na mesma seção crítica. As requisições
- * concorrentes tratadas por esta instância entram em uma fila; só as 20
- * primeiras reservas ativas chegam a criar cobrança.
+ * Registra a equipe na mesma seção crítica que confere duplicidade de nome e
+ * de participante. Não há limite de equipes: as requisições concorrentes
+ * tratadas por esta instância entram em uma fila só para que duas inscrições
+ * iguais não criem duas cobranças.
  */
 export async function reserveRocketRegistration(data, { existingId = "" } = {}) {
   if (!isRocketSheetConfigured()) {
@@ -214,9 +214,6 @@ export async function reserveRocketRegistration(data, { existingId = "" } = {}) 
     for (const r of active) for (const p of r.jogadores) if (p.chave) occupiedPlayers.add(p.chave);
     if (data.jogadores.some((p) => occupiedPlayers.has(p.chave))) {
       const error = new Error("duplicate_player"); error.code = "duplicate_player"; throw error;
-    }
-    if (active.length >= ROCKET_TEAM_LIMIT) {
-      const error = new Error("full"); error.code = "full"; throw error;
     }
 
     const record = {
@@ -262,18 +259,22 @@ export async function updateRocketRegistration(id, changes) {
       next.pagoEm = previous.pagoEm || next.pagoEm;
     }
 
-    /* Uma cobrança que chega depois de a reserva ter expirado não pode criar
-       a 21ª confirmação. Como esta verificação e a escrita passam pela mesma
-       fila, duas confirmações simultâneas enxergam uma à outra. O pagamento
-       não é descartado: fica em revisão para a organização tratar no painel. */
+    /* Uma cobrança que chega depois de a reserva ter expirado não pode duplicar
+       uma equipe ou um participante que já foi inscrito por outra reserva ativa.
+       Como esta verificação e a escrita passam pela mesma fila, duas
+       confirmações simultâneas enxergam uma à outra. O pagamento não é
+       descartado: fica em revisão para a organização tratar no painel. */
     if (next.status === "Pago" && previous.status !== "Pago") {
-      const ocupadasPorOutras = rows
+      const outrasAtivas = rows
         .map((row, index) => toRecord(row, FIRST_DATA_ROW + index))
-        .filter((record) => record.id !== id && reservationActive(record)).length;
-      if (ocupadasPorOutras >= ROCKET_TEAM_LIMIT) {
+        .filter((record) => record.id !== id && reservationActive(record));
+      const jogadoresOcupados = new Set(outrasAtivas.flatMap((record) => [...duplicatePlayerKeys(record)]));
+      const conflito = outrasAtivas.some((record) => record.chaveEquipe === previous.chaveEquipe)
+        || [...duplicatePlayerKeys(previous)].some((key) => jogadoresOcupados.has(key));
+      if (conflito) {
         next.status = "Revisão manual";
         next.pagoEm = previous.pagoEm;
-        next.observacoes = "Pagamento recebido após a vaga expirar; limite de 20 equipes já preenchido. Conferir no painel do Mercado Pago.";
+        next.observacoes = "Pagamento recebido após a reserva expirar; equipe ou participante já consta em outra inscrição ativa. Conferir no painel do Mercado Pago.";
       }
     }
     if (toRow({ ...previous, atualizadoEm: "" }).join("\u0001") === toRow({ ...next, atualizadoEm: "" }).join("\u0001")) {
@@ -287,8 +288,4 @@ export async function updateRocketRegistration(id, changes) {
     invalidate();
     return { registration: next, wrote: true };
   });
-}
-
-export function rocketSeats(records, now = Date.now()) {
-  return Math.max(0, ROCKET_TEAM_LIMIT - records.filter((record) => reservationActive(record, now)).length);
 }

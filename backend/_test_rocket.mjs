@@ -96,26 +96,39 @@ await test("não expõe RA ou contatos na consulta protegida e confirma apenas p
   assert.equal(JSON.stringify(body).includes("capitao1@"), false);
 });
 
-await test("serializa 20 reservas concorrentes e bloqueia a 21ª", async () => {
-  // A primeira já foi confirmada; as 19 subsequentes disputam as vagas restantes.
-  all = await Promise.all(Array.from({ length: 19 }, (_, i) => enroll(payload(i + 10))));
-  assert.equal(all.filter((item) => item.response.status === 201).length, 19);
-  const full = await enroll(payload(99));
-  assert.equal(full.response.status, 409);
+await test("não limita o número de equipes: 22 reservas concorrentes criam 22 cobranças (23 equipes com a primeira)", async () => {
+  all = await Promise.all(Array.from({ length: 22 }, (_, i) => enroll(payload(i + 10))));
+  assert.equal(all.filter((item) => item.response.status === 201).length, 22);
+  const beyond = await enroll(payload(99));
+  assert.equal(beyond.response.status, 201, "a 24ª equipe não pode ser recusada por falta de vaga");
+  assert.equal(beyond.body.amountCents, 5000);
+  assert.equal(JSON.stringify(beyond.body).includes("seatsRemaining"), false);
 });
 
-await test("não confirma pagamento tardio acima do limite depois de liberar a reserva", async () => {
+await test("a disponibilidade não expõe vagas e segue aberta até o prazo", async () => {
+  const body = await (await fetch(`${base}/api/rocket-league/availability`)).json();
+  assert.deepEqual(body, { ok: true, open: true, reason: null });
+});
+
+await test("pagamento tardio sem conflito é confirmado; com equipe repetida vai para revisão", async () => {
   const late = all[0].body;
   await updateRocketRegistration(late.registrationId, { expiraEm: new Date(Date.now() - 60_000).toISOString() });
-  const replacement = await enroll(payload(100));
-  assert.equal(replacement.response.status, 201, "a vaga expirada deveria ser reutilizável");
+  const replacement = await enroll(payload(100, { nomeEquipe: "Alcateia 10", capitao: { nome: "Outro Capitao", whatsapp: "(55) 98888-8888", email: "outro@exemplo.com" } }));
+  assert.equal(replacement.response.status, 201, "a reserva expirada deveria liberar o nome da equipe");
   const order = orderDe(late.registrationId);
   creditar(order.id);
   await aplicarWebhookRocket(lerOrder(order));
   const registration = await findRocketRegistration(late.registrationId, { fresh: true });
   assert.equal(registration.status, "Revisão manual");
+
+  const lateOk = all[1].body;
+  await updateRocketRegistration(lateOk.registrationId, { expiraEm: new Date(Date.now() - 60_000).toISOString() });
+  const okOrder = orderDe(lateOk.registrationId);
+  creditar(okOrder.id);
+  await aplicarWebhookRocket(lerOrder(okOrder));
+  assert.equal((await findRocketRegistration(lateOk.registrationId, { fresh: true })).status, "Pago");
 });
 
-console.log(`\n${passed}/6 testes passaram.\n`);
+console.log(`\n${passed}/7 testes passaram.\n`);
 server.close();
 if (process.exitCode) process.exit(process.exitCode);

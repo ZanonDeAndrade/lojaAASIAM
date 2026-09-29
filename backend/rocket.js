@@ -17,12 +17,10 @@ import {
   validarAssinaturaWebhook,
 } from "./mercadopago.js";
 import {
-  ROCKET_TEAM_LIMIT,
   activeRegistrations,
   findRocketRegistration,
   isRocketSheetConfigured,
   reserveRocketRegistration,
-  rocketSeats,
   updateRocketRegistration,
 } from "./rocket-inscricoes.js";
 import {
@@ -173,14 +171,14 @@ function sameRegistration(record, data) {
   return record.chaveEquipe === data.chaveEquipe && record.capitaoEmail === data.capitaoEmail &&
     record.jogadores.length === data.jogadores.length && record.jogadores.every((p, i) => participantKey(p) === data.jogadores[i].chave);
 }
-function view(registration, seats = null, order = null) {
+function view(registration, order = null) {
   return {
     ok: true, registrationId: registration.id, teamName: registration.nomeEquipe,
     participants: registration.jogadores.map((p) => ({ nome: p.nome, vinculo: p.vinculo })),
     status: registration.status, statusLabel: registration.status,
     confirmed: registration.status === "Pago", final: FINAL.has(registration.status), renewable: RENEWABLE.has(registration.status),
     amountCents: ROCKET_AMOUNT_CENTS, amount: formatBRL(ROCKET_AMOUNT_CENTS), paidAt: registration.pagoEm || null,
-    expiresAt: registration.expiraEm || null, seatsRemaining: seats,
+    expiresAt: registration.expiraEm || null,
     pix: order && registration.status === "Pendente" && (order.qrCode || order.qrCodeBase64)
       ? { qrCode: order.qrCode || "", qrCodeBase64: order.qrCodeBase64 || "", expiresAt: order.expiraEm || registration.expiraEm || "" }
       : null,
@@ -232,12 +230,8 @@ export async function aplicarWebhookRocket(order) {
 
 export function registerRocketRoutes(app) {
   app.get("/api/rocket-league/availability", async (_req, res) => {
-    if (Date.now() > DEADLINE) return res.json({ ok: true, open: false, reason: "encerradas", seatsRemaining: 0, teamLimit: ROCKET_TEAM_LIMIT });
-    try {
-      const records = await activeRegistrations();
-      const seats = rocketSeats(records);
-      return res.json({ ok: true, open: seats > 0, reason: seats ? null : "esgotadas", seatsRemaining: seats, teamLimit: ROCKET_TEAM_LIMIT });
-    } catch { return res.status(503).json({ ok: false, error: "Não foi possível consultar as vagas agora." }); }
+    if (Date.now() > DEADLINE) return res.json({ ok: true, open: false, reason: "encerradas" });
+    return res.json({ ok: true, open: true, reason: null });
   });
 
   app.post("/api/rocket-league/checkout", checkoutLimiter, async (req, res) => {
@@ -251,9 +245,8 @@ export function registerRocketRoutes(app) {
       if (existing && !FINAL.has(existing.status)) {
         existing = await refreshRegistration(existing, { fresh: true });
         if (!FINAL.has(existing.status)) {
-          const seats = rocketSeats(await activeRegistrations({ fresh: true }));
           const order = existing.orderMpId ? lerOrder(await consultarOrder(existing.orderMpId)) : null;
-          return res.status(200).json({ ...view(existing, seats, order), token: registrationToken(existing.id), reused: true });
+          return res.status(200).json({ ...view(existing, order), token: registrationToken(existing.id), reused: true });
         }
       }
       const registration = await reserveRocketRegistration({ ...data, id: existing?.id || createRegistrationId() }, { existingId: existing?.id || "" });
@@ -263,10 +256,8 @@ export function registerRocketRoutes(app) {
         await updateRocketRegistration(registration.id, { status: "Erro", observacoes: "Falha ao criar a cobrança Pix no Mercado Pago." }).catch(() => {});
         throw error;
       }
-      const seats = rocketSeats(await activeRegistrations({ fresh: true }));
-      return res.status(201).json({ ...view(charged.registration, seats, charged.order), token: registrationToken(charged.registration.id), reused: false });
+      return res.status(201).json({ ...view(charged.registration, charged.order), token: registrationToken(charged.registration.id), reused: false });
     } catch (error) {
-      if (error?.code === "full") return res.status(409).json({ ok: false, error: "As 20 vagas estão reservadas ou confirmadas.", field: "form" });
       if (error?.code === "duplicate_team") return res.status(409).json({ ok: false, error: "Já existe uma inscrição ativa com este nome de equipe.", field: "nomeEquipe" });
       if (error?.code === "duplicate_player") return res.status(409).json({ ok: false, error: "Um participante já consta em outra equipe com inscrição ativa.", field: "jogadores" });
       if (error?.code === "sheets_not_configured") return res.status(503).json({ ok: false, error: "Inscrições temporariamente indisponíveis." });
@@ -284,10 +275,9 @@ export function registerRocketRoutes(app) {
       let registration = await findRocketRegistration(id);
       if (!registration) return res.status(404).json({ ok: false, error: "Inscrição não encontrada." });
       registration = await refreshRegistration(registration);
-      const seats = rocketSeats(await activeRegistrations());
       let order = null;
       if (registration.status === "Pendente" && registration.orderMpId) order = lerOrder(await consultarOrder(registration.orderMpId));
-      return res.json(view(registration, seats, order));
+      return res.json(view(registration, order));
     } catch (error) {
       return error instanceof MercadoPagoError ? mpError(res, error) : res.status(502).json({ ok: false, error: "Não foi possível verificar o pagamento agora." });
     }
