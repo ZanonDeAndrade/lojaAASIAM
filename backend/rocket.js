@@ -38,7 +38,12 @@ export const ORDER_PREFIX = "ROCKET-";
 export const ROCKET_WEBHOOK_PATH = "/api/rocket-league/webhook/mercadopago";
 export const ROCKET_REGULATION_VERSION = "Regulamento Oficial — 25/09/2026";
 export const ROCKET_AMOUNT_CENTS = 5000;
-const DEADLINE = new Date("2026-10-11T02:59:59-03:00").getTime();
+/* Prazo final: 17/10/2026 às 23:59 no horário de Brasília (UTC-03:00, sem
+   horário de verão desde 2019). O offset explícito evita que um servidor em
+   UTC encerre as inscrições três horas antes. */
+export const ROCKET_DEADLINE = new Date("2026-10-17T23:59:59.999-03:00").getTime();
+const CLOSED_MESSAGE = "As inscrições foram encerradas em 17/10/2026 às 23:59.";
+export function rocketRegistrationsOpen(now = Date.now()) { return now <= ROCKET_DEADLINE; }
 const PIX_EXPIRATION = "PT30M";
 const LINKS = new Map();
 
@@ -93,14 +98,17 @@ function canonicalPlayer(raw, label) {
   if (!ra && !identificacaoAlternativa) {
     return { error: `${label}: informe uma identificação AMF alternativa quando não houver RA.` };
   }
-  const player = { nome: normalizeFullName(raw.nome), ra, vinculo, identificacaoAlternativa };
+  const outraInstituicao = raw?.outraInstituicao === true;
+  const nomeInstituicao = outraInstituicao ? normalizeText(raw?.nomeInstituicao, 100) : "";
+  if (outraInstituicao && nomeInstituicao.length < 2) return { error: `${label}: informe o nome da instituição.` };
+  const player = { nome: normalizeFullName(raw.nome), ra, vinculo, identificacaoAlternativa, outraInstituicao, nomeInstituicao };
   player.chave = participantKey(player);
   return { player };
 }
 
 /** Validação e normalização do corpo que chega do navegador. */
-export function parseRocketRegistration(body) {
-  if (Date.now() > DEADLINE) return { error: "As inscrições foram encerradas em 10/10/2026.", field: "form" };
+export function parseRocketRegistration(body, now = Date.now()) {
+  if (!rocketRegistrationsOpen(now)) return { error: CLOSED_MESSAGE, field: "form" };
   const nomeEquipe = normalizeText(body?.nomeEquipe, 70);
   if (nomeEquipe.length < 2) return { error: "Informe o nome da equipe.", field: "nomeEquipe" };
   const captainError = validateFullName(body?.capitao?.nome);
@@ -189,7 +197,6 @@ function mpError(res, error) {
   if (["sem_credencial", "credencial_invalida"].includes(error?.code)) return res.status(503).json({ ok: false, error: "Inscrições temporariamente indisponíveis." });
   return res.status(502).json({ ok: false, error: "Não foi possível abrir o pagamento agora. Tente novamente." });
 }
-function closingError(res) { return res.status(410).json({ ok: false, error: "As inscrições foram encerradas em 10/10/2026." }); }
 
 async function createPix(registration) {
   const raw = await criarOrderPix({
@@ -230,7 +237,7 @@ export async function aplicarWebhookRocket(order) {
 
 export function registerRocketRoutes(app) {
   app.get("/api/rocket-league/availability", async (_req, res) => {
-    if (Date.now() > DEADLINE) return res.json({ ok: true, open: false, reason: "encerradas" });
+    if (!rocketRegistrationsOpen()) return res.json({ ok: true, open: false, reason: "encerradas" });
     return res.json({ ok: true, open: true, reason: null });
   });
 

@@ -17,7 +17,7 @@ const express = (await import("express")).default;
 const { sheet, resetSheet } = await import(fake("google-sheets.js"));
 const { instalarFetchFalso, resetMercadoPago, orderDe, creditar } = await import(fake("mercadopago-api.mjs"));
 instalarFetchFalso();
-const { registerRocketRoutes, parseRocketRegistration, aplicarWebhookRocket } = await import("./rocket.js");
+const { registerRocketRoutes, parseRocketRegistration, aplicarWebhookRocket, rocketRegistrationsOpen } = await import("./rocket.js");
 const { lerOrder } = await import("./mercadopago.js");
 const { findRocketRegistration, updateRocketRegistration } = await import("./rocket-inscricoes.js");
 
@@ -174,6 +174,45 @@ await test("webhook com Pix pendente não confirma; aprovado confirma; reenvio n
   assert.equal(visto.status, "Pago");
 });
 
-console.log(`\n${passed}/9 testes passaram.\n`);
+await test("prazo: aberto até 17/10/2026 23:59:59 em Brasília e fechado a partir de 18/10 00:00", async () => {
+  const ultimoSegundo = Date.parse("2026-10-17T23:59:59-03:00");
+  const meiaNoite = Date.parse("2026-10-18T00:00:00-03:00");
+  assert.equal(rocketRegistrationsOpen(Date.parse("2026-10-17T23:59:00-03:00")), true);
+  assert.equal(rocketRegistrationsOpen(ultimoSegundo), true);
+  // 17/10 às 23:59 em Brasília já é 18/10 em UTC — não pode encerrar antes.
+  assert.equal(rocketRegistrationsOpen(Date.parse("2026-10-18T02:59:59Z")), true);
+  assert.equal(rocketRegistrationsOpen(meiaNoite), false);
+  assert.equal(parseRocketRegistration(payload(400), ultimoSegundo).error, undefined);
+  const fechado = parseRocketRegistration(payload(400), meiaNoite);
+  assert.equal(fechado.field, "form");
+  assert.match(fechado.error, /17\/10\/2026/);
+});
+
+await test("outra instituição: opcional, exige o nome quando marcado e grava nas colunas novas", async () => {
+  const semCampo = parseRocketRegistration(payload(500));
+  assert.equal(semCampo.data.jogadores[0].outraInstituicao, false);
+  assert.equal(semCampo.data.jogadores[0].nomeInstituicao, "");
+  const comOutra = (nomeInstituicao) => payload(501, { jogadores: [
+    { nome: "Jogador Externo", ra: "RA50101", vinculo: "Aluno atual", identificacaoAlternativa: "", outraInstituicao: true, nomeInstituicao },
+    { nome: "Jogador Dois", ra: "RA50102", vinculo: "Aluno atual", identificacaoAlternativa: "", outraInstituicao: false, nomeInstituicao: "ignorado" },
+  ] });
+  const semNome = parseRocketRegistration(comOutra("  "));
+  assert.equal(semNome.field, "jogadores.0");
+  assert.match(semNome.error, /nome da instituição/);
+  const parsed = parseRocketRegistration(comOutra("  Universidade   Federal de Santa Maria "));
+  assert.equal(parsed.data.jogadores[0].nomeInstituicao, "Universidade Federal de Santa Maria");
+  assert.equal(parsed.data.jogadores[1].nomeInstituicao, "", "desmarcado não pode guardar nome de instituição");
+
+  const result = await enroll(comOutra("UFSM"));
+  assert.equal(result.response.status, 201);
+  const row = sheet.rows.find((r) => r[1] === result.body.registrationId);
+  assert.deepEqual(row.slice(32, 38), ["Sim", "UFSM", "Não", "", "", ""]);
+  const salvo = await findRocketRegistration(result.body.registrationId, { fresh: true });
+  assert.equal(salvo.jogadores[0].outraInstituicao, true);
+  assert.equal(salvo.jogadores[0].nomeInstituicao, "UFSM");
+  assert.equal(salvo.jogadores[1].outraInstituicao, false);
+});
+
+console.log(`\n${passed}/11 testes passaram.\n`);
 server.close();
 if (process.exitCode) process.exit(process.exitCode);

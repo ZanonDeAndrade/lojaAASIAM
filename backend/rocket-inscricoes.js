@@ -26,6 +26,9 @@ export const ROCKET_SHEET_HEADERS = [
   "Valor", "Método de pagamento", "ID da order (Mercado Pago)", "ID do pagamento (Mercado Pago)",
   "Data do pagamento", "Valor pago", "Status Mercado Pago", "Pix expira em", "Última atualização",
   "Observações",
+  // Colunas novas entram no fim para não deslocar as linhas já gravadas.
+  "Outra instituição 1", "Instituição 1", "Outra instituição 2", "Instituição 2",
+  "Outra instituição reserva", "Instituição reserva",
 ];
 
 const COL = Object.freeze({
@@ -35,8 +38,14 @@ const COL = Object.freeze({
   jogador2Alternativa: 15, reservaNome: 16, reservaRa: 17, reservaVinculo: 18,
   reservaAlternativa: 19, regulamentoVersao: 20, regulamentoAceitoEm: 21, valor: 22,
   metodo: 23, orderMpId: 24, paymentMpId: 25, pagoEm: 26, valorPago: 27, statusMp: 28,
-  expiraEm: 29, atualizadoEm: 30, observacoes: 31,
+  expiraEm: 29, atualizadoEm: 30, observacoes: 31, jogador1Instituicao: 32,
+  jogador2Instituicao: 34, reservaInstituicao: 36,
 });
+const PLAYER_COLUMNS = [
+  [COL.jogador1Nome, COL.jogador1Instituicao],
+  [COL.jogador2Nome, COL.jogador2Instituicao],
+  [COL.reservaNome, COL.reservaInstituicao],
+];
 
 const FIRST_DATA_ROW = 2;
 const LAST_COLUMN = columnLetter(ROCKET_SHEET_HEADERS.length);
@@ -97,12 +106,14 @@ function centsFromSheet(value) {
   return digits ? Number(digits) : null;
 }
 
-function player(row, offset) {
+function player(row, offset, institutionOffset) {
   const value = {
     nome: row[offset] || "",
     ra: row[offset + 1] || "",
     vinculo: row[offset + 2] || "",
     identificacaoAlternativa: row[offset + 3] || "",
+    outraInstituicao: row[institutionOffset] === "Sim",
+    nomeInstituicao: row[institutionOffset + 1] || "",
   };
   const fold = (text) => String(text || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ").trim().toLowerCase();
   value.chave = value.ra
@@ -117,9 +128,8 @@ function toRecord(row, rowNumber) {
     criadaEm: row[COL.criadaEm] || "", id: row[COL.id] || "", nomeEquipe: row[COL.nomeEquipe] || "",
     chaveEquipe: row[COL.chaveEquipe] || "", status: statusFromLabel(row[COL.status]),
     capitaoNome: row[COL.capitaoNome] || "", capitaoWhatsapp: row[COL.capitaoWhatsapp] || "",
-    capitaoEmail: row[COL.capitaoEmail] || "", jogadores: [
-      player(row, COL.jogador1Nome), player(row, COL.jogador2Nome), player(row, COL.reservaNome),
-    ].filter((p) => p.nome),
+    capitaoEmail: row[COL.capitaoEmail] || "",
+    jogadores: PLAYER_COLUMNS.map(([offset, institution]) => player(row, offset, institution)).filter((p) => p.nome),
     regulamentoVersao: row[COL.regulamentoVersao] || "", regulamentoAceitoEm: row[COL.regulamentoAceitoEm] || "",
     valorCents: centsFromSheet(row[COL.valor]) ?? 5000, metodo: row[COL.metodo] || "",
     orderMpId: row[COL.orderMpId] || "", paymentMpId: row[COL.paymentMpId] || "", pagoEm: row[COL.pagoEm] || "",
@@ -137,10 +147,12 @@ function toRow(record) {
   row[COL.status] = clean(record.status, 30); row[COL.capitaoNome] = clean(record.capitaoNome, 80);
   row[COL.capitaoWhatsapp] = clean(record.capitaoWhatsapp, 15); row[COL.capitaoEmail] = clean(record.capitaoEmail, 120);
   const players = record.jogadores || [];
-  for (const [index, offset] of [COL.jogador1Nome, COL.jogador2Nome, COL.reservaNome].entries()) {
+  for (const [index, [offset, institution]] of PLAYER_COLUMNS.entries()) {
     const p = players[index] || {};
     row[offset] = clean(p.nome, 80); row[offset + 1] = clean(p.ra, 40); row[offset + 2] = clean(p.vinculo, 30);
     row[offset + 3] = clean(p.identificacaoAlternativa, 100);
+    row[institution] = p.nome ? (p.outraInstituicao ? "Sim" : "Não") : "";
+    row[institution + 1] = p.outraInstituicao ? clean(p.nomeInstituicao, 100) : "";
   }
   row[COL.regulamentoVersao] = clean(record.regulamentoVersao, 100);
   row[COL.regulamentoAceitoEm] = clean(record.regulamentoAceitoEm, 40);

@@ -31,7 +31,7 @@ const API_BASE = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
 const STORAGE_ORDER = 'aasiam-rocket-registration';
 const STORAGE_DRAFT = 'aasiam-rocket-draft';
 const RELATIONSHIPS = ['Aluno atual', 'Professor', 'Egresso'];
-const EMPTY_PLAYER = { nome: '', ra: '', vinculo: '', identificacaoAlternativa: '', semRa: false };
+const EMPTY_PLAYER = { nome: '', ra: '', vinculo: '', identificacaoAlternativa: '', semRa: false, outraInstituicao: false, nomeInstituicao: '' };
 const EMPTY_DRAFT = {
 	nomeEquipe: '', jogadores: [{ ...EMPTY_PLAYER }, { ...EMPTY_PLAYER }, { ...EMPTY_PLAYER }], temReserva: false,
 	capitao: { nome: '', whatsapp: '', email: '' }, aceiteRegulamento: false,
@@ -41,20 +41,22 @@ const EMPTY_DRAFT = {
    também o regulamento nesta página. */
 const TORNEIO_INFO = [
 	{ label: 'Valor por equipe', value: 'R$ 50,00', hint: 'Com ou sem reserva' },
-	{ label: 'Prazo de inscrição', value: '10/10/2026', hint: 'Consulte o regulamento' },
+	{ label: 'Prazo de inscrição', value: '17/10/2026', hint: 'Até 23:59 (horário de Brasília)' },
 	{ label: 'Modalidade', value: '2x2', hint: 'Sem limite de equipes' },
 ];
 
 /* Transcrição fiel do Regulamento Oficial (PDF anexo) — nenhuma regra, número
-   ou palavra das seções 1 a 4 foi alterada. A seção 5 (Premiação) é a
-   exceção deliberada: veja a nota junto a ela. Estrutura em dados, e não em
+   ou palavra das seções 1 a 4 foi alterada, exceto o prazo da seção 2
+   (prorrogado para 17/10/2026). A seção 5 (Premiação) também é uma exceção
+   deliberada: veja a nota junto a ela. Estrutura em dados, e não em
    texto solto, só para reaproveitar o mesmo componente de seção no documento
    inteiro. */
 /* PENDÊNCIAS PARA A ORGANIZAÇÃO (uso interno — não aparecem na página):
    - O limite de 20 equipes deixou de valer nas inscrições feitas neste site. O trecho acima segue igual ao PDF oficial e precisa de nova versão da organização.
    - Este formato depende de 20 equipes. Como as inscrições não têm mais limite, a organização precisa definir e publicar o formato oficial atualizado.
+   - Prazo prorrogado para 17/10/2026 (23:59, horário de Brasília). A seção 2 abaixo já traz a nova data; o PDF oficial ainda diz 10/10/2026.
    - O PDF para download ainda traz a premiação anterior: 1º lugar sem medalhas, 2º lugar com "Duas Camisas Oficiais (verde/cinza)" sem medalhas e 3º lugar sem medalhas. A organização precisa publicar uma nova versão do PDF com a lista acima.
-   Os textos abaixo seguem o PDF oficial, exceto a seção 5, que já traz a premiação atual. */
+   Os textos abaixo seguem o PDF oficial, exceto o prazo da seção 2 e a seção 5, que já traz a premiação atual. */
 const REGULATION_SECTIONS = [
 	{
 		title: '1. Organização e apresentação',
@@ -69,7 +71,7 @@ const REGULATION_SECTIONS = [
 			{ label: 'Atleta Reserva (Opcional)', text: 'A inscrição de 1 (um) jogador reserva por equipe é totalmente opcional, não sendo obrigatória para a participação no campeonato. Caso inscrito, o reserva deve ser cadastrado previamente junto aos titulares.' },
 			{ label: 'Requisito Acadêmico', text: 'Todos os integrantes (titulares e eventuais reservas) devem ser alunos atuais, professores ou egressos (ex-alunos) da instituição de ensino.' },
 			{ label: 'Dados Obrigatórios', text: 'No ato da inscrição, a equipe deve fornecer: Nome da Equipe, Nome Completo e RA de todos os integrantes (e do reserva, se houver), além do contato do capitão.' },
-			{ label: 'Confirmação de Vaga', text: 'A inscrição é validada estritamente mediante o envio do comprovante de pagamento da taxa de R$ 50,00 aos canais oficiais da AASIAM (https://www.aasiam.com.br/) até 10/10/2026.' },
+			{ label: 'Confirmação de Vaga', text: 'A inscrição é validada estritamente mediante o envio do comprovante de pagamento da taxa de R$ 50,00 aos canais oficiais da AASIAM (https://www.aasiam.com.br/) até 17/10/2026.' },
 		],
 		callout: 'Atenção: Vagas limitadas a 20 equipes. O preenchimento obedece à ordem de envio do comprovante de pagamento à organização.',
 	},
@@ -160,7 +162,7 @@ function Hero({ availability, onRegister }) {
 function About() {
 	const info = [
 		{ label: 'Valor por equipe', value: 'R$ 50,00', hint: 'Com ou sem reserva' },
-		{ label: 'Prazo de inscrição', value: '10/10/2026', hint: 'Consulte o regulamento' },
+		{ label: 'Prazo de inscrição', value: '17/10/2026', hint: 'Até 23:59 (horário de Brasília)' },
 		{ label: 'Formação', value: '2 titulares', hint: '+ 1 reserva opcional' },
 	];
 	return <section className="rl-about"><div className="rl-panel-head"><span className="rl-eyebrow"><Trophy size={16} /> Sobre o torneio</span><h2>Grupos e mata-mata online, grande final presencial</h2><p>Rocket League 2x2 promovido pela AASIAM — Alcateia de Chernobyl. As equipes inscritas se enfrentam em grupos e mata-mata online; a grande final acontece presencialmente na faculdade.</p></div><InfoStrip items={info} /></section>;
@@ -198,7 +200,7 @@ function PlayerFields({ index, player, onChange, errors, disabled }) {
 	const role = index === 2 ? 'Jogador reserva' : `Jogador ${index + 1}`;
 	const showAlternative = player.semRa || (player.vinculo !== 'Aluno atual' && !player.ra);
 	function change(field, value) { onChange(index, { ...player, [field]: value }); }
-	return <fieldset className="rl-player"><legend>{role}{index === 2 && <em>Opcional</em>}</legend><div className="rl-fields-grid"><Field label="Nome completo" error={errors?.nome}><input value={player.nome} onChange={e => change('nome', e.target.value)} autoComplete="name" disabled={disabled} /></Field><Field label="Vínculo com a AMF" error={errors?.vinculo}><select value={player.vinculo} onChange={e => change('vinculo', e.target.value)} disabled={disabled}><option value="">Selecione</option>{RELATIONSHIPS.map(item => <option key={item}>{item}</option>)}</select></Field><Field label="RA" error={errors?.ra}><input value={player.ra} onChange={e => change('ra', e.target.value)} disabled={disabled || player.semRa} inputMode="text" placeholder="Informe o RA" /></Field>{player.vinculo !== 'Aluno atual' && <label className="rl-check rl-inline-check"><input type="checkbox" checked={player.semRa} onChange={e => change('semRa', e.target.checked)} disabled={disabled} /> Não possuo RA disponível</label>}{showAlternative && <Field label="Identificação AMF alternativa" error={errors?.identificacaoAlternativa}><input value={player.identificacaoAlternativa} onChange={e => change('identificacaoAlternativa', e.target.value)} disabled={disabled} placeholder="Ex.: matrícula funcional ou curso/ano" /></Field>}</div>{typeof errors === 'string' && <p className="rl-field-error" role="alert">{errors}</p>}{player.vinculo !== 'Aluno atual' && <p className="rl-field-hint">Professores e egressos sem RA podem informar uma identificação alternativa. O PDF atual ainda pede RA de todos; essa adequação depende da atualização do regulamento.</p>}</fieldset>;
+	return <fieldset className="rl-player"><legend>{role}{index === 2 && <em>Opcional</em>}</legend><div className="rl-fields-grid"><Field label="Nome completo" error={errors?.nome}><input value={player.nome} onChange={e => change('nome', e.target.value)} autoComplete="name" disabled={disabled} /></Field><Field label="Vínculo com a AMF" error={errors?.vinculo}><select value={player.vinculo} onChange={e => change('vinculo', e.target.value)} disabled={disabled}><option value="">Selecione</option>{RELATIONSHIPS.map(item => <option key={item}>{item}</option>)}</select></Field><Field label="RA" error={errors?.ra}><input value={player.ra} onChange={e => change('ra', e.target.value)} disabled={disabled || player.semRa} inputMode="text" placeholder="Informe o RA" /></Field>{player.vinculo !== 'Aluno atual' && <label className="rl-check rl-inline-check"><input type="checkbox" checked={player.semRa} onChange={e => change('semRa', e.target.checked)} disabled={disabled} /> Não possuo RA disponível</label>}{showAlternative && <Field label="Identificação AMF alternativa" error={errors?.identificacaoAlternativa}><input value={player.identificacaoAlternativa} onChange={e => change('identificacaoAlternativa', e.target.value)} disabled={disabled} placeholder="Ex.: matrícula funcional ou curso/ano" /></Field>}<label className="rl-check rl-inline-check"><input type="checkbox" checked={!!player.outraInstituicao} onChange={e => onChange(index, { ...player, outraInstituicao: e.target.checked, nomeInstituicao: '' })} disabled={disabled} /> Pertenço a outra instituição</label>{player.outraInstituicao && <Field label="Nome da instituição" error={errors?.nomeInstituicao}><input value={player.nomeInstituicao || ''} onChange={e => change('nomeInstituicao', e.target.value)} disabled={disabled} maxLength="100" required placeholder="Instituição de ensino" /></Field>}</div>{typeof errors === 'string' && <p className="rl-field-error" role="alert">{errors}</p>}{player.vinculo !== 'Aluno atual' && <p className="rl-field-hint">Professores e egressos sem RA podem informar uma identificação alternativa. O PDF atual ainda pede RA de todos; essa adequação depende da atualização do regulamento.</p>}</fieldset>;
 }
 
 function Field({ label, error, children }) {
@@ -215,6 +217,7 @@ function validateDraft(draft) {
 		if (!p.vinculo) entry.vinculo = 'Selecione o vínculo.';
 		if (p.vinculo === 'Aluno atual' && !p.ra.trim()) entry.ra = 'O RA é obrigatório para aluno atual.';
 		if (!p.ra.trim() && p.vinculo && !p.identificacaoAlternativa.trim()) entry.identificacaoAlternativa = 'Informe a identificação alternativa.';
+		if (p.outraInstituicao && (p.nomeInstituicao || '').trim().length < 2) entry.nomeInstituicao = 'Informe o nome da instituição.';
 		if (Object.keys(entry).length) errors[`jogadores.${index}`] = entry;
 	});
 	if (!hasName(draft.capitao.nome)) errors['capitao.nome'] = 'Informe nome e sobrenome.';
@@ -282,7 +285,7 @@ export default function RocketPage() {
 	useEffect(() => { document.title = 'Torneio Rocket League 2x2 | AASIAM'; fetch(`${API_BASE}/api/rocket-league/availability`).then(r => r.json()).then(data => data.ok && setAvailability(data)).catch(() => {}); }, []);
 	useEffect(() => save(STORAGE_DRAFT, draft), [draft]);
 	async function checkout(values) {
-		const payload = { ...values, jogadores: values.jogadores.map(p => ({ nome: p.nome, ra: p.semRa ? '' : p.ra, vinculo: p.vinculo, identificacaoAlternativa: p.identificacaoAlternativa })), };
+		const payload = { ...values, jogadores: values.jogadores.map(p => ({ nome: p.nome, ra: p.semRa ? '' : p.ra, vinculo: p.vinculo, identificacaoAlternativa: p.identificacaoAlternativa, outraInstituicao: !!p.outraInstituicao, nomeInstituicao: p.outraInstituicao ? (p.nomeInstituicao || '').trim() : '' })), };
 		try { const response = await fetch(`${API_BASE}/api/rocket-league/checkout`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }); const data = await response.json(); if (!response.ok || !data.ok) return { ok: false, error: data.error, field: data.field }; const next = { registrationId: data.registrationId, token: data.token }; setOrder(next); save(STORAGE_ORDER, next); orderToHash(next); scrollTop(); return { ok: true }; } catch { return { ok: false, error: 'Não foi possível conectar ao servidor. Tente novamente.' }; }
 	}
 	function edit() { setOrder(null); clear(STORAGE_ORDER); orderToHash(null); scrollTop(); }
