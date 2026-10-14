@@ -116,7 +116,10 @@ function player(row, offset, institutionOffset) {
     nomeInstituicao: row[institutionOffset + 1] || "",
   };
   const fold = (text) => String(text || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ").trim().toLowerCase();
-  value.chave = value.ra
+  // Mesma chave de participantKey() em rocket.js.
+  value.chave = value.outraInstituicao
+    ? `ext:${fold(value.nome)}|${fold(value.nomeInstituicao)}`
+    : value.ra
     ? `ra:${fold(value.ra)}`
     : `alt:${fold(value.nome)}|${fold(value.vinculo)}|${fold(value.identificacaoAlternativa)}`;
   return value;

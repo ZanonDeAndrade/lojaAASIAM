@@ -48,6 +48,7 @@ const PIX_EXPIRATION = "PT30M";
 const LINKS = new Map();
 
 const RELATIONSHIPS = new Set(["Aluno atual", "Professor", "Egresso"]);
+export const OTHER_INSTITUTION = "Outra instituição";
 const FINAL = new Set(["Pago", "Recusado", "Expirado", "Erro", "Revisão manual"]);
 const RENEWABLE = new Set(["Recusado", "Expirado", "Erro"]);
 const checkoutLimiter = rateLimit({ windowMs: 10 * 60_000, max: 30, message: "Muitas tentativas. Aguarde alguns minutos." });
@@ -83,12 +84,25 @@ function fold(value) {
 function teamKey(value) { return fold(value); }
 function validRa(value) { return /^[A-Za-z0-9./_-]{3,40}$/.test(normalizeText(value, 40)); }
 function participantKey(player) {
+  if (player.outraInstituicao) return `ext:${fold(player.nome)}|${fold(player.nomeInstituicao)}`;
   if (player.ra) return `ra:${fold(player.ra)}`;
   return `alt:${fold(player.nome)}|${fold(player.vinculo)}|${fold(player.identificacaoAlternativa)}`;
 }
 function canonicalPlayer(raw, label) {
   const nameError = validateFullName(raw?.nome);
   if (nameError) return { error: `${label}: ${nameError}` };
+  /* Quem é de outra instituição não tem vínculo nem RA na AMF: só o nome da
+     instituição é exigido, e o que vier nos campos da AMF é descartado. */
+  if (raw?.outraInstituicao === true) {
+    const nomeInstituicao = normalizeText(raw?.nomeInstituicao, 100);
+    if (nomeInstituicao.length < 2) return { error: `${label}: informe o nome da instituição.` };
+    const player = {
+      nome: normalizeFullName(raw.nome), ra: "", vinculo: OTHER_INSTITUTION, identificacaoAlternativa: "",
+      outraInstituicao: true, nomeInstituicao,
+    };
+    player.chave = participantKey(player);
+    return { player };
+  }
   const vinculo = normalizeText(raw?.vinculo, 30);
   if (!RELATIONSHIPS.has(vinculo)) return { error: `${label}: selecione um vínculo válido com a AMF.` };
   const ra = normalizeText(raw?.ra, 40);
@@ -98,10 +112,7 @@ function canonicalPlayer(raw, label) {
   if (!ra && !identificacaoAlternativa) {
     return { error: `${label}: informe uma identificação AMF alternativa quando não houver RA.` };
   }
-  const outraInstituicao = raw?.outraInstituicao === true;
-  const nomeInstituicao = outraInstituicao ? normalizeText(raw?.nomeInstituicao, 100) : "";
-  if (outraInstituicao && nomeInstituicao.length < 2) return { error: `${label}: informe o nome da instituição.` };
-  const player = { nome: normalizeFullName(raw.nome), ra, vinculo, identificacaoAlternativa, outraInstituicao, nomeInstituicao };
+  const player = { nome: normalizeFullName(raw.nome), ra, vinculo, identificacaoAlternativa, outraInstituicao: false, nomeInstituicao: "" };
   player.chave = participantKey(player);
   return { player };
 }
@@ -182,7 +193,7 @@ function sameRegistration(record, data) {
 function view(registration, order = null) {
   return {
     ok: true, registrationId: registration.id, teamName: registration.nomeEquipe,
-    participants: registration.jogadores.map((p) => ({ nome: p.nome, vinculo: p.vinculo })),
+    participants: registration.jogadores.map((p) => ({ nome: p.nome, vinculo: p.outraInstituicao ? p.nomeInstituicao : p.vinculo })),
     status: registration.status, statusLabel: registration.status,
     confirmed: registration.status === "Pago", final: FINAL.has(registration.status), renewable: RENEWABLE.has(registration.status),
     amountCents: ROCKET_AMOUNT_CENTS, amount: formatBRL(ROCKET_AMOUNT_CENTS), paidAt: registration.pagoEm || null,

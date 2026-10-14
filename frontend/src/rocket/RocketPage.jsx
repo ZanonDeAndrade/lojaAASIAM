@@ -54,6 +54,7 @@ const TORNEIO_INFO = [
 /* PENDÊNCIAS PARA A ORGANIZAÇÃO (uso interno — não aparecem na página):
    - O limite de 20 equipes deixou de valer nas inscrições feitas neste site. O trecho acima segue igual ao PDF oficial e precisa de nova versão da organização.
    - Este formato depende de 20 equipes. Como as inscrições não têm mais limite, a organização precisa definir e publicar o formato oficial atualizado.
+   - O site aceita participantes de outras instituições (sem vínculo nem RA da AMF). O "Requisito Acadêmico" da seção 2 ainda exige que todos sejam da instituição e precisa de nova versão da organização.
    - Prazo prorrogado para 17/10/2026 (23:59, horário de Brasília). A seção 2 abaixo já traz a nova data; o PDF oficial ainda diz 10/10/2026.
    - O PDF para download ainda traz a premiação anterior: 1º lugar sem medalhas, 2º lugar com "Duas Camisas Oficiais (verde/cinza)" sem medalhas e 3º lugar sem medalhas. A organização precisa publicar uma nova versão do PDF com a lista acima.
    Os textos abaixo seguem o PDF oficial, exceto o prazo da seção 2 e a seção 5, que já traz a premiação atual. */
@@ -198,9 +199,10 @@ function RegulationAccess() {
 
 function PlayerFields({ index, player, onChange, errors, disabled }) {
 	const role = index === 2 ? 'Jogador reserva' : `Jogador ${index + 1}`;
+	const external = !!player.outraInstituicao;
 	const showAlternative = player.semRa || (player.vinculo !== 'Aluno atual' && !player.ra);
 	function change(field, value) { onChange(index, { ...player, [field]: value }); }
-	return <fieldset className="rl-player"><legend>{role}{index === 2 && <em>Opcional</em>}</legend><div className="rl-fields-grid"><Field label="Nome completo" error={errors?.nome}><input value={player.nome} onChange={e => change('nome', e.target.value)} autoComplete="name" disabled={disabled} /></Field><Field label="Vínculo com a AMF" error={errors?.vinculo}><select value={player.vinculo} onChange={e => change('vinculo', e.target.value)} disabled={disabled}><option value="">Selecione</option>{RELATIONSHIPS.map(item => <option key={item}>{item}</option>)}</select></Field><Field label="RA" error={errors?.ra}><input value={player.ra} onChange={e => change('ra', e.target.value)} disabled={disabled || player.semRa} inputMode="text" placeholder="Informe o RA" /></Field>{player.vinculo !== 'Aluno atual' && <label className="rl-check rl-inline-check"><input type="checkbox" checked={player.semRa} onChange={e => change('semRa', e.target.checked)} disabled={disabled} /> Não possuo RA disponível</label>}{showAlternative && <Field label="Identificação AMF alternativa" error={errors?.identificacaoAlternativa}><input value={player.identificacaoAlternativa} onChange={e => change('identificacaoAlternativa', e.target.value)} disabled={disabled} placeholder="Ex.: matrícula funcional ou curso/ano" /></Field>}<label className="rl-check rl-inline-check"><input type="checkbox" checked={!!player.outraInstituicao} onChange={e => onChange(index, { ...player, outraInstituicao: e.target.checked, nomeInstituicao: '' })} disabled={disabled} /> Pertenço a outra instituição</label>{player.outraInstituicao && <Field label="Nome da instituição" error={errors?.nomeInstituicao}><input value={player.nomeInstituicao || ''} onChange={e => change('nomeInstituicao', e.target.value)} disabled={disabled} maxLength="100" required placeholder="Instituição de ensino" /></Field>}</div>{typeof errors === 'string' && <p className="rl-field-error" role="alert">{errors}</p>}{player.vinculo !== 'Aluno atual' && <p className="rl-field-hint">Professores e egressos sem RA podem informar uma identificação alternativa. O PDF atual ainda pede RA de todos; essa adequação depende da atualização do regulamento.</p>}</fieldset>;
+	return <fieldset className="rl-player"><legend>{role}{index === 2 && <em>Opcional</em>}</legend><div className="rl-fields-grid"><Field label="Nome completo" error={errors?.nome}><input value={player.nome} onChange={e => change('nome', e.target.value)} autoComplete="name" disabled={disabled} /></Field><label className="rl-check rl-inline-check"><input type="checkbox" checked={external} onChange={e => onChange(index, { ...player, outraInstituicao: e.target.checked, nomeInstituicao: '' })} disabled={disabled} /> Pertenço a outra instituição</label>{external ? <Field label="Nome da instituição" error={errors?.nomeInstituicao}><input value={player.nomeInstituicao || ''} onChange={e => change('nomeInstituicao', e.target.value)} disabled={disabled} maxLength="100" required placeholder="Instituição de ensino" /></Field> : <><Field label="Vínculo com a AMF" error={errors?.vinculo}><select value={player.vinculo} onChange={e => change('vinculo', e.target.value)} disabled={disabled}><option value="">Selecione</option>{RELATIONSHIPS.map(item => <option key={item}>{item}</option>)}</select></Field><Field label="RA" error={errors?.ra}><input value={player.ra} onChange={e => change('ra', e.target.value)} disabled={disabled || player.semRa} inputMode="text" placeholder="Informe o RA" /></Field>{player.vinculo !== 'Aluno atual' && <label className="rl-check rl-inline-check"><input type="checkbox" checked={player.semRa} onChange={e => change('semRa', e.target.checked)} disabled={disabled} /> Não possuo RA disponível</label>}{showAlternative && <Field label="Identificação AMF alternativa" error={errors?.identificacaoAlternativa}><input value={player.identificacaoAlternativa} onChange={e => change('identificacaoAlternativa', e.target.value)} disabled={disabled} placeholder="Ex.: matrícula funcional ou curso/ano" /></Field>}</>}</div>{typeof errors === 'string' && <p className="rl-field-error" role="alert">{errors}</p>}{!external && player.vinculo !== 'Aluno atual' && <p className="rl-field-hint">Professores e egressos sem RA podem informar uma identificação alternativa. O PDF atual ainda pede RA de todos; essa adequação depende da atualização do regulamento.</p>}</fieldset>;
 }
 
 function Field({ label, error, children }) {
@@ -214,10 +216,14 @@ function validateDraft(draft) {
 	players.forEach((p, index) => {
 		const entry = {};
 		if (!hasName(p.nome)) entry.nome = 'Informe nome e sobrenome.';
+		if (p.outraInstituicao) {
+			if ((p.nomeInstituicao || '').trim().length < 2) entry.nomeInstituicao = 'Informe o nome da instituição.';
+			if (Object.keys(entry).length) errors[`jogadores.${index}`] = entry;
+			return;
+		}
 		if (!p.vinculo) entry.vinculo = 'Selecione o vínculo.';
 		if (p.vinculo === 'Aluno atual' && !p.ra.trim()) entry.ra = 'O RA é obrigatório para aluno atual.';
 		if (!p.ra.trim() && p.vinculo && !p.identificacaoAlternativa.trim()) entry.identificacaoAlternativa = 'Informe a identificação alternativa.';
-		if (p.outraInstituicao && (p.nomeInstituicao || '').trim().length < 2) entry.nomeInstituicao = 'Informe o nome da instituição.';
 		if (Object.keys(entry).length) errors[`jogadores.${index}`] = entry;
 	});
 	if (!hasName(draft.capitao.nome)) errors['capitao.nome'] = 'Informe nome e sobrenome.';
@@ -285,7 +291,9 @@ export default function RocketPage() {
 	useEffect(() => { document.title = 'Torneio Rocket League 2x2 | AASIAM'; fetch(`${API_BASE}/api/rocket-league/availability`).then(r => r.json()).then(data => data.ok && setAvailability(data)).catch(() => {}); }, []);
 	useEffect(() => save(STORAGE_DRAFT, draft), [draft]);
 	async function checkout(values) {
-		const payload = { ...values, jogadores: values.jogadores.map(p => ({ nome: p.nome, ra: p.semRa ? '' : p.ra, vinculo: p.vinculo, identificacaoAlternativa: p.identificacaoAlternativa, outraInstituicao: !!p.outraInstituicao, nomeInstituicao: p.outraInstituicao ? (p.nomeInstituicao || '').trim() : '' })), };
+		const payload = { ...values, jogadores: values.jogadores.map(p => p.outraInstituicao
+				? { nome: p.nome, ra: '', vinculo: '', identificacaoAlternativa: '', outraInstituicao: true, nomeInstituicao: (p.nomeInstituicao || '').trim() }
+				: { nome: p.nome, ra: p.semRa ? '' : p.ra, vinculo: p.vinculo, identificacaoAlternativa: p.identificacaoAlternativa, outraInstituicao: false, nomeInstituicao: '' }), };
 		try { const response = await fetch(`${API_BASE}/api/rocket-league/checkout`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }); const data = await response.json(); if (!response.ok || !data.ok) return { ok: false, error: data.error, field: data.field }; const next = { registrationId: data.registrationId, token: data.token }; setOrder(next); save(STORAGE_ORDER, next); orderToHash(next); scrollTop(); return { ok: true }; } catch { return { ok: false, error: 'Não foi possível conectar ao servidor. Tente novamente.' }; }
 	}
 	function edit() { setOrder(null); clear(STORAGE_ORDER); orderToHash(null); scrollTop(); }

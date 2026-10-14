@@ -188,29 +188,47 @@ await test("prazo: aberto até 17/10/2026 23:59:59 em Brasília e fechado a part
   assert.match(fechado.error, /17\/10\/2026/);
 });
 
-await test("outra instituição: opcional, exige o nome quando marcado e grava nas colunas novas", async () => {
+await test("outra instituição: opcional, dispensa vínculo e RA, exige o nome e grava nas colunas novas", async () => {
   const semCampo = parseRocketRegistration(payload(500));
   assert.equal(semCampo.data.jogadores[0].outraInstituicao, false);
   assert.equal(semCampo.data.jogadores[0].nomeInstituicao, "");
   const comOutra = (nomeInstituicao) => payload(501, { jogadores: [
-    { nome: "Jogador Externo", ra: "RA50101", vinculo: "Aluno atual", identificacaoAlternativa: "", outraInstituicao: true, nomeInstituicao },
+    { nome: "Jogador Externo", ra: "", vinculo: "", identificacaoAlternativa: "", outraInstituicao: true, nomeInstituicao },
     { nome: "Jogador Dois", ra: "RA50102", vinculo: "Aluno atual", identificacaoAlternativa: "", outraInstituicao: false, nomeInstituicao: "ignorado" },
   ] });
   const semNome = parseRocketRegistration(comOutra("  "));
   assert.equal(semNome.field, "jogadores.0");
   assert.match(semNome.error, /nome da instituição/);
   const parsed = parseRocketRegistration(comOutra("  Universidade   Federal de Santa Maria "));
+  assert.equal(parsed.error, undefined, "vínculo e RA não podem ser exigidos de quem é de outra instituição");
   assert.equal(parsed.data.jogadores[0].nomeInstituicao, "Universidade Federal de Santa Maria");
+  assert.equal(parsed.data.jogadores[0].vinculo, "Outra instituição");
   assert.equal(parsed.data.jogadores[1].nomeInstituicao, "", "desmarcado não pode guardar nome de instituição");
+  // Dados da AMF enviados junto com a caixa marcada são descartados.
+  const comRa = parseRocketRegistration(payload(502, { jogadores: [
+    { nome: "Jogador Externo", ra: "RA99999", vinculo: "Professor", identificacaoAlternativa: "x", outraInstituicao: true, nomeInstituicao: "UFN" },
+    { nome: "Jogador Dois", ra: "RA50202", vinculo: "Aluno atual", identificacaoAlternativa: "" },
+  ] }));
+  assert.deepEqual([comRa.data.jogadores[0].ra, comRa.data.jogadores[0].identificacaoAlternativa], ["", ""]);
 
   const result = await enroll(comOutra("UFSM"));
   assert.equal(result.response.status, 201);
   const row = sheet.rows.find((r) => r[1] === result.body.registrationId);
+  assert.deepEqual(row.slice(8, 12), ["Jogador Externo", "", "Outra instituição", ""]);
   assert.deepEqual(row.slice(32, 38), ["Sim", "UFSM", "Não", "", "", ""]);
   const salvo = await findRocketRegistration(result.body.registrationId, { fresh: true });
   assert.equal(salvo.jogadores[0].outraInstituicao, true);
   assert.equal(salvo.jogadores[0].nomeInstituicao, "UFSM");
   assert.equal(salvo.jogadores[1].outraInstituicao, false);
+
+  // A mesma pessoa externa não pode estar em duas equipes ativas.
+  const repetido = await enroll(payload(503, { jogadores: [
+    { nome: "jogador externo", outraInstituicao: true, nomeInstituicao: "ufsm" },
+    { nome: "Jogador Tres", ra: "RA50302", vinculo: "Aluno atual" },
+  ] }));
+  assert.equal(repetido.response.status, 409);
+  const status = await (await fetch(`${base}/api/rocket-league/inscricoes/${result.body.registrationId}/status`, { headers: { "X-Inscricao-Token": result.body.token } })).json();
+  assert.equal(status.participants[0].vinculo, "UFSM");
 });
 
 console.log(`\n${passed}/11 testes passaram.\n`);
