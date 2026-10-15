@@ -6,10 +6,12 @@ import { formatBRL } from '../../shared/churrasco.js';
  * o curso (sem código) e depois de confirmada (com código e nome).
  *
  * `status` é o carimbo: uma palavra só, porque ele não quebra linha.
+ * `detalhe` é uma linha opcional sob a categoria (ex.: quantidade e cardápio).
  */
 export default function Comanda({
 	curso,
 	categoria,
+	detalhe,
 	valorCents,
 	nome,
 	codigo,
@@ -26,6 +28,7 @@ export default function Comanda({
 
 			<div className="ch-comanda-curso">{curso}</div>
 			<div className="ch-comanda-categoria">{categoria}</div>
+			{detalhe && <div className="ch-comanda-detalhe">{detalhe}</div>}
 
 			{codigo && (
 				<>

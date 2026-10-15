@@ -1,11 +1,10 @@
-import { AlertCircle, ArrowRight, Loader2 } from 'lucide-react';
+import { AlertCircle, ArrowRight, Check, Loader2 } from 'lucide-react';
 import { useId, useMemo, useRef, useState } from 'react';
 
 import {
 	COURSES,
 	EMAIL_MAX_LENGTH,
 	NAME_MAX_LENGTH,
-	buildRegistrationSummary,
 	formatPhoneBR,
 	normalizeEmail,
 	normalizeFullName,
@@ -14,6 +13,13 @@ import {
 	validateFullName,
 	validatePhone,
 } from '../../shared/churrasco.js';
+import {
+	EVENTOS_CHURRASCO,
+	EVENTO_AMF,
+	cardapioPorExtenso,
+	pessoasPorExtenso,
+	resumoDaInscricao,
+} from '../../shared/churrasco-eventos.js';
 import CampoCurso from './CampoCurso.jsx';
 import Comanda from './Comanda.jsx';
 
@@ -30,8 +36,16 @@ function validarCampo(campo, valor) {
 	return null;
 }
 
-export default function InscricaoForm({ onGerarPix, enviando }) {
+export default function InscricaoForm({
+	evento = EVENTOS_CHURRASCO[EVENTO_AMF],
+	onGerarPix,
+	enviando,
+}) {
 	const [valores, setValores] = useState(CAMPOS_VAZIOS);
+	// Só existe nos eventos que perguntam; não é obrigatório. Lido aqui, fora
+	// de `enviar`, porque lá `evento` é o evento de submit do formulário.
+	const perguntaCarona = Boolean(evento.carona);
+	const [carona, setCarona] = useState(false);
 	const [erros, setErros] = useState({});
 	const [tocados, setTocados] = useState({});
 	const [erroEnvio, setErroEnvio] = useState(null);
@@ -52,7 +66,13 @@ export default function InscricaoForm({ onGerarPix, enviando }) {
 
 	// O valor aparece no mesmo instante em que o curso é escolhido; o servidor
 	// recalcula tudo de novo antes de cobrar.
-	const resumo = useMemo(() => buildRegistrationSummary(valores.curso), [valores.curso]);
+	const resumo = useMemo(() => resumoDaInscricao(evento, valores.curso), [evento, valores.curso]);
+
+	// Quantidade e cardápio na comanda, para quem tem cardápio fixo.
+	const detalheDaComanda =
+		resumo && evento.cardapio?.length
+			? `${pessoasPorExtenso(resumo.pessoas)} · ${cardapioPorExtenso(evento)} à vontade`
+			: null;
 
 	function alterar(campo, valorBruto) {
 		const valor = campo === 'telefone' ? formatPhoneBR(valorBruto) : valorBruto;
@@ -105,6 +125,7 @@ export default function InscricaoForm({ onGerarPix, enviando }) {
 			phone: normalizePhoneDigits(valores.telefone),
 			email: normalizeEmail(valores.email),
 			course: valores.curso,
+			...(perguntaCarona ? { needsRide: carona } : {}),
 		});
 
 		if (resultado?.ok) return;
@@ -209,11 +230,38 @@ export default function InscricaoForm({ onGerarPix, enviando }) {
 				)}
 			</div>
 
+			{perguntaCarona && (
+				<div className="ch-field">
+					<label className="ch-check" htmlFor={idDe('carona')}>
+						<input
+							id={idDe('carona')}
+							className="ch-check-input"
+							type="checkbox"
+							name="carona"
+							checked={carona}
+							onChange={(e) => setCarona(e.target.checked)}
+							disabled={enviando}
+							aria-describedby={idDe('carona-dica')}
+						/>
+						<span className="ch-check-caixa" aria-hidden="true">
+							<Check size={14} strokeWidth={3} />
+						</span>
+						<span className="ch-check-texto">
+							<span className="ch-check-rotulo">Preciso de carona</span>
+							<span className="ch-check-dica" id={idDe('carona-dica')}>
+								Ajuda a organização a combinar as caronas no dia.
+							</span>
+						</span>
+					</label>
+				</div>
+			)}
+
 			{/* A comanda aparece assim que o curso é escolhido. */}
 			{resumo && (
 				<Comanda
 					curso={resumo.course}
 					categoria={resumo.category}
+					detalhe={detalheDaComanda}
 					valorCents={resumo.priceCents}
 				/>
 			)}
@@ -240,8 +288,10 @@ export default function InscricaoForm({ onGerarPix, enviando }) {
 			</button>
 
 			<p className="ch-form-nota">
-				O QR Code e o código copia e cola aparecem aqui mesmo, nesta página. Usamos seu
-				e-mail só para emitir a cobrança Pix.
+				O QR Code e o código copia e cola aparecem aqui mesmo, nesta página.{' '}
+				{evento.recuperacao
+					? 'Usamos seu e-mail para emitir a cobrança Pix e para você recuperar o comprovante depois.'
+					: 'Usamos seu e-mail só para emitir a cobrança Pix.'}
 			</p>
 		</form>
 	);

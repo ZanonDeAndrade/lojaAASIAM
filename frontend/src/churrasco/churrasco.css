@@ -1,5 +1,7 @@
 /* ============================================================
-   AASIAM — Churrasco da Alcateia  (/churrasco)
+   AASIAM — páginas dos churrascos
+   /churrasco (Churrasco da Alcateia, AMF Games) e
+   /churrasco-semana-academica (Churrasco da AASIAM, Semana de SI).
    Preto esverdeado · verde neon · brasa como único acento quente.
    Tudo escopado em .ch-page para não tocar no CSS da loja.
    ============================================================ */
@@ -1151,6 +1153,195 @@
   color: var(--ch-fumaca);
 }
 
+/* ─── SEMANA ACADÊMICA: banner, cardápio, carona, prazo ──── */
+
+/* A arte inteira, sem corte: a altura vem da proporção (2172×724), e o espaço
+   fica reservado antes da imagem chegar, para a página não pular. */
+.ch-banner {
+  display: block;
+  width: 100%;
+  aspect-ratio: 2172 / 724;
+  margin: 0 0 40px;
+  border: 1px solid var(--ch-line);
+  border-radius: var(--ch-r-lg);
+  overflow: hidden;
+  background: var(--ch-carvao-2);
+}
+
+.ch-banner img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+/* "Semana Acadêmica de Sistemas de Informação" sobre o título. */
+.ch-eyebrow {
+  font-family: var(--ch-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ch-neon);
+  margin: 0 0 14px;
+}
+
+/* O prazo é texto, não preço: um pouco menor para caber numa linha. */
+.ch-tier-prazo { font-size: 1.02rem; letter-spacing: -0.01em; }
+
+.ch-cardapio { max-width: 560px; margin: 18px 0 0; }
+
+.ch-cardapio-lista {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ch-cardapio-item {
+  padding: 9px 16px;
+  border: 1px solid var(--ch-line-2);
+  border-radius: var(--ch-r-pill);
+  background: var(--ch-panel);
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: var(--ch-osso);
+}
+
+/* Linha extra da comanda: quantidade de pessoas e cardápio. */
+.ch-comanda-detalhe {
+  margin-top: 4px;
+  font-size: 0.84rem;
+  line-height: 1.45;
+  color: var(--ch-osso);
+}
+
+/* ── "Preciso de carona" ──
+   O input nativo continua lá, invisível e focável por cima da caixa: teclado,
+   leitor de tela e clique funcionam como num checkbox comum. */
+.ch-check {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--ch-line);
+  border-radius: var(--ch-r-md);
+  background: var(--ch-field);
+  cursor: pointer;
+  transition: border-color 0.16s, background 0.16s;
+}
+
+.ch-check:hover { border-color: var(--ch-line-2); }
+
+.ch-check-input {
+  position: absolute;
+  top: 14px;
+  left: 16px;
+  width: 22px;
+  height: 22px;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.ch-check-caixa {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border: 1.5px solid var(--ch-line-2);
+  border-radius: 6px;
+  background: var(--ch-carvao);
+  color: transparent;
+  transition: background 0.16s, border-color 0.16s, color 0.16s;
+}
+
+.ch-check-input:checked + .ch-check-caixa {
+  background: var(--ch-neon);
+  border-color: var(--ch-neon);
+  color: #04140a;
+}
+
+.ch-check-input:focus-visible + .ch-check-caixa {
+  outline: 2px solid var(--ch-neon);
+  outline-offset: 3px;
+}
+
+.ch-check-input:disabled,
+.ch-check-input:disabled + .ch-check-caixa { cursor: not-allowed; opacity: 0.6; }
+
+.ch-check:has(.ch-check-input:checked) {
+  border-color: var(--ch-line-2);
+  background: var(--ch-panel-2);
+}
+
+.ch-check-texto { display: flex; flex-direction: column; gap: 3px; }
+.ch-check-rotulo { font-weight: 700; font-size: 0.95rem; color: var(--ch-osso); }
+.ch-check-dica { font-size: 0.8rem; line-height: 1.45; color: var(--ch-fumaca); }
+
+/* ── Inscrições encerradas ── */
+.ch-encerradas {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  text-align: center;
+  margin: 0 0 22px;
+}
+
+.ch-encerradas .ch-panel-hint { max-width: 38ch; }
+
+/* ── Recuperar o comprovante ── */
+.ch-recuperar-abrir {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  margin: 18px 0 0;
+  padding: 12px 0 0;
+  border: 0;
+  border-top: 1px dashed var(--ch-line);
+  background: none;
+  color: var(--ch-fumaca);
+  font-family: var(--ch-sans);
+  font-size: 0.86rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.ch-recuperar-abrir:hover { color: var(--ch-neon); }
+
+.ch-recuperar {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin: 22px 0 0;
+  padding: 20px 0 0;
+  border-top: 1px dashed var(--ch-line-2);
+}
+
+.ch-recuperar-titulo {
+  margin: 0 0 4px;
+  font-weight: 800;
+  font-size: 1rem;
+  color: var(--ch-osso);
+}
+
+.ch-recuperar-dica { margin: 0; font-size: 0.84rem; line-height: 1.5; color: var(--ch-fumaca); }
+
+.ch-input-codigo {
+  font-family: var(--ch-mono);
+  font-size: 0.92rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.ch-input-codigo::placeholder { text-transform: none; }
+
 /* ─── ANIMAÇÕES DISCRETAS ────────────────────────────────── */
 .ch-reveal { animation: ch-reveal 0.4s ease both; }
 
@@ -1192,6 +1383,7 @@
 
   .ch-panel { padding: 22px 18px; border-radius: 18px; }
   .ch-comanda-tear { margin-left: -18px; margin-right: -18px; }
+  .ch-banner { margin-bottom: 26px; border-radius: 14px; }
   .ch-btn { min-height: 56px; } /* área de toque confortável */
   .ch-footer { margin-top: 40px; }
 

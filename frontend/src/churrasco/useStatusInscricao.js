@@ -14,7 +14,8 @@ const INTERVALO_MS = 7000;
 const ERRO_CONEXAO =
 	'Não foi possível falar com o servidor. Verifique sua conexão e tente novamente.';
 
-export default function useStatusInscricao({ apiBase, pedido }) {
+/** `caminho` é a base das rotas do evento (ex.: /api/churrasco). */
+export default function useStatusInscricao({ apiBase, caminho = '/api/churrasco', pedido }) {
 	const [inscricao, setInscricao] = useState(null);
 	const [carregando, setCarregando] = useState(false);
 	const [verificando, setVerificando] = useState(false);
@@ -29,7 +30,7 @@ export default function useStatusInscricao({ apiBase, pedido }) {
 		if (!pedido) return null;
 
 		const resposta = await fetch(
-			`${apiBase}/api/churrasco/pagamentos/${encodeURIComponent(pedido.orderId)}/status`,
+			`${apiBase}${caminho}/pagamentos/${encodeURIComponent(pedido.orderId)}/status`,
 			{ headers: { 'X-Inscricao-Token': pedido.token } },
 		);
 
@@ -45,7 +46,7 @@ export default function useStatusInscricao({ apiBase, pedido }) {
 		setInscricao(dados);
 		setErro(null);
 		return dados;
-	}, [apiBase, pedido]);
+	}, [apiBase, caminho, pedido]);
 
 	/**
 	 * Adota o resultado do checkout sem uma ida ao servidor. É o que faz o QR

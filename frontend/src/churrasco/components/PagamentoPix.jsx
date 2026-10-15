@@ -147,6 +147,10 @@ function Cabecalho({ tom = 'neutro', icone, titulo, texto, tituloRef }) {
 
 export default function PagamentoPix({
 	apiBase,
+	caminho = '/api/churrasco',
+	tituloDoEvento = 'Churrasco da Alcateia',
+	detalheDaComanda = null,
+	inscricoesAbertas = true,
 	token,
 	inscricao,
 	carregando,
@@ -221,7 +225,7 @@ export default function PagamentoPix({
 						Pagamento confirmado!
 					</h2>
 					<p className="ch-sucesso-msg">
-						Sua inscrição no Churrasco da Alcateia está confirmada. Guarde o código da
+						Sua inscrição no {tituloDoEvento} está confirmada. Guarde o código da
 						comanda: é ele que vale na entrada.
 					</p>
 				</div>
@@ -230,6 +234,7 @@ export default function PagamentoPix({
 					nome={nome}
 					curso={curso}
 					categoria={categoria}
+					detalhe={detalheDaComanda}
 					valorCents={amountCents}
 					codigo={orderId}
 					status="Pago"
@@ -237,7 +242,12 @@ export default function PagamentoPix({
 				/>
 
 				{token && (
-					<BotaoComprovante apiBase={apiBase} orderId={orderId} token={token} />
+					<BotaoComprovante
+						apiBase={apiBase}
+						caminho={caminho}
+						orderId={orderId}
+						token={token}
+					/>
 				)}
 
 				{receiptUrl && (
@@ -313,17 +323,19 @@ export default function PagamentoPix({
 
 	if (encerrado) {
 		const expirou = status === 'expirado' || venceuNaTela;
+		// Depois do prazo, um Pix morto não volta: não há Pix novo para gerar.
+		const textoDoFim = !inscricoesAbertas
+			? 'Nada foi cobrado. As inscrições foram encerradas, então não dá mais para gerar um novo Pix.'
+			: expirou
+				? 'Nada foi cobrado. Gere um novo código para continuar a inscrição — os seus dados já estão guardados.'
+				: 'Nada foi cobrado. Você pode gerar um novo código Pix e tentar de novo.';
 		return (
 			<div className="ch-retorno ch-reveal">
 				<Cabecalho
 					tom="alerta"
 					icone={<AlertCircle size={26} aria-hidden="true" />}
 					titulo={expirou ? 'O código Pix venceu.' : 'O pagamento não foi concluído.'}
-					texto={
-						expirou
-							? 'Nada foi cobrado. Gere um novo código para continuar a inscrição — os seus dados já estão guardados.'
-							: 'Nada foi cobrado. Você pode gerar um novo código Pix e tentar de novo.'
-					}
+					texto={textoDoFim}
 					tituloRef={tituloRef}
 				/>
 
@@ -336,18 +348,20 @@ export default function PagamentoPix({
 					</div>
 				)}
 
-				<button
-					className="ch-btn ch-btn-primary"
-					type="button"
-					onClick={onGerarNovoPix}
-					disabled={gerandoNovo}
-				>
-					<RefreshCw size={17} aria-hidden="true" />
-					Gerar um novo Pix
-				</button>
+				{inscricoesAbertas && (
+					<button
+						className="ch-btn ch-btn-primary"
+						type="button"
+						onClick={onGerarNovoPix}
+						disabled={gerandoNovo}
+					>
+						<RefreshCw size={17} aria-hidden="true" />
+						Gerar um novo Pix
+					</button>
+				)}
 
 				<button className="ch-btn ch-btn-ghost" type="button" onClick={onVoltarAoFormulario}>
-					Inscrever outra pessoa
+					{inscricoesAbertas ? 'Inscrever outra pessoa' : 'Voltar'}
 				</button>
 			</div>
 		);
@@ -370,6 +384,7 @@ export default function PagamentoPix({
 				<div className="ch-comanda-eyebrow">Comanda · aguardando pagamento</div>
 				<div className="ch-comanda-curso">{curso}</div>
 				<div className="ch-comanda-categoria">{categoria}</div>
+				{detalheDaComanda && <div className="ch-comanda-detalhe">{detalheDaComanda}</div>}
 
 				<div className="ch-comanda-tear" aria-hidden="true" />
 

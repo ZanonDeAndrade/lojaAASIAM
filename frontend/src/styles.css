@@ -320,45 +320,133 @@ a { color: inherit; }
 /* ─── PAGE CONTENT ─── */
 .content-pad { padding-top: 40px; padding-bottom: 96px; }
 
-/* ─── BANNER DO TORNEIO ROCKET LEAGUE ───
-   Um único banner, sem palco 3D e sem altura fixa: a altura vem da proporção
-   da arte (1600×584), então nada é cortado nem esticado em largura nenhuma.
-   Mesmo tratamento do antigo banner do Churrasco: moldura verde no foco e no
-   hover, e nenhum texto por cima — a arte já diz tudo. */
-.rocket-home-banner {
-  display: block;
+/* ─── CARROSSEL DE EVENTOS ───
+   Os banners dos eventos em rotação (Torneio Rocket League e Churrasco da
+   Semana Acadêmica). A proporção da caixa vem do JSX — a da arte mais alta —,
+   então cada arte cabe inteira com `contain`, em qualquer largura, e a altura
+   não muda ao trocar de banner: a página não pula. As sobras do `contain`
+   ficam num fundo escuro, nos dois temas, porque as artes são escuras.
+   Mesmo tratamento do banner único que ficava aqui: moldura verde no foco,
+   leve elevação no hover e nenhum texto por cima da arte. */
+.eventos-carousel {
+  margin: 0 0 40px;
+}
+
+.eventos-carousel-viewport {
   position: relative;
   width: 100%;
-  margin: 0 0 40px;
   border-radius: var(--r-lg);
   overflow: hidden;
   /* Reserva o espaço antes da imagem chegar: sem isso a página pula. */
   aspect-ratio: 1600 / 584;
-  background: var(--panel-2);
+  background: #050806;
   box-shadow: var(--shadow-sm);
-  outline-offset: 3px;
+  /* O dedo na horizontal é do carrossel; na vertical, da página. */
+  touch-action: pan-y;
+  user-select: none;
+  -webkit-user-select: none;
   transition: transform 0.18s ease, box-shadow 0.18s ease;
 }
 
-.rocket-home-banner img {
-  display: block;
-  width: 100%;
-  height: auto;
-}
-
-/* A arte é o conteúdo; a resposta ao ponteiro é só a moldura. */
-.rocket-home-banner:hover {
+.eventos-carousel-viewport:hover {
   transform: translateY(-2px);
   box-shadow: 0 22px 48px -20px rgba(0, 0, 0, 0.55);
 }
 
-.rocket-home-banner:focus-visible {
-  outline: 3px solid var(--green-bright);
+.eventos-carousel-viewport.is-dragging { cursor: grabbing; }
+
+.eventos-carousel-track {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  transition: transform 0.45s cubic-bezier(0.22, 0.61, 0.36, 1);
 }
 
+.eventos-carousel-slide {
+  flex: 0 0 100%;
+  min-width: 0;
+  height: 100%;
+}
+
+.eventos-carousel-link,
+.eventos-carousel-link picture {
+  display: block;
+  width: 100%;
+  height: 100%;
+  -webkit-user-drag: none;
+}
+
+.eventos-carousel-link img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  -webkit-user-drag: none;
+}
+
+/* O anel fica do lado de dentro: o `overflow: hidden` cortaria um de fora. */
+.eventos-carousel-link:focus-visible {
+  outline: 3px solid var(--green-bright);
+  outline-offset: -3px;
+}
+
+/* Setas e indicadores embaixo da arte, nunca por cima do texto dela. */
+.eventos-carousel-controles {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.eventos-carousel-arrow {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--panel);
+  color: var(--text);
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.eventos-carousel-arrow:hover { border-color: var(--green-bright); color: var(--green-bright); }
+.eventos-carousel-arrow:focus-visible { outline: 3px solid var(--green-bright); outline-offset: 2px; }
+
+.eventos-carousel-dots { display: flex; align-items: center; }
+
+/* Área de toque de 28px; o ponto visível é o ::before. */
+.eventos-carousel-dot {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+
+.eventos-carousel-dot::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: var(--r-pill);
+  background: var(--line-strong);
+  transition: width 0.2s ease, background 0.2s ease;
+}
+
+.eventos-carousel-dot:hover::before { background: var(--muted); }
+.eventos-carousel-dot.is-active::before { width: 20px; background: var(--green-bright); }
+.eventos-carousel-dot:focus-visible { outline: 2px solid var(--green-bright); outline-offset: -2px; border-radius: var(--r-pill); }
+
 @media (prefers-reduced-motion: reduce) {
-  .rocket-home-banner { transition: none; }
-  .rocket-home-banner:hover { transform: none; }
+  .eventos-carousel-viewport,
+  .eventos-carousel-track { transition: none !important; }
+  .eventos-carousel-viewport:hover { transform: none; }
 }
 
 /* ─── CARROSSEL DE DESTAQUE ───

@@ -1,13 +1,16 @@
 import { AlertTriangle, CheckCircle2, Loader2, SearchCheck, XCircle } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
-import { CHURRASCO_EVENTO } from './config.js';
+import { paginaDoEvento } from './eventos.js';
+import { EVENTO_AMF } from '../shared/churrasco-eventos.js';
 import './churrasco.css';
 
 const API_BASE = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
 
 /**
- * Página /churrasco/validar/:token — o que o QR Code do comprovante abre.
+ * Página {rota do evento}/validar/:token — o que o QR Code do comprovante
+ * abre: /churrasco/validar/… (AMF Games) ou
+ * /churrasco-semana-academica/validar/… (Semana Acadêmica de SI).
  *
  * Quem lê isto está na fila da entrada, com o celular na mão, provavelmente à
  * noite. Então a tela é uma coisa só: um veredito do tamanho da largura da
@@ -59,19 +62,20 @@ const RECUSADOS = {
 	pendente: 'O pagamento ainda não entrou.',
 };
 
-export default function ValidacaoPage() {
+export default function ValidacaoPage({ eventoId = EVENTO_AMF }) {
+	const pagina = paginaDoEvento(eventoId);
 	const [estado, setEstado] = useState('consultando');
 	const [dados, setDados] = useState(null);
 
 	useEffect(() => {
-		document.title = `Validar comprovante | ${CHURRASCO_EVENTO.titulo}`;
+		document.title = `Validar comprovante | ${pagina.titulo}`;
 		const html = document.documentElement;
 		const fundoAnterior = html.style.background;
 		html.style.background = '#050806';
 		return () => {
 			html.style.background = fundoAnterior;
 		};
-	}, []);
+	}, [pagina.titulo]);
 
 	useEffect(() => {
 		const token = tokenDaUrl();
@@ -85,7 +89,7 @@ export default function ValidacaoPage() {
 		(async () => {
 			try {
 				const resposta = await fetch(
-					`${API_BASE}/api/churrasco/comprovantes/validar/${encodeURIComponent(token)}`,
+					`${API_BASE}${pagina.apiBase}/comprovantes/validar/${encodeURIComponent(token)}`,
 				);
 				const corpo = await resposta.json().catch(() => null);
 				if (!ativo) return;
@@ -104,7 +108,7 @@ export default function ValidacaoPage() {
 		return () => {
 			ativo = false;
 		};
-	}, []);
+	}, [pagina.apiBase]);
 
 	function conteudo() {
 		if (estado === 'consultando') {
@@ -203,7 +207,7 @@ export default function ValidacaoPage() {
 					</picture>
 					<span className="ch-brand-text">
 						<span className="ch-brand-name">AASIAM</span>
-						<span className="ch-brand-sub">{CHURRASCO_EVENTO.titulo}</span>
+						<span className="ch-brand-sub">{pagina.titulo}</span>
 					</span>
 				</div>
 			</header>

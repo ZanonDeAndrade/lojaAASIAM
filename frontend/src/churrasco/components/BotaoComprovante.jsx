@@ -28,7 +28,7 @@ function nomeDoArquivo(contentDisposition, orderId) {
 	return `comprovante-churrasco-${String(orderId).replace(/[^A-Za-z0-9-]/g, '')}.pdf`;
 }
 
-export default function BotaoComprovante({ apiBase, orderId, token }) {
+export default function BotaoComprovante({ apiBase, caminho = '/api/churrasco', orderId, token }) {
 	const [estado, setEstado] = useState('pronto'); // pronto | gerando | baixado
 	const [erro, setErro] = useState(null);
 	const emAndamento = useRef(false);
@@ -46,7 +46,7 @@ export default function BotaoComprovante({ apiBase, orderId, token }) {
 		let url = null;
 		try {
 			const resposta = await fetch(
-				`${apiBase}/api/churrasco/comprovantes/${encodeURIComponent(orderId)}/pdf`,
+				`${apiBase}${caminho}/comprovantes/${encodeURIComponent(orderId)}/pdf`,
 				{ headers: { 'X-Inscricao-Token': token } },
 			);
 

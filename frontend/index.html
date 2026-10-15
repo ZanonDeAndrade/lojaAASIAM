@@ -29,8 +29,30 @@
           document.head.appendChild(lobo);
           return;
         }
+        var semana = "/imgs/banner-churrasco-semana-academica.webp";
+        var caminho = location.pathname.replace(/\/$/, "");
+        if (caminho === "/churrasco-semana-academica") {
+          var banner = document.createElement("link");
+          banner.rel = "preload";
+          banner.as = "image";
+          banner.type = "image/webp";
+          banner.href = semana;
+          banner.setAttribute("fetchpriority", "high");
+          document.head.appendChild(banner);
+          return;
+        }
+        // Validação do comprovante: nada da loja aparece nela.
+        if (caminho.indexOf("/churrasco-semana-academica/") === 0) return;
+
+        // Só o PRIMEIRO banner do carrossel da home: o do Rocket até o fim de
+        // 17/10 (Brasília), o do churrasco da Semana Acadêmica a partir de
+        // 18/10. Mesmo corte de `primeiroAte` em src/bannersDaHome.js.
+        var primeiroBanner =
+          Date.now() < Date.parse("2026-10-18T00:00:00-03:00")
+            ? "/imgs/banner-torneio-rocket-league.webp"
+            : semana;
         var imgs = [
-          "/imgs/banner-churrasco-amf-games.webp",
+          primeiroBanner,
           "/imgs/moletom-verde.webp",
           "/imgs/moletom-off-white.webp",
           "/imgs/camiseta-aasiam.webp",

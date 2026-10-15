@@ -39,6 +39,8 @@ import {
 } from './shared/order.js';
 import ChurrascoPage from './churrasco/ChurrascoPage.jsx';
 import ValidacaoPage from './churrasco/ValidacaoPage.jsx';
+import { EVENTO_AMF, EVENTO_SEMANA_SI } from './shared/churrasco-eventos.js';
+import { BANNERS_DA_HOME, ordenarBanners, proporcaoDaCaixa } from './bannersDaHome.js';
 import RocketPage, { RocketRegulationPage } from './rocket/RocketPage.jsx';
 import CheckoutMercadoPago from './loja/CheckoutMercadoPago.jsx';
 import PersonalizationFields from './loja/PersonalizationFields.jsx';
@@ -321,6 +323,10 @@ function viewFromLocation() {
 	// A validação do comprovante é aberta pela câmera na entrada do evento:
 	// é pública, não depende de nada guardado no navegador e por isso tem a
 	// própria tela, antes da página de inscrição.
+	if (path.startsWith('/churrasco-semana-academica/validar/')) return 'churrasco-semana-validacao';
+	if (path === '/churrasco-semana-academica' || path.startsWith('/churrasco-semana-academica/')) {
+		return 'churrasco-semana';
+	}
 	if (path.startsWith('/churrasco/validar/')) return 'churrasco-validacao';
 
 	// Tudo o mais sob /churrasco é a página do evento — inclusive o endereço
@@ -492,10 +498,18 @@ export default function App() {
 
 	const cartCount = cart.reduce((t, i) => t + i.qty, 0);
 
-	// /churrasco é uma página própria da AASIAM: sem header da loja, sem
-	// carrinho e sem alternância de tema. Fica fora do app-shell de propósito.
-	if (view === 'churrasco-validacao') return <ValidacaoPage />;
-	if (view === 'churrasco') return <ChurrascoPage />;
+	// As páginas dos churrascos são da AASIAM: sem header da loja, sem
+	// carrinho e sem alternância de tema. Ficam fora do app-shell de propósito.
+	// A `key` separa os dois eventos: voltar de um para o outro remonta a
+	// página, em vez de carregar a inscrição de um evento para o outro.
+	if (view === 'churrasco-semana-validacao') {
+		return <ValidacaoPage key={EVENTO_SEMANA_SI} eventoId={EVENTO_SEMANA_SI} />;
+	}
+	if (view === 'churrasco-semana') {
+		return <ChurrascoPage key={EVENTO_SEMANA_SI} eventoId={EVENTO_SEMANA_SI} />;
+	}
+	if (view === 'churrasco-validacao') return <ValidacaoPage key={EVENTO_AMF} />;
+	if (view === 'churrasco') return <ChurrascoPage key={EVENTO_AMF} />;
 	if (view === 'rocket-regulation') return <RocketRegulationPage />;
 	if (view === 'rocket') return <RocketPage />;
 
@@ -764,23 +778,246 @@ function SiteHeader({
    CATALOG VIEW — all categories on one page
 ══════════════════════════════════════════════════════ */
 /* ══════════════════════════════════════════════════════
-   BANNER DO TORNEIO ROCKET LEAGUE — destaque da home
+   CARROSSEL DE EVENTOS — destaque da home
 ══════════════════════════════════════════════════════ */
-/* A arte já traz nome, formato e chamada para ação pintados, então nada é
-   escrito por cima dela. O banner inteiro é o link para a inscrição, e a
-   única resposta ao ponteiro é a moldura verde — mesmo padrão do banner do
-   Churrasco que ocupou este lugar antes: largura total do container e
-   `aspect-ratio` no lugar de altura fixa, então a proporção se mantém em
-   qualquer tela e nada é cortado nem esticado. */
-function RocketHomeBanner() {
+/* Os banners dos eventos (Torneio Rocket League e Churrasco da Semana
+   Acadêmica, ver `bannersDaHome.js`). As artes já trazem nome, data e
+   chamada pintados, então nada é escrito por cima delas: cada banner inteiro
+   é o link para a página do seu evento, e setas e indicadores ficam embaixo,
+   fora da arte.
+
+   A caixa tem a proporção da arte mais alta, então todas cabem inteiras
+   (`contain`) e a altura nunca muda ao trocar de banner; as sobras ficam num
+   fundo escuro. Troca sozinho a cada ~6 s, pausa com o mouse em cima, com o
+   foco do teclado dentro ou com o dedo na tela, e aceita arrastar para o lado.
+   Com "reduzir movimento" ligado, não troca sozinho. */
+const EVENTOS_INTERVALO_MS = 6000;
+const EVENTOS_LIMIAR_ARRASTO_PX = 8; // abaixo disso é toque, não arrasto
+const EVENTOS_LIMIAR_TROCA = 0.18; // fração da largura que troca o banner
+
+/** Foco que veio do teclado? Um clique na seta também foca o botão. */
+function focoDeTeclado(elemento) {
+	try {
+		return elemento.matches(':focus-visible');
+	} catch {
+		return true; // navegador sem :focus-visible: na dúvida, pausa
+	}
+}
+
+function EventosCarousel() {
+	// A ordem é decidida na abertura da página (ver `primeiroAte`).
+	const banners = useMemo(() => ordenarBanners(BANNERS_DA_HOME), []);
+	const count = banners.length;
+	const proporcao = useMemo(() => proporcaoDaCaixa(banners), [banners]);
+
+	const [index, setIndex] = useState(0);
+	const [deslocamento, setDeslocamento] = useState(0);
+	const [arrastando, setArrastando] = useState(false);
+	const [mouseEmCima, setMouseEmCima] = useState(false);
+	const [focoDentro, setFocoDentro] = useState(false);
+	const [tocando, setTocando] = useState(false);
+
+	const viewportRef = useRef(null);
+	const gestoRef = useRef(null); // { id, x, y, largura, horizontal }
+	const arrastouRef = useRef(false);
+
+	const pausado = mouseEmCima || focoDentro || tocando || arrastando;
+
+	function irPara(proximo) {
+		setIndex(((proximo % count) + count) % count);
+	}
+
+	// Um timer por banner: cada um fica os 6 s inteiros, inclusive depois de
+	// uma pausa ou de um clique nas setas.
+	useEffect(() => {
+		if (count < 2 || pausado) return undefined;
+		if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return undefined;
+		const timer = setTimeout(() => setIndex(i => (i + 1) % count), EVENTOS_INTERVALO_MS);
+		return () => clearTimeout(timer);
+	}, [index, pausado, count]);
+
+	/** Volta ao repouso: sem gesto, sem arrasto, trilho no lugar. */
+	function encerrarGesto() {
+		gestoRef.current = null;
+		setTocando(false);
+		setArrastando(false);
+		setDeslocamento(0);
+	}
+
+	function aoPressionar(evento) {
+		// Um gesto por vez: um segundo dedo não sequestra o arrasto do primeiro.
+		if (!evento.isPrimary || gestoRef.current) return;
+		if (evento.pointerType === 'mouse' && evento.button !== 0) return;
+		gestoRef.current = {
+			id: evento.pointerId,
+			x: evento.clientX,
+			y: evento.clientY,
+			largura: viewportRef.current?.offsetWidth || 1,
+			horizontal: false,
+		};
+		arrastouRef.current = false;
+		if (evento.pointerType !== 'mouse') setTocando(true);
+	}
+
+	function aoMover(evento) {
+		const gesto = gestoRef.current;
+		if (!gesto || gesto.id !== evento.pointerId) return;
+		// O botão foi solto fora do carrossel antes de o arrasto começar.
+		if (evento.pointerType === 'mouse' && evento.buttons === 0) {
+			encerrarGesto();
+			return;
+		}
+		const dx = evento.clientX - gesto.x;
+		const dy = evento.clientY - gesto.y;
+
+		if (!gesto.horizontal) {
+			if (Math.abs(dx) < EVENTOS_LIMIAR_ARRASTO_PX || Math.abs(dx) <= Math.abs(dy)) {
+				// Começou na vertical: é a página rolando, o gesto não é nosso.
+				if (Math.abs(dy) >= EVENTOS_LIMIAR_ARRASTO_PX) gestoRef.current = null;
+				return;
+			}
+			// Só captura depois que o arrasto começa: um toque simples continua
+			// sendo um clique no link.
+			gesto.horizontal = true;
+			arrastouRef.current = true;
+			try {
+				evento.currentTarget.setPointerCapture?.(evento.pointerId);
+			} catch {
+				/* o ponteiro já foi solto: o arrasto segue sem captura */
+			}
+			setArrastando(true);
+		}
+		setDeslocamento(dx);
+	}
+
+	function aoSoltar(evento) {
+		const gesto = gestoRef.current;
+		if (!gesto || gesto.id !== evento.pointerId) return;
+		if (gesto.horizontal) {
+			const dx = evento.clientX - gesto.x;
+			const limite = gesto.largura * EVENTOS_LIMIAR_TROCA;
+			if (dx <= -limite) irPara(index + 1);
+			else if (dx >= limite) irPara(index - 1);
+		}
+		encerrarGesto();
+	}
+
+	function aoCancelar(evento) {
+		if (gestoRef.current && gestoRef.current.id !== evento.pointerId) return;
+		encerrarGesto();
+	}
+
 	return (
-		<a className="rocket-home-banner" href="/torneio-rocket-league">
-			<SmartImage
-				src="/imgs/banner-torneio-rocket-league.png"
-				alt="Torneio Rocket League 2x2 da AASIAM — inscreva sua equipe"
-				priority="high"
-			/>
-		</a>
+		<section
+			className="eventos-carousel"
+			aria-roledescription="carrossel"
+			aria-label="Eventos da AASIAM"
+			onPointerEnter={evento => {
+				if (evento.pointerType === 'mouse') setMouseEmCima(true);
+			}}
+			onPointerLeave={evento => {
+				if (evento.pointerType === 'mouse') setMouseEmCima(false);
+			}}
+			// Só o foco do teclado pausa. O clique numa seta deixa o foco no
+			// botão, e o carrossel ficaria parado até clicarem em outro lugar.
+			onFocus={evento => setFocoDentro(focoDeTeclado(evento.target))}
+			onBlur={evento => {
+				if (!evento.currentTarget.contains(evento.relatedTarget)) setFocoDentro(false);
+			}}
+		>
+			<div
+				className={`eventos-carousel-viewport${arrastando ? ' is-dragging' : ''}`}
+				ref={viewportRef}
+				style={{ aspectRatio: proporcao }}
+				onPointerDown={aoPressionar}
+				onPointerMove={aoMover}
+				onPointerUp={aoSoltar}
+				onPointerCancel={aoCancelar}
+			>
+				<div
+					className="eventos-carousel-track"
+					aria-live={pausado ? 'polite' : 'off'}
+					style={{
+						transform: `translateX(calc(${-index * 100}% + ${deslocamento}px))`,
+						transition: arrastando ? 'none' : undefined,
+					}}
+				>
+					{banners.map((banner, i) => (
+						<div
+							className="eventos-carousel-slide"
+							key={banner.id}
+							role="group"
+							aria-roledescription="banner"
+							aria-label={`${i + 1} de ${count}: ${banner.titulo}`}
+							aria-hidden={i !== index}
+						>
+							<a
+								className="eventos-carousel-link"
+								href={banner.href}
+								draggable={false}
+								tabIndex={i === index ? undefined : -1}
+								onClick={evento => {
+									// Fim de um arrasto não é clique. Enter no teclado
+									// (`detail` 0) sempre abre o link.
+									if (arrastouRef.current && evento.detail > 0) {
+										evento.preventDefault();
+										arrastouRef.current = false;
+									}
+								}}
+							>
+								<picture>
+									<source srcSet={toWebp(banner.src)} type="image/webp" />
+									<img
+										src={banner.src}
+										alt={banner.alt}
+										width={banner.largura}
+										height={banner.altura}
+										draggable={false}
+										decoding="async"
+										// Todos carregam já: o próximo precisa estar pronto
+										// quando entrar, e são só dois.
+										fetchpriority={i === 0 ? 'high' : 'low'}
+									/>
+								</picture>
+							</a>
+						</div>
+					))}
+				</div>
+			</div>
+
+			{count > 1 && (
+				<div className="eventos-carousel-controles">
+					<button
+						type="button"
+						className="eventos-carousel-arrow"
+						onClick={() => irPara(index - 1)}
+						aria-label="Banner anterior"
+					>
+						<ChevronLeft size={18} />
+					</button>
+					<div className="eventos-carousel-dots">
+						{banners.map((banner, i) => (
+							<button
+								key={banner.id}
+								type="button"
+								className={`eventos-carousel-dot${i === index ? ' is-active' : ''}`}
+								onClick={() => irPara(i)}
+								aria-label={`Mostrar banner ${i + 1}: ${banner.titulo}`}
+								aria-current={i === index ? 'true' : undefined}
+							/>
+						))}
+					</div>
+					<button
+						type="button"
+						className="eventos-carousel-arrow"
+						onClick={() => irPara(index + 1)}
+						aria-label="Próximo banner"
+					>
+						<ChevronRight size={18} />
+					</button>
+				</div>
+			)}
+		</section>
 	);
 }
 
@@ -959,7 +1196,7 @@ function CatalogView({ onOpen, className }) {
 
 	return (
 		<div className={`page content-pad ${className || ''}`}>
-			<RocketHomeBanner />
+			<EventosCarousel />
 
 			<div className="cat-filter">
 				<button
