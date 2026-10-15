@@ -5,7 +5,8 @@ Aplicacao da atletica com duas frentes independentes:
 | Frente | Pagina | Provedor | Meios aceitos |
 | --- | --- | --- | --- |
 | Loja de moletons, canecas, mochilas e mantas | `/` | **InfinitePay** (Checkout Integrado) | Pix, cartao de credito e debito |
-| Inscricoes do Churrasco da Alcateia | `/churrasco` | **Mercado Pago** (Checkout Transparente, API de Orders) | **Somente Pix** |
+| Inscricoes do Churrasco da Alcateia (AMF Games) | `/churrasco` | **Mercado Pago** (Checkout Transparente, API de Orders) | **Somente Pix** |
+| Inscricoes do Churrasco da AASIAM (Semana Academica de SI) | `/churrasco-semana-academica` | **Mercado Pago** (mesma integracao) | **Somente Pix** |
 
 As duas nao se cruzam: a loja **continua na InfinitePay** e nada do churrasco a
 toca. Os webhooks sao endpoints separados e as inscricoes vao para uma aba
@@ -28,6 +29,9 @@ cd backend && npm test
 
 Roda as tres suites, sem credencial e sem chamada externa:
 
+- `npm run test:churrasco-semana` — o churrasco da Semana Academica: R$ 20,00,
+  aba propria, prefixo `SEMANASI-`, carona, prazo (com relogio controlado),
+  vagas, recuperacao do comprovante, PDF e o AMF intacto.
 - `npm run test:churrasco` — sobe as rotas reais do churrasco com a planilha em
   memoria e um `fetch` falso no lugar de `api.mercadopago.com`. O cliente do
   Mercado Pago exercitado e o de verdade, entao os testes afirmam o que sai pela
@@ -358,6 +362,7 @@ para mover o pagamento (a referencia aparece no campo **Codigo** da tela):
 
 ```bash
 curl http://localhost:3333/__ensaio/pagar/CHURRASCO-2026-XXXXXXXX     # confirma
+curl http://localhost:3333/__ensaio/pagar/SEMANASI-2026-XXXXXXXXXX    # (Semana Academica)
 curl http://localhost:3333/__ensaio/expirar/CHURRASCO-2026-XXXXXXXX   # vence o Pix
 curl http://localhost:3333/__ensaio/falhar/CHURRASCO-2026-XXXXXXXX    # recusa
 curl http://localhost:3333/__ensaio/divergir/CHURRASCO-2026-XXXXXXXX  # valor errado
@@ -451,6 +456,60 @@ Tudo dentro de `/churrasco`, sem sair do site:
 A verificacao automatica para sozinha quando o pagamento chega a um estado final
 e pausa quando a aba sai da frente. O navegador nunca fala com o Mercado Pago
 direto e nunca decide se alguem pagou.
+
+## Churrasco da AASIAM — Semana Academica de SI (`/churrasco-semana-academica`)
+
+Mesmo fluxo, mesmas validacoes e mesmo visual do Churrasco da Alcateia, com
+uma configuracao por evento em `shared/churrasco-eventos.js` (espelhado byte a
+byte no frontend; um teste falha se divergir). Cada evento tem:
+
+- **prefixo da referencia externa** — `CHURRASCO-` (AMF) e `SEMANASI-`
+  (Semana). O `external_reference` e `prefixo + ano + codigo sorteado`; o
+  webhook central despacha pelo prefixo e cada rota so aceita referencias do
+  proprio evento, entao os pagamentos dos dois churrascos nunca se misturam.
+  Nenhum prefixo pode comecar com outro (teste garante).
+- **aba propria** — `CHURRASCO_SEMANA_SI_SHEET_NAME` (padrao
+  `Inscrições Churrasco Semana SI`): colunas A–T identicas as do AMF e
+  **U `Precisa de carona`** (`Sim`/`Não`). Criada sozinha no primeiro uso.
+- **preco** — R$ 20,00 por pessoa, recalculado no servidor (o curso e so
+  informativo). Uma inscricao = 1 pessoa, com nome e QR proprios.
+- **prazo** — `inscricoesAte: 2026-10-22T23:59:59.999-03:00`. Depois dele o
+  checkout responde `403 { encerradas: true }` (nem inscricao nova, nem Pix
+  novo) e a pagina mostra "Inscricoes encerradas". Um Pix gerado antes e pago
+  depois e confirmado normalmente (o prazo nao entra na leitura da order).
+- **vagas** — `vagas: null` (sem limite). Um numero liga o limite: pagas, em
+  conferencia e Pix ainda valido ocupam vaga; a conferencia e a criacao da
+  linha acontecem numa fila, sem disputa pela ultima vaga.
+- **codigo** — 10 caracteres de um alfabeto de 32 (50 bits). Junto com o
+  e-mail, recupera a inscricao.
+
+Rotas (mesmas do AMF, sob outra base):
+
+```text
+POST /api/churrasco-semana-si/checkout
+GET  /api/churrasco-semana-si/pagamentos/:orderId/status   (X-Inscricao-Token)
+GET  /api/churrasco-semana-si/comprovantes/:orderId/pdf    (X-Inscricao-Token)
+GET  /api/churrasco-semana-si/comprovantes/validar/:token  (QR do comprovante)
+POST /api/churrasco-semana-si/inscricoes/recuperar         { email, codigo }
+GET  /api/churrasco-semana-si/config
+```
+
+**Recuperar o comprovante:** e-mail + codigo devolvem o token da inscricao, e a
+pagina volta a mostrar o Pix ou o comprovante. Qualquer falha (codigo
+inexistente, de outro evento, mal digitado, e-mail que nao confere) recebe a
+**mesma** resposta 404, sem dizer se o e-mail existe. Tem freio por IP e por
+codigo. No navegador, uma inscricao paga fica guardada sem vencer.
+
+**Comprovante:** o mesmo PDF do AMF, com subtitulo do evento e um painel com
+data e horario, local, quantidade de pessoas, valor pago, curso, forma de
+pagamento, data/hora da confirmacao e ID do pagamento no Mercado Pago, alem do
+codigo da inscricao e do QR de validacao
+(`/churrasco-semana-academica/validar/...`). O PDF do AMF continua identico.
+
+**Carrossel da home:** `frontend/src/bannersDaHome.js`. O Rocket League vem
+primeiro ate o fim de 17/10 (`primeiroAte`), depois o churrasco passa a ser o
+primeiro sozinho. O `index.html` pre-carrega so o primeiro banner com o mesmo
+corte de data — mude os dois juntos.
 
 ## Recortar o mascote
 

@@ -1,22 +1,29 @@
 /**
- * Churrasco da Alcateia — inscrição paga por Pix no Checkout Transparente do
- * Mercado Pago (API de Orders). A loja continua na InfinitePay; nada deste
- * arquivo é importado pelo checkout do e-commerce.
+ * Churrascos da AASIAM — inscrição paga por Pix no Checkout Transparente do
+ * Mercado Pago (API de Orders). A loja não importa nada deste arquivo.
  *
- * Rotas registradas aqui:
- *   POST /api/churrasco/checkout                    cria a cobrança Pix
- *   GET  /api/churrasco/pagamentos/:orderId/status  consulta o status (token)
- *   POST /api/churrasco/webhook/mercadopago         notificação do Mercado Pago
- *   GET  /api/churrasco/config                      o que a página precisa saber
+ * Cada evento (ver `shared/churrasco-eventos.js`) ganha o mesmo conjunto de
+ * rotas sob a própria base — `/api/churrasco` para o Churrasco da Alcateia
+ * (AMF Games), `/api/churrasco-semana-si` para o da Semana Acadêmica:
+ *   POST {base}/checkout                        cria a cobrança Pix
+ *   GET  {base}/pagamentos/:orderId/status      consulta o status (token)
+ *   GET  {base}/comprovantes/validar/:token     validação do QR Code
+ *   GET  {base}/comprovantes/:orderId/pdf       comprovante em PDF (token)
+ *   POST {base}/inscricoes/recuperar            e-mail + código → token
+ *                                               (só eventos com `recuperacao`)
+ *   GET  {base}/config                          o que a página precisa saber
+ * E, só do AMF, por compatibilidade:
+ *   POST /api/churrasco/webhook/mercadopago     notificação do Mercado Pago
  *
  * Princípios que valem para todas elas:
- *  - o valor é SEMPRE recalculado a partir do curso; preço, status ou ID
- *    enviados pelo navegador são ignorados;
+ *  - o valor é SEMPRE recalculado no servidor; preço, status ou ID enviados
+ *    pelo navegador são ignorados;
  *  - nenhuma confirmação vem do corpo do webhook nem do navegador: o pagamento
  *    só é dado como pago depois de consultar `GET /v1/orders/{id}`;
  *  - a planilha guarda uma linha por inscrição, criada antes da cobrança e
- *    atualizada no lugar — o `orderCache` da loja não é usado aqui, porque ele
- *    some quando o Render reinicia;
+ *    atualizada no lugar — cada evento na própria aba;
+ *  - a referência externa começa com o prefixo do evento, e uma rota só
+ *    aceita referências do próprio evento;
  *  - as respostas de erro são genéricas: nada de credencial, env ou stack.
  */
 import crypto from "node:crypto";
@@ -25,11 +32,9 @@ import { formatDateTime } from "./google-sheets.js";
 import { clientIp, rateLimit } from "./rate-limit.js";
 import {
   CHURRASCO_SHEET_NAME,
-  atualizarInscricao,
-  criarInscricaoPendente,
-  findInscricao,
-  findInscricaoPorPessoa,
   isChurrascoSheetConfigured,
+  registroAmf,
+  registroSemanaSi,
 } from "./churrasco-inscricoes.js";
 import {
   gerarComprovantePdf,
@@ -69,39 +74,85 @@ import {
   normalizeFullName,
   normalizePhoneDigits,
   podeGerarNovoPix,
-  priceCentsForCourse,
   statusFromMercadoPago,
   statusLabel,
   validateEmail,
   validateFullName,
   validatePhone,
 } from "./shared/churrasco.js";
+import {
+  EVENTOS_CHURRASCO,
+  EVENTO_AMF,
+  EVENTO_SEMANA_SI,
+  eventoDaReferencia,
+  inscricoesAbertas,
+  precoCentsDoEvento,
+} from "./shared/churrasco-eventos.js";
 
-/** Prefixo da referência externa — é o que separa o churrasco da loja. */
-export const ORDER_PREFIX = "CHURRASCO-";
+const EVENTO_PADRAO = EVENTOS_CHURRASCO[EVENTO_AMF];
+
+/** Prefixo da referência externa do AMF — é o que separa o churrasco da loja. */
+export const ORDER_PREFIX = EVENTO_PADRAO.prefixo;
 
 export const CHURRASCO_WEBHOOK_PATH = "/api/churrasco/webhook/mercadopago";
 
 export { CHURRASCO_SHEET_NAME };
 
+/** A aba de cada evento. O webhook acha a inscrição por aqui. */
+const REGISTROS = {
+  [EVENTO_AMF]: registroAmf,
+  [EVENTO_SEMANA_SI]: registroSemanaSi,
+};
+
+/** Rótulo dos logs — o do AMF continua "Churrasco", como sempre foi. */
+const ROTULO_LOG = {
+  [EVENTO_AMF]: "Churrasco",
+  [EVENTO_SEMANA_SI]: "Churrasco Semana SI",
+};
+
+const rotuloLog = (evento) => ROTULO_LOG[evento.id] || evento.id;
+
 /* ─── Referência e token da inscrição ────────────────────────────────── */
 
-/** CHURRASCO-2026-A7F9K2M4 — prefixo, ano de São Paulo e 8 caracteres sorteados. */
-export function createOrderNsu(now = new Date()) {
+const ALFABETO_CODIGO = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // sem 0/O e 1/I
+
+/**
+ * CHURRASCO-2026-A7F9K2M4 — prefixo do evento, ano de São Paulo e os
+ * caracteres sorteados (8 no AMF, 10 na Semana Acadêmica). O alfabeto tem 32
+ * símbolos, então `byte % 32` não enviesa o sorteio.
+ */
+export function createOrderNsu(now = new Date(), evento = EVENTO_PADRAO) {
   const year = new Intl.DateTimeFormat("pt-BR", {
     timeZone: "America/Sao_Paulo",
     year: "numeric",
   }).format(now);
 
-  const ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // sem 0/O e 1/I
   let suffix = "";
-  for (const byte of crypto.randomBytes(8)) suffix += ALPHABET[byte % ALPHABET.length];
+  for (const byte of crypto.randomBytes(evento.caracteresDoCodigo)) {
+    suffix += ALFABETO_CODIGO[byte % ALFABETO_CODIGO.length];
+  }
 
-  return `${ORDER_PREFIX}${year}-${suffix}`;
+  return `${evento.prefixo}${year}-${suffix}`;
 }
 
+/** Referência do Churrasco da Alcateia (AMF Games). */
 export function isChurrascoOrder(orderId) {
   return String(orderId || "").startsWith(ORDER_PREFIX);
+}
+
+/** Referência de qualquer churrasco — é o que o webhook central consulta. */
+export function isReferenciaDeChurrasco(referencia) {
+  return Boolean(eventoDaReferencia(referencia));
+}
+
+function referenciaDoEvento(referencia, evento) {
+  return eventoDaReferencia(referencia)?.id === evento.id;
+}
+
+/** O código completo, no formato exato do evento. */
+function formatoDoCodigo(evento) {
+  const prefixo = evento.prefixo.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`^${prefixo}\\d{4}-[${ALFABETO_CODIGO}]{${evento.caracteresDoCodigo}}$`);
 }
 
 /**
@@ -109,7 +160,8 @@ export function isChurrascoOrder(orderId) {
  *
  * A referência já é sorteada, então o HMAC é tão imprevisível quanto um token
  * aleatório — e, por não precisar ser guardado, continua valendo depois de um
- * restart do backend, sem ocupar coluna na planilha.
+ * restart do backend, sem ocupar coluna na planilha. Como a referência traz o
+ * prefixo do evento, o token de um churrasco nunca abre uma inscrição do outro.
  */
 function tokenSecret() {
   return (
@@ -134,6 +186,12 @@ function tokenConfere(orderId, candidato) {
   const recebido = Buffer.from(String(candidato || ""));
   if (esperado.length !== recebido.length) return false;
   return crypto.timingSafeEqual(esperado, recebido);
+}
+
+/** Compara e-mails em tempo constante (pelo hash, que tem tamanho fixo). */
+function emailsIguais(a, b) {
+  const hash = (valor) => crypto.createHash("sha256").update(normalizeEmail(valor)).digest();
+  return crypto.timingSafeEqual(hash(a), hash(b));
 }
 
 /**
@@ -161,7 +219,7 @@ export function chaveIdempotencia(referencia, orderAnterior = "") {
  * Qualquer valor financeiro, status ou ID enviado pelo navegador é ignorado
  * de propósito: o objeto devolvido é montado só com campos calculados aqui.
  */
-export function parseInscricao(body) {
+export function parseInscricao(body, evento = EVENTO_PADRAO) {
   const nameError = validateFullName(body?.name);
   if (nameError) return { error: nameError, field: "name" };
 
@@ -174,16 +232,19 @@ export function parseInscricao(body) {
   const curso = normalizeCourse(body?.course);
   if (!curso) return { error: "Selecione um curso da lista.", field: "course" };
 
-  return {
-    data: {
-      nome: normalizeFullName(body.name),
-      telefone: normalizePhoneDigits(body.phone),
-      email: normalizeEmail(body.email),
-      curso,
-      categoria: categoryForCourse(curso),
-      valorCents: priceCentsForCourse(curso), // recalculado no servidor
-    },
+  const data = {
+    nome: normalizeFullName(body.name),
+    telefone: normalizePhoneDigits(body.phone),
+    email: normalizeEmail(body.email),
+    curso,
+    categoria: categoryForCourse(curso),
+    valorCents: precoCentsDoEvento(evento, curso), // recalculado no servidor
   };
+
+  // Só `true` de verdade marca a carona — "sim", 1 ou qualquer outra coisa não.
+  if (evento.carona) data.precisaCarona = body?.needsRide === true;
+
+  return { data };
 }
 
 /** Telefone em log vira "(55) *****-4321" — nunca o número inteiro. */
@@ -226,9 +287,10 @@ function rotuloMetodo(metodoId) {
  *
  * É a única função que transforma a resposta oficial em status da inscrição —
  * usada tanto pelo webhook quanto pela consulta do navegador, para que as duas
- * cheguem exatamente à mesma conclusão.
+ * cheguem exatamente à mesma conclusão. O prazo de inscrição NÃO entra aqui:
+ * um Pix gerado antes do prazo e pago depois é confirmado normalmente.
  */
-export function avaliarOrder(inscricao, leitura) {
+export function avaliarOrder(inscricao, leitura, evento = EVENTO_PADRAO) {
   const base = {
     orderMpId: leitura.orderId || inscricao.orderMpId,
     paymentMpId: leitura.paymentId || inscricao.paymentMpId,
@@ -265,13 +327,16 @@ export function avaliarOrder(inscricao, leitura) {
     (status === STATUS_PAGO && Number.isInteger(pago) && pago !== esperado);
 
   if (divergente) {
+    const referenciaDoValor = Number.isInteger(evento.precoCents)
+      ? "valor da inscrição"
+      : "valor do curso";
     return {
       ...base,
       status: STATUS_REVISAO,
       valorPagoCents: Number.isInteger(pago) ? pago : null,
       observacoes:
         `Valor da cobrança (${formatBRL(daOrder ?? 0)}) ou do pagamento ` +
-        `(${formatBRL(pago ?? 0)}) diferente do valor do curso (${formatBRL(esperado)}).`,
+        `(${formatBRL(pago ?? 0)}) diferente do ${referenciaDoValor} (${formatBRL(esperado)}).`,
     };
   }
 
@@ -293,45 +358,50 @@ export function avaliarOrder(inscricao, leitura) {
 }
 
 /**
- * Aplica uma order do CHURRASCO a partir da leitura oficial do Mercado Pago.
+ * Aplica uma order de CHURRASCO a partir da leitura oficial do Mercado Pago.
  *
  * Chamada pelo webhook central (`/api/mercadopago/webhook` em index.js) e pela
- * rota própria do churrasco. `leitura` já veio de `GET /v1/orders/{id}`.
+ * rota de compatibilidade do AMF. `leitura` já veio de `GET /v1/orders/{id}`.
+ * O evento sai do prefixo da referência — e a inscrição, da aba dele.
  * Devolve `{ status, body }` para o HTTP.
  */
 export async function aplicarWebhookChurrasco(leitura) {
   const referencia = leitura.externalReference;
+  const evento = eventoDaReferencia(referencia);
+  const registro = evento ? REGISTROS[evento.id] : null;
 
-  if (!isChurrascoOrder(referencia)) {
+  if (!evento || !registro) {
     return { status: 200, body: { ok: true, ignorado: "referencia" } };
   }
 
-  const inscricao = await findInscricao(referencia, { fresh: true });
+  const rotulo = rotuloLog(evento);
+  const inscricao = await registro.findInscricao(referencia, { fresh: true });
   if (!inscricao) {
-    console.warn(`[Churrasco/Webhook] ${referencia} não está na planilha — ignorada.`);
+    console.warn(`[${rotulo}/Webhook] ${referencia} não está na planilha — ignorada.`);
     return { status: 200, body: { ok: true, ignorado: "desconhecida" } };
   }
 
   if (inscricao.orderMpId && leitura.orderId && inscricao.orderMpId !== leitura.orderId) {
-    console.warn(`[Churrasco/Webhook] ${referencia} aponta para outra order — ignorada.`);
+    console.warn(`[${rotulo}/Webhook] ${referencia} aponta para outra order — ignorada.`);
     return { status: 200, body: { ok: true, ignorado: "order_divergente" } };
   }
 
-  await aplicarOrder(inscricao, leitura, "Webhook");
+  await aplicarOrder(evento, registro, inscricao, leitura, "Webhook");
   return { status: 200, body: { ok: true } };
 }
 
 /** Aplica a order na linha da planilha. Devolve a inscrição já atualizada. */
-async function aplicarOrder(inscricao, leitura, origem) {
-  const mudancas = avaliarOrder(inscricao, leitura);
-  const { inscricao: atualizada, gravou } = await atualizarInscricao(inscricao.id, mudancas);
+async function aplicarOrder(evento, registro, inscricao, leitura, origem) {
+  const mudancas = avaliarOrder(inscricao, leitura, evento);
+  const { inscricao: atualizada, gravou } = await registro.atualizarInscricao(inscricao.id, mudancas);
   const resultado = atualizada || { ...inscricao, ...mudancas };
+  const rotulo = rotuloLog(evento);
 
   if (gravou && resultado.status === STATUS_PAGO && inscricao.status !== STATUS_PAGO) {
-    console.log(`[Churrasco/${origem}] ${inscricao.id} confirmado por Pix.`);
+    console.log(`[${rotulo}/${origem}] ${inscricao.id} confirmado por Pix.`);
   }
   if (gravou && resultado.status === STATUS_REVISAO && inscricao.status !== STATUS_REVISAO) {
-    console.warn(`[Churrasco/${origem}] ${inscricao.id} marcado para revisão manual.`);
+    console.warn(`[${rotulo}/${origem}] ${inscricao.id} marcado para revisão manual.`);
   }
   return resultado;
 }
@@ -341,8 +411,11 @@ async function aplicarOrder(inscricao, leitura, origem) {
 /**
  * Só o que a tela mostra. Sem telefone, sem e-mail, sem credencial, sem o
  * corpo da resposta do Mercado Pago e sem nada de outras inscrições.
+ *
+ * `aberto` diz se as inscrições do evento ainda estão abertas: depois do
+ * prazo, um Pix vencido não pode mais ser renovado.
  */
-function statusView(inscricao, leitura = null) {
+function statusView(inscricao, leitura = null, { evento = EVENTO_PADRAO, aberto = true } = {}) {
   const pendente = inscricao.status === STATUS_PENDENTE;
   const pix =
     leitura && pendente && (leitura.qrCode || leitura.qrCodeBase64)
@@ -356,15 +429,18 @@ function statusView(inscricao, leitura = null) {
 
   return {
     ok: true,
+    evento: evento.id,
     orderId: inscricao.id,
     nome: inscricao.nome,
     curso: inscricao.curso,
     categoria: inscricao.categoria,
+    pessoas: evento.pessoasPorInscricao || 1,
     status: inscricao.status,
     statusLabel: statusLabel(inscricao.status),
     paid: inscricao.status === STATUS_PAGO,
     final: isStatusFinal(inscricao.status),
-    podeRenovar: podeGerarNovoPix(inscricao.status),
+    podeRenovar: aberto && podeGerarNovoPix(inscricao.status),
+    inscricoesAbertas: aberto,
     metodo: inscricao.metodo || null,
     paymentId: inscricao.paymentMpId || null,
     amountCents: inscricao.valorCents,
@@ -376,62 +452,7 @@ function statusView(inscricao, leitura = null) {
   };
 }
 
-/* ─── Rotas ──────────────────────────────────────────────────────────── */
-
-/* O evento é de uma atlética: dezenas de pessoas se inscrevem do mesmo wi-fi
-   do campus e chegam aqui com um único IP público. Por isso os limites por IP
-   são largos e o freio fino fica por inscrição. */
-const checkoutLimiter = rateLimit({
-  windowMs: 10 * 60 * 1000,
-  max: 40,
-  message: "Muitas tentativas seguidas. Aguarde alguns minutos e tente de novo.",
-});
-
-// Uma aba aberta consulta a cada 7s — cerca de 90 chamadas em 10 minutos.
-const statusPorPedidoLimiter = rateLimit({
-  windowMs: 10 * 60 * 1000,
-  max: 400,
-  message: "Muitas consultas seguidas. Aguarde um instante.",
-  keyFrom: (req) => `pedido:${req.params.orderId}`,
-});
-
-const statusPorIpLimiter = rateLimit({
-  windowMs: 10 * 60 * 1000,
-  max: 3000,
-  message: "Muitas consultas seguidas. Aguarde um instante.",
-  keyFrom: clientIp,
-});
-
-/* Gerar o PDF custa CPU e desenha um QR: o freio é mais apertado que o da
-   consulta de status, mas largo o bastante para quem baixa de novo na fila. */
-const comprovantePorPedidoLimiter = rateLimit({
-  windowMs: 10 * 60 * 1000,
-  max: 30,
-  message: "Muitos downloads seguidos. Aguarde um instante e tente de novo.",
-  keyFrom: (req) => `comprovante:${req.params.orderId}`,
-});
-
-const comprovantePorIpLimiter = rateLimit({
-  windowMs: 10 * 60 * 1000,
-  max: 120,
-  message: "Muitos downloads seguidos. Aguarde um instante e tente de novo.",
-  keyFrom: clientIp,
-});
-
-/* Na portaria, várias pessoas validam do mesmo wi-fi: o limite é por IP e
-   largo, porque a rota é só leitura e nunca altera a inscrição. */
-const validacaoLimiter = rateLimit({
-  windowMs: 10 * 60 * 1000,
-  max: 600,
-  message: "Muitas consultas seguidas. Aguarde um instante.",
-  keyFrom: clientIp,
-});
-
-const webhookLimiter = rateLimit({
-  windowMs: 60 * 1000,
-  max: 600,
-  message: "too many requests",
-});
+/* ─── Infraestrutura comum das rotas ─────────────────────────────────── */
 
 /** Erros de infraestrutura viram uma mensagem única, sem detalhe técnico. */
 function indisponivel(res, motivo) {
@@ -485,6 +506,33 @@ function comTravaLogica(chave, trabalho) {
   return atual;
 }
 
+/** Fila simples: um trabalho por vez, na ordem de chegada. */
+function criarFila() {
+  let fila = Promise.resolve();
+  return (trabalho) => {
+    const proximo = fila.then(trabalho, trabalho);
+    fila = proximo.then(
+      () => undefined,
+      () => undefined
+    );
+    return proximo;
+  };
+}
+
+class VagasEsgotadas extends Error {}
+
+/** O e-mail já tem inscrição neste evento, mas o telefone não confere. */
+class OutraPessoa extends Error {}
+
+const MENSAGEM_OUTRA_PESSOA =
+  "Este e-mail já tem uma inscrição neste churrasco. Se ela é sua, confira o telefone ou " +
+  "use “Já se inscreveu? Recuperar comprovante”, com o código da inscrição.";
+
+/** O código como a recuperação o compara: maiúsculas e sem espaço nenhum. */
+function normalizarCodigo(valor) {
+  return String(valor ?? "").toUpperCase().replace(/\s+/g, "").slice(0, 40);
+}
+
 /** Estados em que uma nova cobrança seria um erro: o dinheiro já andou. */
 const SEM_NOVA_COBRANCA = new Set([STATUS_PAGO, STATUS_REVISAO, STATUS_REEMBOLSADO]);
 
@@ -496,15 +544,140 @@ function pixAindaValido(inscricao) {
   return instante > Date.now() + 30_000;
 }
 
-export function registerChurrascoRoutes(app) {
+/** Mensagem única da recuperação: não diz se o e-mail ou o código existem. */
+const RECUPERACAO_NAO_ENCONTRADA =
+  "Não encontramos uma inscrição com esse e-mail e esse código. Confira os dois — o código " +
+  "está no comprovante e na tela de confirmação do pagamento.";
+
+/* ─── Rotas de um evento ─────────────────────────────────────────────── */
+
+/**
+ * Registra as rotas de um churrasco.
+ *
+ * @param {object}   app
+ * @param {object}   opcoes
+ * @param {object}   opcoes.evento         - entrada de EVENTOS_CHURRASCO
+ * @param {object}   opcoes.registro       - aba do evento (churrasco-inscricoes.js)
+ * @param {boolean}  [opcoes.webhookLegado] - registra o webhook antigo do AMF
+ * @param {Function} [opcoes.agora]        - relógio; só os testes trocam
+ */
+export function registrarRotasDoChurrasco(
+  app,
+  { evento, registro, webhookLegado = false, agora = () => Date.now() }
+) {
+  const base = evento.apiBase;
+  const rotulo = rotuloLog(evento);
+  const aberto = () => inscricoesAbertas(evento, agora());
+  const comVagas = Number.isInteger(evento.vagas);
+  const naFilaDeVagas = criarFila();
+
+  /* O evento é de uma atlética: dezenas de pessoas se inscrevem do mesmo
+     wi-fi do campus e chegam aqui com um único IP público. Por isso os limites
+     por IP são largos e o freio fino fica por inscrição. */
+  const checkoutLimiter = rateLimit({
+    windowMs: 10 * 60 * 1000,
+    max: 40,
+    message: "Muitas tentativas seguidas. Aguarde alguns minutos e tente de novo.",
+  });
+
+  // Uma aba aberta consulta a cada 7s — cerca de 90 chamadas em 10 minutos.
+  const statusPorPedidoLimiter = rateLimit({
+    windowMs: 10 * 60 * 1000,
+    max: 400,
+    message: "Muitas consultas seguidas. Aguarde um instante.",
+    keyFrom: (req) => `pedido:${req.params.orderId}`,
+  });
+
+  const statusPorIpLimiter = rateLimit({
+    windowMs: 10 * 60 * 1000,
+    max: 3000,
+    message: "Muitas consultas seguidas. Aguarde um instante.",
+    keyFrom: clientIp,
+  });
+
+  /* Gerar o PDF custa CPU e desenha um QR: o freio é mais apertado que o da
+     consulta de status, mas largo o bastante para quem baixa de novo na fila. */
+  const comprovantePorPedidoLimiter = rateLimit({
+    windowMs: 10 * 60 * 1000,
+    max: 30,
+    message: "Muitos downloads seguidos. Aguarde um instante e tente de novo.",
+    keyFrom: (req) => `comprovante:${req.params.orderId}`,
+  });
+
+  const comprovantePorIpLimiter = rateLimit({
+    windowMs: 10 * 60 * 1000,
+    max: 120,
+    message: "Muitos downloads seguidos. Aguarde um instante e tente de novo.",
+    keyFrom: clientIp,
+  });
+
+  /* Na portaria, várias pessoas validam do mesmo wi-fi: o limite é por IP e
+     largo, porque a rota é só leitura e nunca altera a inscrição. */
+  const validacaoLimiter = rateLimit({
+    windowMs: 10 * 60 * 1000,
+    max: 600,
+    message: "Muitas consultas seguidas. Aguarde um instante.",
+    keyFrom: clientIp,
+  });
+
+  /* Recuperação: o código já tem 50 bits sorteados, então adivinhar é inviável
+     de qualquer jeito — os freios só cortam quem insiste. Por IP é largo (o
+     campus divide um IP); por código é curto, contra quem testa e-mails. */
+  const recuperacaoPorIpLimiter = rateLimit({
+    windowMs: 10 * 60 * 1000,
+    max: 30,
+    message: "Muitas tentativas seguidas. Aguarde alguns minutos e tente de novo.",
+    keyFrom: clientIp,
+  });
+
+  const recuperacaoPorCodigoLimiter = rateLimit({
+    windowMs: 10 * 60 * 1000,
+    max: 8,
+    message: "Muitas tentativas seguidas. Aguarde alguns minutos e tente de novo.",
+    // A mesma normalização da rota: " semanasi-… " e "SEMANASI-…" dividem o balde.
+    keyFrom: (req) => `recuperar:${normalizarCodigo(req.body?.codigo)}`,
+  });
+
+  function encerradas(res) {
+    return res.status(403).json({
+      ok: false,
+      encerradas: true,
+      error: evento.inscricoesAteTexto
+        ? `Inscrições encerradas em ${evento.inscricoesAteTexto}.`
+        : "Inscrições encerradas.",
+    });
+  }
+
+  /**
+   * Só deixa passar se ainda houver vaga. Sem limite configurado, roda direto.
+   * Com limite, a conferência e o que ocupa a vaga (a linha pendente nova, ou
+   * o Pix novo de uma renovação) acontecem na mesma fila — duas pessoas não
+   * disputam a última vaga ao mesmo tempo. `ignorar` tira da conta a própria
+   * linha de quem renova.
+   */
+  function garantirVaga(trabalho, { ignorar = "" } = {}) {
+    if (!comVagas) return trabalho();
+    return naFilaDeVagas(async () => {
+      // A validade do Pix é um horário real do Mercado Pago: compara com o
+      // relógio de verdade, não com o `agora` do prazo.
+      if ((await registro.contarVagasOcupadas({ ignorar })) >= evento.vagas) {
+        throw new VagasEsgotadas();
+      }
+      return trabalho();
+    });
+  }
+
   /**
    * Cria (ou recupera) a cobrança Pix da inscrição.
    *
    * Nunca cria uma segunda cobrança para a mesma pessoa no mesmo curso: se já
-   * houver uma linha com um Pix vivo, ela é devolvida como está.
+   * houver uma linha com um Pix vivo, ela é devolvida como está. Depois do
+   * prazo, nada passa daqui — nem inscrição nova, nem Pix novo.
    */
-  app.post("/api/churrasco/checkout", checkoutLimiter, async (req, res) => {
-    const parsed = parseInscricao(req.body);
+  app.post(`${base}/checkout`, checkoutLimiter, async (req, res) => {
+    if (!aberto()) return encerradas(res);
+
+    const parsed = parseInscricao(req.body, evento);
     if (parsed.error) {
       return res.status(400).json({ ok: false, error: parsed.error, field: parsed.field });
     }
@@ -542,15 +715,36 @@ export function registerChurrascoRoutes(app) {
         }
       }
 
-      const atualizada = await aplicarOrder(inscricao, leitura, "Checkout");
+      const atualizada = await aplicarOrder(evento, registro, inscricao, leitura, "Checkout");
       return { inscricao: atualizada, leitura };
     }
 
     try {
-      const resultado = await comTravaLogica(`${dados.email}|${dados.curso}`, async () => {
-        const existente = await findInscricaoPorPessoa(dados.email, dados.curso, { fresh: true });
+      const chaveTrava = `${evento.id}|${dados.email}|${dados.curso}`;
+      const resultado = await comTravaLogica(chaveTrava, async () => {
+        let existente = await registro.findInscricaoPorPessoa(dados.email, dados.curso, {
+          fresh: true,
+        });
 
         if (existente) {
+          // Onde a inscrição se recupera com e-mail + código, ela não sai daqui
+          // só pelo e-mail: o telefone também precisa conferir. Sem isso,
+          // bastaria o e-mail de alguém para levar o código e o token dela.
+          if (
+            evento.recuperacao &&
+            normalizePhoneDigits(existente.telefone) !== dados.telefone
+          ) {
+            throw new OutraPessoa();
+          }
+
+          // Mesma pessoa tentando de novo: vale a resposta mais recente de carona.
+          if (evento.carona && existente.precisaCarona !== dados.precisaCarona) {
+            const { inscricao: atualizada } = await registro.atualizarInscricao(existente.id, {
+              precisaCarona: dados.precisaCarona,
+            });
+            existente = atualizada || existente;
+          }
+
           // Já pago, reembolsado ou em conferência: nunca cobramos de novo.
           if (SEM_NOVA_COBRANCA.has(existente.status)) {
             return { inscricao: existente, leitura: null };
@@ -560,7 +754,7 @@ export function registerChurrascoRoutes(app) {
           if (existente.orderMpId && !podeGerarNovoPix(existente.status) && pixAindaValido(existente)) {
             try {
               const leitura = lerOrder(await buscarOrder(existente.orderMpId, { fresh: true }));
-              const atualizada = await aplicarOrder(existente, leitura, "Checkout");
+              const atualizada = await aplicarOrder(evento, registro, existente, leitura, "Checkout");
               if (leitura.qrCode || leitura.qrCodeBase64 || isStatusFinal(atualizada.status)) {
                 return { inscricao: atualizada, leitura };
               }
@@ -569,17 +763,23 @@ export function registerChurrascoRoutes(app) {
             }
           }
 
-          // Pix vencido, cancelado ou perdido: nova cobrança na MESMA linha.
-          return cobrar(existente);
+          // Pix vencido, cancelado ou perdido: nova cobrança na MESMA linha. O
+          // Pix novo volta a ocupar vaga, então, com limite, ele é criado dentro
+          // da fila — duas renovações não levam a mesma última vaga.
+          const renovada = existente;
+          return garantirVaga(() => cobrar(renovada), { ignorar: renovada.id });
         }
 
         // Inscrição nova: a linha pendente nasce ANTES da cobrança, para que o
-        // webhook sempre tenha onde escrever.
-        const id = createOrderNsu();
-        await criarInscricaoPendente({ ...dados, id });
+        // webhook sempre tenha onde escrever (e, com limite, para ocupar a vaga).
+        const id = await garantirVaga(async () => {
+          const novoId = createOrderNsu(new Date(), evento);
+          await registro.criarInscricaoPendente({ ...dados, id: novoId });
+          return novoId;
+        });
 
         console.log(
-          `[Churrasco] ${id} criado (${dados.categoria}, ${formatBRL(dados.valorCents)}, ` +
+          `[${rotulo}] ${id} criado (${dados.categoria}, ${formatBRL(dados.valorCents)}, ` +
             `${telefoneMascarado(dados.telefone)}, ${maskEmail(dados.email)}).`
         );
 
@@ -597,7 +797,7 @@ export function registerChurrascoRoutes(app) {
       });
 
       const { inscricao, leitura } = resultado;
-      const view = statusView(inscricao, leitura);
+      const view = statusView(inscricao, leitura, { evento, aberto: aberto() });
 
       return res.status(201).json({
         ...view,
@@ -606,17 +806,27 @@ export function registerChurrascoRoutes(app) {
         gerandoPix: inscricao.status === STATUS_PENDENTE && !view.pix,
       });
     } catch (err) {
+      if (err instanceof VagasEsgotadas) {
+        return res.status(409).json({ ok: false, esgotadas: true, error: "As vagas acabaram." });
+      }
+
+      // Sem nome, código, status nem token: nada da inscrição que já existe.
+      if (err instanceof OutraPessoa) {
+        return res.status(409).json({ ok: false, error: MENSAGEM_OUTRA_PESSOA });
+      }
+
       if (err?.code === "sheets_not_configured") {
         return indisponivel(res, "Google Sheets não configurado");
       }
 
       if (err instanceof MercadoPagoError) {
-        console.error(`[Churrasco] Mercado Pago recusou a cobrança: ${err.code} (${err.status}).`);
+        console.error(`[${rotulo}] Mercado Pago recusou a cobrança: ${err.code} (${err.status}).`);
         // A linha pode já existir: marca o erro para a organização enxergar.
-        await findInscricaoPorPessoa(dados.email, dados.curso, { fresh: true })
+        await registro
+          .findInscricaoPorPessoa(dados.email, dados.curso, { fresh: true })
           .then((inscricao) =>
             inscricao && inscricao.status === STATUS_PENDENTE && !inscricao.orderMpId
-              ? atualizarInscricao(inscricao.id, {
+              ? registro.atualizarInscricao(inscricao.id, {
                   status: STATUS_ERRO,
                   observacoes: "Falha ao criar a cobrança Pix no Mercado Pago.",
                 })
@@ -626,7 +836,7 @@ export function registerChurrascoRoutes(app) {
         return respostaDeErroMp(res, err);
       }
 
-      console.error("[Churrasco] falha no checkout:", err?.message || err);
+      console.error(`[${rotulo}] falha no checkout:`, err?.message || err);
       return res.status(502).json({
         ok: false,
         error: "Não foi possível registrar sua inscrição. Verifique sua conexão e tente novamente.",
@@ -639,10 +849,11 @@ export function registerChurrascoRoutes(app) {
    *
    * Exige o token derivado da própria referência: o token de uma inscrição não
    * abre outra. Enquanto o pagamento não fecha, cada consulta vai à order no
-   * Mercado Pago — o navegador não confirma nada sozinho.
+   * Mercado Pago — o navegador não confirma nada sozinho. Continua valendo
+   * depois do prazo: é por aqui que um Pix pago em cima da hora se confirma.
    */
   app.get(
-    "/api/churrasco/pagamentos/:orderId/status",
+    `${base}/pagamentos/:orderId/status`,
     statusPorIpLimiter,
     statusPorPedidoLimiter,
     async (req, res) => {
@@ -650,29 +861,31 @@ export function registerChurrascoRoutes(app) {
       const token = req.get("X-Inscricao-Token") || String(req.query.token || "");
 
       // Token errado responde 404: nem confirma nem nega que o pedido existe.
-      if (!isChurrascoOrder(orderId) || !tokenConfere(orderId, token)) {
+      if (!referenciaDoEvento(orderId, evento) || !tokenConfere(orderId, token)) {
         return res.status(404).json({ ok: false, error: "Inscrição não encontrada." });
       }
 
       try {
-        const inscricao = await findInscricao(orderId);
+        const inscricao = await registro.findInscricao(orderId);
         if (!inscricao) {
           return res.status(404).json({ ok: false, error: "Inscrição não encontrada." });
         }
 
+        const contexto = { evento, aberto: aberto() };
+
         // Estado final: não reprocessa nem consulta o Mercado Pago de novo.
         if (isStatusFinal(inscricao.status) || !inscricao.orderMpId) {
-          return res.json(statusView(inscricao));
+          return res.json(statusView(inscricao, null, contexto));
         }
 
         const leitura = lerOrder(await buscarOrder(inscricao.orderMpId));
-        const atualizada = await aplicarOrder(inscricao, leitura, "Status");
-        return res.json(statusView(atualizada, leitura));
+        const atualizada = await aplicarOrder(evento, registro, inscricao, leitura, "Status");
+        return res.json(statusView(atualizada, leitura, contexto));
       } catch (err) {
         if (err instanceof MercadoPagoError) {
-          console.error(`[Churrasco] consulta ao Mercado Pago falhou: ${err.code}.`);
+          console.error(`[${rotulo}] consulta ao Mercado Pago falhou: ${err.code}.`);
         } else {
-          console.error("[Churrasco] falha ao consultar o status:", err?.message || err);
+          console.error(`[${rotulo}] falha ao consultar o status:`, err?.message || err);
         }
         return res.status(502).json({
           ok: false,
@@ -687,72 +900,81 @@ export function registerChurrascoRoutes(app) {
    *
    * Mantido para compatibilidade; o webhook oficial da aplicação é o central
    * (`/api/mercadopago/webhook`). O corpo é só um aviso: o status vem sempre de
-   * `GET /v1/orders/{id}`. Referência sem prefixo `CHURRASCO-` é ignorada.
+   * `GET /v1/orders/{id}`. Referência que não é de churrasco é ignorada.
    */
-  app.post(CHURRASCO_WEBHOOK_PATH, webhookLimiter, async (req, res) => {
-    const body = req.body || {};
-    const dataId = String(body?.data?.id || body?.id || "").slice(0, 80);
-
-    const assinatura = validarAssinaturaWebhook({
-      xSignature: req.get("x-signature"),
-      xRequestId: req.get("x-request-id"),
-      dataId,
+  if (webhookLegado) {
+    const webhookLimiter = rateLimit({
+      windowMs: 60 * 1000,
+      max: 600,
+      message: "too many requests",
     });
 
-    if (!assinatura.ok) {
-      console.warn(`[Churrasco/Webhook] assinatura recusada (${assinatura.motivo}).`);
-      return res.status(401).json({ ok: false });
-    }
+    app.post(CHURRASCO_WEBHOOK_PATH, webhookLimiter, async (req, res) => {
+      const body = req.body || {};
+      const dataId = String(body?.data?.id || body?.id || "").slice(0, 80);
 
-    // Só o tópico de orders. `payment`, `merchant_order` e afins não são nossos.
-    const topico = String(body.type || body.topic || body.action || "").toLowerCase();
-    if (!topico.includes("order")) {
-      return res.status(200).json({ ok: true, ignorado: "topico" });
-    }
-    if (!dataId) {
-      return res.status(200).json({ ok: true, ignorado: "sem_id" });
-    }
+      const assinatura = validarAssinaturaWebhook({
+        xSignature: req.get("x-signature"),
+        xRequestId: req.get("x-request-id"),
+        dataId,
+      });
 
-    try {
-      const leitura = lerOrder(await buscarOrder(dataId, { fresh: true }));
-      const { status, body: corpo } = await aplicarWebhookChurrasco(leitura);
-      return res.status(status).json(corpo);
-    } catch (err) {
-      if (err instanceof MercadoPagoError && err.code === "nao_encontrado") {
-        console.warn("[Churrasco/Webhook] order desconhecida — ignorada.");
-        return res.status(200).json({ ok: true, ignorado: "order_inexistente" });
+      if (!assinatura.ok) {
+        console.warn(`[Churrasco/Webhook] assinatura recusada (${assinatura.motivo}).`);
+        return res.status(401).json({ ok: false });
       }
-      // Falha transitória: 500 faz o Mercado Pago reenviar a notificação.
-      const motivo = err instanceof MercadoPagoError ? err.code : "planilha";
-      console.error(`[Churrasco/Webhook] erro ao processar (${motivo}).`);
-      return res.status(500).json({ ok: false });
-    }
-  });
+
+      // Só o tópico de orders. `payment`, `merchant_order` e afins não são nossos.
+      const topico = String(body.type || body.topic || body.action || "").toLowerCase();
+      if (!topico.includes("order")) {
+        return res.status(200).json({ ok: true, ignorado: "topico" });
+      }
+      if (!dataId) {
+        return res.status(200).json({ ok: true, ignorado: "sem_id" });
+      }
+
+      try {
+        const leitura = lerOrder(await buscarOrder(dataId, { fresh: true }));
+        const { status, body: corpo } = await aplicarWebhookChurrasco(leitura);
+        return res.status(status).json(corpo);
+      } catch (err) {
+        if (err instanceof MercadoPagoError && err.code === "nao_encontrado") {
+          console.warn("[Churrasco/Webhook] order desconhecida — ignorada.");
+          return res.status(200).json({ ok: true, ignorado: "order_inexistente" });
+        }
+        // Falha transitória: 500 faz o Mercado Pago reenviar a notificação.
+        const motivo = err instanceof MercadoPagoError ? err.code : "planilha";
+        console.error(`[Churrasco/Webhook] erro ao processar (${motivo}).`);
+        return res.status(500).json({ ok: false });
+      }
+    });
+  }
 
   /**
    * Validação pública do comprovante — é o que o QR Code abre na entrada.
    *
    * O QR carrega só a referência assinada; nada do que vem nele é usado como
    * verdade. A situação sai da linha da planilha, lida na hora, e a rota
-   * NUNCA escreve: não confirma pagamento, não marca presença.
+   * NUNCA escreve: não confirma pagamento, não marca presença. Um QR de um
+   * churrasco é inválido na validação do outro.
    *
    * Registrada antes da rota do PDF porque "validar" ocuparia o lugar de
    * `:orderId` se a ordem fosse a inversa.
    */
-  app.get("/api/churrasco/comprovantes/validar/:token", validacaoLimiter, async (req, res) => {
+  app.get(`${base}/comprovantes/validar/:token`, validacaoLimiter, async (req, res) => {
     const referencia = lerTokenVerificacao(String(req.params.token || "").slice(0, 200));
 
     // Assinatura inválida ou adulterada: nem chegamos a consultar nada.
-    if (!referencia || !isChurrascoOrder(referencia)) {
-      return res.json(validacaoView(null, { valido: false }));
+    if (!referencia || !referenciaDoEvento(referencia, evento)) {
+      return res.json(validacaoView(null, { valido: false }, evento));
     }
 
     try {
-      const inscricao = await findInscricao(referencia);
-      if (!inscricao) return res.json(validacaoView(null, { valido: false }));
-      return res.json(validacaoView(inscricao, { valido: true }));
+      const inscricao = await registro.findInscricao(referencia);
+      if (!inscricao) return res.json(validacaoView(null, { valido: false }, evento));
+      return res.json(validacaoView(inscricao, { valido: true }, evento));
     } catch (err) {
-      console.error("[Churrasco/Validação] falha ao consultar:", err?.message || err);
+      console.error(`[${rotulo}/Validação] falha ao consultar:`, err?.message || err);
       return res.status(503).json({
         ok: false,
         error: "Não foi possível validar agora. Tente novamente em instantes.",
@@ -772,7 +994,7 @@ export function registerChurrascoRoutes(app) {
    * precisa dizer o que houve.
    */
   app.get(
-    "/api/churrasco/comprovantes/:orderId/pdf",
+    `${base}/comprovantes/:orderId/pdf`,
     comprovantePorIpLimiter,
     comprovantePorPedidoLimiter,
     async (req, res) => {
@@ -783,7 +1005,7 @@ export function registerChurrascoRoutes(app) {
       if (!/^[A-Za-z0-9_-]{32}$/.test(token)) {
         return res.status(401).json({ ok: false, error: "Inscrição não identificada." });
       }
-      if (!isChurrascoOrder(orderId)) {
+      if (!referenciaDoEvento(orderId, evento)) {
         return res.status(404).json({ ok: false, error: "Inscrição não encontrada." });
       }
       if (!tokenConfere(orderId, token)) {
@@ -791,13 +1013,13 @@ export function registerChurrascoRoutes(app) {
       }
 
       try {
-        const inscricao = await findInscricao(orderId);
+        const inscricao = await registro.findInscricao(orderId);
         const permissao = podeEmitirComprovante(inscricao);
         if (!permissao.ok) {
           return res.status(permissao.status).json({ ok: false, error: permissao.error });
         }
 
-        const pdf = await gerarComprovantePdf(inscricao);
+        const pdf = await gerarComprovantePdf(inscricao, evento);
         const arquivo = nomeArquivoComprovante(inscricao.id);
 
         res.setHeader("Content-Type", "application/pdf");
@@ -807,7 +1029,7 @@ export function registerChurrascoRoutes(app) {
         res.setHeader("X-Content-Type-Options", "nosniff");
         return res.status(200).end(pdf);
       } catch (err) {
-        console.error("[Churrasco/Comprovante] falha ao gerar:", err?.message || err);
+        console.error(`[${rotulo}/Comprovante] falha ao gerar:`, err?.message || err);
         return res.status(503).json({
           ok: false,
           error: "Não foi possível gerar o comprovante agora. Tente novamente em instantes.",
@@ -816,18 +1038,90 @@ export function registerChurrascoRoutes(app) {
     }
   );
 
+  /**
+   * Recuperação da inscrição — para quem trocou de celular, limpou o
+   * navegador ou quer o comprovante de novo dias depois.
+   *
+   * Pede o e-mail E o código da inscrição. Os dois juntos devolvem o token,
+   * que a página guarda e usa como sempre (status, Pix, comprovante). Qualquer
+   * falha — código inexistente, de outro evento, mal digitado, ou e-mail que
+   * não confere — recebe a MESMA resposta, para não revelar se um e-mail tem
+   * inscrição. Funciona depois do prazo: é só leitura.
+   */
+  if (evento.recuperacao) {
+    const formato = formatoDoCodigo(evento);
+
+    app.post(
+      `${base}/inscricoes/recuperar`,
+      recuperacaoPorIpLimiter,
+      recuperacaoPorCodigoLimiter,
+      async (req, res) => {
+        const codigo = normalizarCodigo(req.body?.codigo);
+        const email = normalizeEmail(req.body?.email);
+        const naoEncontrada = () =>
+          res.status(404).json({ ok: false, error: RECUPERACAO_NAO_ENCONTRADA });
+
+        if (!formato.test(codigo) || validateEmail(email)) return naoEncontrada();
+
+        try {
+          const inscricao = await registro.findInscricao(codigo, { fresh: true });
+          if (!inscricao || !emailsIguais(inscricao.email, email)) return naoEncontrada();
+
+          return res.json({
+            ...statusView(inscricao, null, { evento, aberto: aberto() }),
+            token: inscricaoToken(inscricao.id),
+          });
+        } catch (err) {
+          console.error(`[${rotulo}/Recuperação] falha ao consultar:`, err?.message || err);
+          return res.status(503).json({
+            ok: false,
+            error: "Não foi possível consultar agora. Tente novamente em instantes.",
+          });
+        }
+      }
+    );
+  }
+
   /* ── Configuração pública da página ──────────────────────────────── */
-  app.get("/api/churrasco/config", (_req, res) => {
+  app.get(`${base}/config`, async (_req, res) => {
+    const configurado = isMercadoPagoConfigured() && isChurrascoSheetConfigured();
+    let vagasRestantes = null;
+    if (comVagas && configurado) {
+      try {
+        vagasRestantes = Math.max(0, evento.vagas - (await registro.contarVagasOcupadas()));
+      } catch {
+        vagasRestantes = null; // na dúvida, quem decide é o checkout
+      }
+    }
+
     res.json({
       // Nunca expõe o Access Token, o segredo do webhook nem qualquer env.
-      inscricoesDisponiveis: isMercadoPagoConfigured() && isChurrascoSheetConfigured(),
+      evento: evento.id,
+      inscricoesDisponiveis: configurado,
+      inscricoesAbertas: aberto() && vagasRestantes !== 0,
+      inscricoesAte: evento.inscricoesAte || null,
+      vagas: comVagas ? evento.vagas : null,
+      vagasRestantes,
       pagamento: "pix",
       provedor: PROVEDOR,
       webhookConfigurado: isWebhookSecretConfigured(),
       ambiente: ambienteMercadoPago(),
       expiracaoMinutos: PIX_EXPIRACAO_MINUTOS,
       comprovanteAssinado: isComprovanteSecretConfigured(),
-      abaPlanilha: CHURRASCO_SHEET_NAME,
+      abaPlanilha: registro.abaPlanilha,
     });
+  });
+}
+
+/** Todas as rotas de churrasco: o AMF em /api/churrasco, a Semana em /api/churrasco-semana-si. */
+export function registerChurrascoRoutes(app) {
+  registrarRotasDoChurrasco(app, {
+    evento: EVENTOS_CHURRASCO[EVENTO_AMF],
+    registro: registroAmf,
+    webhookLegado: true,
+  });
+  registrarRotasDoChurrasco(app, {
+    evento: EVENTOS_CHURRASCO[EVENTO_SEMANA_SI],
+    registro: registroSemanaSi,
   });
 }

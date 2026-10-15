@@ -39,6 +39,8 @@ services:
       # LOJA_FEE_CARD_2X_BPS / _1X_ / _3X_ ... — só para sobrepor a tabela padrão
       - key: CHURRASCO_SHEET_NAME
         value: Inscrições Churrasco
+      - key: CHURRASCO_SEMANA_SI_SHEET_NAME
+        value: Inscrições Churrasco Semana SI   # Churrasco da Semana Acadêmica de SI
       - key: CHURRASCO_TOKEN_SECRET
         sync: false   # Opcional; vazio, é derivado do segredo do webhook
       - key: ROCKET_SHEET_NAME

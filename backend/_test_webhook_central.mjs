@@ -119,7 +119,7 @@ globalThis.fetch = async (url, init = {}) => {
 
 const logOriginal = console.log;
 console.log = () => {};
-const { sheet, resetSheet } = await import(fake("google-sheets.js"));
+const { sheet, resetSheet, SEMANA_SI_TAB } = await import(fake("google-sheets.js"));
 await import("./index.js");
 await new Promise((r) => setTimeout(r, 400));
 console.log = logOriginal;
@@ -231,6 +231,39 @@ await test("inscrição do churrasco: central despacha para o churrasco e confir
   const antes = JSON.stringify(sheet.rows[idColuna(ref)]);
   await post("/api/loja/webhook/mercadopago", { type: "order", data: { id: orderId } }, assinar(orderId));
   assert.equal(JSON.stringify(sheet.rows[idColuna(ref)]), antes);
+});
+
+await test("inscrição do churrasco da Semana SI: central despacha para a aba dela e confirma", async () => {
+  // A linha é plantada direto no registro: o checkout da Semana fecha em
+  // 22/10/2026 e este teste precisa continuar valendo depois disso.
+  const { registroSemanaSi } = await import("./churrasco-inscricoes.js");
+  const ref = "SEMANASI-2026-WHCENTRAL2";
+  await registroSemanaSi.criarInscricaoPendente({
+    id: ref,
+    nome: "Carla Dias",
+    telefone: "55977776666",
+    curso: "Sistemas de Informação",
+    categoria: "Aluno de SI",
+    valorCents: 2000,
+    email: "carla@exemplo.com",
+    precisaCarona: true,
+  });
+  const order = novaOrder({ external_reference: ref, total_amount: "20.00", processing_mode: "automatic" });
+  mp.orders.set(order.id, order);
+  const linhasAmfAntes = JSON.stringify(sheet.rows);
+
+  acreditar(order.id);
+  assert.equal((await central(order.id)).status, 200);
+
+  const linha = sheet.byTab[SEMANA_SI_TAB].find((r) => r[1] === ref);
+  assert.equal(linha[7], "Pago", "status da inscrição da Semana não virou Pago");
+  assert.equal(linha[20], "Sim", "a coluna de carona se perdeu");
+  assert.equal(JSON.stringify(sheet.rows), linhasAmfAntes, "a aba do AMF foi tocada");
+
+  // Reenvio da mesma notificação não grava de novo.
+  const updates = sheet.calls.update;
+  await central(order.id);
+  assert.equal(sheet.calls.update, updates, "reprocessou a linha da Semana");
 });
 
 await test("webhook central duplicado é idempotente", async () => {

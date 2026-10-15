@@ -19,7 +19,7 @@ import {
 } from "./google-sheets.js";
 import {
   CHURRASCO_WEBHOOK_PATH,
-  ORDER_PREFIX as CHURRASCO_PREFIX,
+  isReferenciaDeChurrasco,
   registerChurrascoRoutes,
   aplicarWebhookChurrasco,
 } from "./churrasco.js";
@@ -114,11 +114,12 @@ app.use((req, res, next) => {
 
 app.use(express.json({ limit: "1mb" }));
 
-/* ─── CHURRASCO DA ALCATEIA ─── */
-// POST /api/churrasco/checkout · GET /api/churrasco/pagamentos/:orderId/status
-// POST /api/churrasco/webhook/mercadopago · GET /api/churrasco/config
-// Cobra por Pix no Checkout Transparente do Mercado Pago (API de Orders), com
-// aba de planilha própria. O checkout da loja continua na InfinitePay.
+/* ─── CHURRASCOS (AMF Games e Semana Acadêmica de SI) ─── */
+// /api/churrasco/*           Churrasco da Alcateia (AMF Games)
+// /api/churrasco-semana-si/* Churrasco da AASIAM — Semana Acadêmica de SI
+// Cada um: checkout · pagamentos/:orderId/status · comprovantes · config.
+// Cobram por Pix no Checkout Transparente do Mercado Pago (API de Orders),
+// cada evento com aba de planilha e prefixo de referência próprios.
 registerChurrascoRoutes(app);
 
 /* ─── LOJA — checkout pelo Mercado Pago ─── */
@@ -138,7 +139,8 @@ registerRocketRoutes(app);
    consulta a order OFICIAL (`GET /v1/orders/{id}`) e despacha pelo prefixo do
    `external_reference` — nunca confia na referência vinda no corpo.
      LOJA-...       → aplicarWebhookLoja
-     CHURRASCO-...  → aplicarWebhookChurrasco
+     CHURRASCO-...  → aplicarWebhookChurrasco (AMF Games)
+     SEMANASI-...   → aplicarWebhookChurrasco (Semana Acadêmica de SI)
      ROCKET-...     → aplicarWebhookRocket
      qualquer outro → 200 ignorado
    Os endpoints /api/{loja,churrasco}/webhook/mercadopago seguem funcionando
@@ -170,7 +172,7 @@ app.post("/api/mercadopago/webhook", webhookCentralLimiter, async (req, res) => 
     let resultado;
     if (referencia.startsWith(LOJA_PREFIX)) {
       resultado = await aplicarWebhookLoja(leitura);
-    } else if (referencia.startsWith(CHURRASCO_PREFIX)) {
+    } else if (isReferenciaDeChurrasco(referencia)) {
       resultado = await aplicarWebhookChurrasco(leitura);
     } else if (referencia.startsWith(ROCKET_PREFIX)) {
       resultado = await aplicarWebhookRocket(leitura);

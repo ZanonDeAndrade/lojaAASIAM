@@ -1,5 +1,5 @@
 /**
- * Comprovante de inscrição e pagamento do Churrasco da Alcateia — PDF.
+ * Comprovante de inscrição e pagamento dos churrascos da AASIAM — PDF.
  *
  * O documento é a comanda da tela, impressa: mesma linguagem visual (a linha
  * serrilhada, o código em monoespaçada, o carimbo de status), invertida para o
@@ -11,6 +11,10 @@
  *
  * O QR Code impresso NÃO é o do Pix. É um token próprio, assinado por HMAC,
  * que abre a página de validação — o Pix já venceu quando o comprovante existe.
+ *
+ * O desenho é um só para todos os eventos. O do Churrasco da Alcateia (AMF
+ * Games) sai exatamente como sempre saiu; um evento com subtítulo ganha uma
+ * linha embaixo do título, e os campos do painel vêm de `camposDoPainel`.
  */
 import crypto from "node:crypto";
 import fs from "node:fs";
@@ -27,11 +31,18 @@ import {
   categoryForCourse,
   formatBRL,
 } from "./shared/churrasco.js";
+import {
+  EVENTOS_CHURRASCO,
+  EVENTO_AMF,
+  pessoasPorExtenso,
+} from "./shared/churrasco-eventos.js";
 
 const aqui = path.dirname(fileURLToPath(import.meta.url));
 
 export const COMPROVANTE_TITULO = "Comprovante de inscrição e pagamento";
-export const EVENTO = "Churrasco da Alcateia";
+
+const EVENTO_PADRAO = EVENTOS_CHURRASCO[EVENTO_AMF];
+export const EVENTO = EVENTO_PADRAO.titulo;
 
 /* ─── Paleta ──────────────────────────────────────────────────────────
    Os mesmos tokens da página, traduzidos para papel: o neon (#3be477) some
@@ -124,10 +135,10 @@ export function lerTokenVerificacao(token) {
   return referencia;
 }
 
-/** URL pública que o QR Code carrega. */
-export function urlValidacao(referencia) {
+/** URL pública que o QR Code carrega — a página de validação do evento. */
+export function urlValidacao(referencia, evento = EVENTO_PADRAO) {
   const base = (process.env.APP_URL || "http://localhost:5173").replace(/\/$/, "");
-  return `${base}/churrasco/validar/${criarTokenVerificacao(referencia)}`;
+  return `${base}${evento.rotaPagina}/validar/${criarTokenVerificacao(referencia)}`;
 }
 
 /* ─── Nome do arquivo ────────────────────────────────────────────────── */
@@ -193,11 +204,59 @@ function serrilha(doc, y) {
   doc.restore();
 }
 
+/** Altura de cada linha do painel de dados. */
+const LINHA_PAINEL = 38;
+
+/**
+ * As linhas do painel: pares de { rotulo, valor, mono }.
+ *
+ * O AMF mantém as três linhas de sempre. Os outros eventos levam o que o
+ * comprovante da Semana Acadêmica precisa mostrar: data e horário, local,
+ * quantidade de pessoas, valor pago, quando o pagamento foi confirmado e o
+ * identificador do pagamento no Mercado Pago.
+ */
+function camposDoPainel(inscricao, evento) {
+  const valorPago = formatBRL(inscricao.valorPagoCents ?? inscricao.valorCents);
+  const identificador = { valor: inscricao.paymentMpId || "—", mono: true };
+
+  if (evento.id === EVENTO_AMF) {
+    return [
+      [{ rotulo: "Curso", valor: inscricao.curso || "—" }, { rotulo: "Valor pago", valor: valorPago }],
+      [
+        { rotulo: "Categoria", valor: inscricao.categoria || "—" },
+        { rotulo: "Forma de pagamento", valor: "Pix · Mercado Pago" },
+      ],
+      [
+        { rotulo: "Pagamento confirmado em", valor: inscricao.pagoEm || "—" },
+        { rotulo: "Identificador do pagamento", ...identificador },
+      ],
+    ];
+  }
+
+  const quando = [evento.data, evento.horario].filter(Boolean).join(" · ") || "—";
+  return [
+    [{ rotulo: "Data e horário", valor: quando }, { rotulo: "Local", valor: evento.local || "—" }],
+    [
+      { rotulo: "Quantidade de pessoas", valor: pessoasPorExtenso(evento.pessoasPorInscricao) },
+      { rotulo: "Valor pago", valor: valorPago },
+    ],
+    [
+      { rotulo: "Curso", valor: inscricao.curso || "—" },
+      { rotulo: "Forma de pagamento", valor: "Pix · Mercado Pago" },
+    ],
+    [
+      { rotulo: "Pagamento confirmado em", valor: inscricao.pagoEm || "—" },
+      { rotulo: "ID do pagamento (Mercado Pago)", ...identificador },
+    ],
+  ];
+}
+
 /**
  * Monta o PDF de uma página. Recebe a inscrição já validada pela rota.
  * @returns {Promise<Buffer>}
  */
-export async function gerarComprovantePdf(inscricao) {
+export async function gerarComprovantePdf(inscricao, evento = EVENTO_PADRAO) {
+  const nomeDoEvento = [evento.titulo, evento.subtitulo].filter(Boolean).join(" — ");
   const doc = new PDFDocument({
     size: "A4",
     margin: 0,
@@ -205,7 +264,7 @@ export async function gerarComprovantePdf(inscricao) {
     info: {
       Title: `${COMPROVANTE_TITULO} — ${inscricao.id}`,
       Author: "AASIAM — Atlética de Sistemas de Informação",
-      Subject: `${EVENTO} — inscrição ${inscricao.id}`,
+      Subject: `${nomeDoEvento} — inscrição ${inscricao.id}`,
       Creator: "AASIAM",
     },
   });
@@ -246,7 +305,13 @@ export async function gerarComprovantePdf(inscricao) {
      porque na entrada do evento o que precisa ser lido de longe é o bloco de
      cor — e ele continua legível numa impressão em preto e branco. */
   doc.font(TITULO).fontSize(29).fillColor(PRETO)
-    .text(EVENTO, MARGEM, 138, { width: CONTEUDO, lineBreak: false });
+    .text(evento.titulo, MARGEM, 138, { width: CONTEUDO, lineBreak: false });
+
+  // O subtítulo cabe no vão entre o título e a faixa — nada abaixo se move.
+  if (evento.subtitulo) {
+    doc.font(TEXTO).fontSize(10.5).fillColor(CINZA)
+      .text(evento.subtitulo, MARGEM, 169, { width: CONTEUDO, lineBreak: false, ellipsis: true });
+  }
 
   const faixaY = 186;
   doc.rect(MARGEM, faixaY, CONTEUDO, 42).fill(VERDE);
@@ -260,28 +325,27 @@ export async function gerarComprovantePdf(inscricao) {
   doc.font(TITULO).fontSize(21).fillColor(PRETO)
     .text(inscricao.nome || "—", MARGEM, 268, { width: CONTEUDO, lineBreak: false, ellipsis: true });
 
-  /* ── painel de dados ── */
+  /* ── painel de dados ──
+     Três linhas no AMF; cada linha a mais empurra para baixo, na mesma
+     medida, tudo o que vem depois do painel. */
+  const campos = camposDoPainel(inscricao, evento);
+  const extra = Math.max(0, campos.length - 3) * LINHA_PAINEL;
+
   const painelY = 308;
-  const painelAltura = 132;
+  const painelAltura = 132 + extra;
   doc.roundedRect(MARGEM, painelY, CONTEUDO, painelAltura, 8).fill(VERDE_LAVADO);
 
   const colA = MARGEM + 22;
   const colB = MARGEM + CONTEUDO / 2 + 8;
   const larguraCol = CONTEUDO / 2 - 30;
 
-  const campos = [
-    ["Curso", inscricao.curso || "—", "Valor pago", formatBRL(inscricao.valorPagoCents ?? inscricao.valorCents)],
-    ["Categoria", inscricao.categoria || "—", "Forma de pagamento", "Pix · Mercado Pago"],
-    ["Pagamento confirmado em", inscricao.pagoEm || "—", "Identificador do pagamento", inscricao.paymentMpId || "—"],
-  ];
-
-  campos.forEach(([rA, vA, rB, vB], i) => {
-    const y = painelY + 20 + i * 38;
-    rotulo(doc, rA, colA, y, larguraCol);
-    valor(doc, vA, colA, y + 12, larguraCol);
-    rotulo(doc, rB, colB, y, larguraCol);
-    const mono = rB.startsWith("Identificador");
-    valor(doc, vB, colB, y + 12, larguraCol, mono ? { fonte: "Courier", tamanho: 9 } : {});
+  campos.forEach((linha, i) => {
+    const y = painelY + 20 + i * LINHA_PAINEL;
+    linha.forEach((campo, j) => {
+      const x = j === 0 ? colA : colB;
+      rotulo(doc, campo.rotulo, x, y, larguraCol);
+      valor(doc, campo.valor, x, y + 12, larguraCol, campo.mono ? { fonte: "Courier", tamanho: 9 } : {});
+    });
   });
 
   /* ── serrilha e código ── */
@@ -294,9 +358,9 @@ export async function gerarComprovantePdf(inscricao) {
     });
 
   /* ── QR Code de validação ── */
-  const qrY = 548;
+  const qrY = 548 + extra;
   const qrLado = 122;
-  const qrPng = await QRCode.toBuffer(urlValidacao(inscricao.id), {
+  const qrPng = await QRCode.toBuffer(urlValidacao(inscricao.id, evento), {
     type: "png",
     errorCorrectionLevel: "M",
     margin: 1,
@@ -323,8 +387,8 @@ export async function gerarComprovantePdf(inscricao) {
       width: larguraTexto, lineBreak: false,
     });
 
-  /* ── rodapé ── */
-  const rodapeY = 726;
+  /* ── rodapé ── (no AMF, 726, como sempre; abaixo do QR quando o painel cresce) */
+  const rodapeY = Math.max(726, qrY + qrLado + 16 + 18);
   doc.moveTo(MARGEM, rodapeY).lineTo(A4.largura - MARGEM, rodapeY)
     .lineWidth(1).strokeColor(LINHA).stroke();
 
@@ -395,12 +459,13 @@ export function podeEmitirComprovante(inscricao) {
 }
 
 /** Projeção mínima usada pela página de validação. */
-export function validacaoView(inscricao, { valido }) {
+export function validacaoView(inscricao, { valido }, evento = EVENTO_PADRAO) {
   if (!valido || !inscricao) {
-    return { ok: true, valido: false, motivo: "invalido" };
+    return { ok: true, valido: false, motivo: "invalido", evento: evento.titulo };
   }
   return {
     ok: true,
+    evento: evento.titulo,
     valido: inscricao.status === STATUS_PAGO,
     status: inscricao.status,
     statusLabel: inscricao.statusLabel || "",

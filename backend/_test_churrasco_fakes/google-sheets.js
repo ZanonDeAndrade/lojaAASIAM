@@ -6,9 +6,13 @@
  * Reproduz a superfície de `google-sheets.js` que o código consome. Para manter
  * o comportamento histórico, TODAS as abas dividem `sheet.rows` — exceto a aba
  * "Cupons", que fica isolada em `sheet.byTab.Cupons` (senão o contador de
- * cupons se misturaria com as linhas de pedido nos testes).
+ * cupons se misturaria com as linhas de pedido nos testes), e a aba do
+ * churrasco da Semana Acadêmica, isolada em `sheet.byTab[SEMANA_SI_TAB]` — é
+ * o que permite provar que ela nunca encosta nas linhas do AMF.
  */
 const CUPONS_TAB = "Cupons";
+export const SEMANA_SI_TAB = "Inscrições Churrasco Semana SI";
+const ABAS_ISOLADAS = new Set([CUPONS_TAB, SEMANA_SI_TAB]);
 
 export const sheet = {
   rows: [],
@@ -22,7 +26,7 @@ export function resetSheet() {
   sheet.calls = { update: 0, append: 0, get: 0 };
 }
 
-/** Linhas de uma aba isolada (só "Cupons" hoje), cópia rasa. */
+/** Linhas de uma aba isolada ("Cupons" ou a da Semana SI), cópia rasa. */
 export function tabRows(name) {
   return (sheet.byTab[name] || []).map((r) => [...r]);
 }
@@ -34,7 +38,8 @@ function parseTab(range) {
 }
 
 function bucketFor(range) {
-  if (parseTab(range) === CUPONS_TAB) return (sheet.byTab[CUPONS_TAB] ||= []);
+  const aba = parseTab(range);
+  if (ABAS_ISOLADAS.has(aba)) return (sheet.byTab[aba] ||= []);
   return sheet.rows;
 }
 

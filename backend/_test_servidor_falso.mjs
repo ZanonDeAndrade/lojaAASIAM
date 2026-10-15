@@ -1,5 +1,6 @@
 /**
- * Servidor local de ENSAIO — só para testar a página /churrasco no navegador.
+ * Servidor local de ENSAIO — só para testar as páginas /churrasco e
+ * /churrasco-semana-academica no navegador.
  *
  * Sobe as rotas reais do churrasco com as mesmas duas fronteiras trocadas que
  * os testes automatizados usam: a planilha vira memória e `api.mercadopago.com`
@@ -11,7 +12,7 @@
  *   node backend/_test_servidor_falso.mjs        (porta 3333)
  *
  * Depois, em outro terminal, `cd frontend && npm run dev` e abra
- * http://localhost:5173/churrasco.
+ * http://localhost:5173/churrasco ou http://localhost:5173/churrasco-semana-academica.
  *
  * Para mover um pagamento sem banco nenhum:
  *   GET /__ensaio/estado                    o que existe agora
@@ -53,7 +54,7 @@ process.env.COMPROVANTE_SIGNING_SECRET =
 process.env.API_URL = `http://localhost:${PORT}`;
 
 const express = (await import("express")).default;
-const { sheet } = await import(fake("google-sheets.js"));
+const { sheet, SEMANA_SI_TAB } = await import(fake("google-sheets.js"));
 const { creditar, instalarFetchFalso, moverOrder, mp, orderDe } = await import(
   fake("mercadopago-api.mjs")
 );
@@ -77,7 +78,11 @@ registerChurrascoRoutes(app);
 
 /* ─── Gatilhos do ensaio ─────────────────────────────────────────────── */
 
-const REFERENCIA_RE = /^CHURRASCO-\d{4}-[A-Z2-9]{8}$/;
+// AMF Games (8 caracteres) ou Semana Acadêmica (10).
+const REFERENCIA_RE = /^(CHURRASCO-\d{4}-[A-Z2-9]{8}|SEMANASI-\d{4}-[A-Z2-9]{10})$/;
+
+/** Todas as linhas, das duas abas — a da Semana fica isolada no dublê. */
+const todasAsLinhas = () => [...sheet.rows, ...(sheet.byTab[SEMANA_SI_TAB] || [])];
 
 /** Dispara o webhook assinado, como o Mercado Pago faria. */
 async function notificar(orderId) {
@@ -154,7 +159,7 @@ gatilho("cartao", (id) => {
    planilha à mão. É o único jeito de rebaixar uma inscrição já paga: o webhook
    se recusa a fazer isso, de propósito. */
 app.get("/__ensaio/status/:referencia/:rotulo", (req, res) => {
-  const linha = sheet.rows.find((l) => l[1] === req.params.referencia);
+  const linha = todasAsLinhas().find((l) => l[1] === req.params.referencia);
   if (!linha) return res.status(404).json({ ok: false, error: "inscrição não encontrada" });
   linha[7] = req.params.rotulo;
   return res.json({ ok: true, referencia: linha[1], status: linha[7] });
@@ -162,7 +167,7 @@ app.get("/__ensaio/status/:referencia/:rotulo", (req, res) => {
 
 app.get("/__ensaio/estado", (_req, res) => {
   res.json({
-    linhas: sheet.rows.map((linha) => ({
+    linhas: todasAsLinhas().map((linha) => ({
       referencia: linha[1],
       nome: linha[2],
       curso: linha[4],
@@ -174,6 +179,7 @@ app.get("/__ensaio/estado", (_req, res) => {
       email: linha[15],
       valorPago: linha[17],
       statusMp: linha[18],
+      carona: linha[20] ?? null,
     })),
     gravacoes: sheet.calls,
     cobrancas: mp.orders.size,
@@ -184,6 +190,7 @@ app.listen(PORT, () => {
   console.log(`\n=== ENSAIO do churrasco na porta ${PORT} ===`);
   console.log("Planilha: memória. Mercado Pago: dublê. Nenhum pagamento real.");
   console.log(`Frontend: cd frontend && npm run dev  →  http://localhost:5173/churrasco`);
+  console.log(`          e http://localhost:5173/churrasco-semana-academica`);
   console.log(`Gatilhos: /__ensaio/{pagar,expirar,falhar,cancelar,divergir,cartao}/:referencia`);
   console.log(`          /__ensaio/status/:referencia/:rotulo  (edita a planilha à mão)`);
   console.log("=".repeat(45) + "\n");
