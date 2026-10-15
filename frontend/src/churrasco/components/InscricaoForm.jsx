@@ -45,6 +45,10 @@ export default function InscricaoForm({
 	// Só existe nos eventos que perguntam; não é obrigatório. Lido aqui, fora
 	// de `enviar`, porque lá `evento` é o evento de submit do formulário.
 	const perguntaCarona = Boolean(evento.carona);
+	// Evento de um curso só (Semana Acadêmica de SI): o campo some e o curso
+	// vai fixo. Pelo mesmo motivo, lido aqui e não dentro de `enviar`.
+	const cursoFixo = evento.cursoFixo || null;
+	const campos = cursoFixo ? ORDEM.filter((campo) => campo !== 'curso') : ORDEM;
 	const [carona, setCarona] = useState(false);
 	const [erros, setErros] = useState({});
 	const [tocados, setTocados] = useState({});
@@ -106,12 +110,12 @@ export default function InscricaoForm({
 		if (enviando) return; // trava cliques repetidos
 
 		const novosErros = Object.fromEntries(
-			ORDEM.map((campo) => [campo, validarCampo(campo, valores[campo])]),
+			campos.map((campo) => [campo, validarCampo(campo, valores[campo])]),
 		);
 		setErros(novosErros);
-		setTocados(Object.fromEntries(ORDEM.map((campo) => [campo, true])));
+		setTocados(Object.fromEntries(campos.map((campo) => [campo, true])));
 
-		const primeiroInvalido = ORDEM.find((campo) => novosErros[campo]);
+		const primeiroInvalido = campos.find((campo) => novosErros[campo]);
 		if (primeiroInvalido) {
 			focar(primeiroInvalido);
 			return;
@@ -124,7 +128,9 @@ export default function InscricaoForm({
 			name: normalizeFullName(valores.nome),
 			phone: normalizePhoneDigits(valores.telefone),
 			email: normalizeEmail(valores.email),
-			course: valores.curso,
+			// O backend ignora o curso num evento de curso fixo; mandar o valor
+			// mantém a página compatível com um backend que ainda o exija.
+			course: cursoFixo || valores.curso,
 			...(perguntaCarona ? { needsRide: carona } : {}),
 		});
 
@@ -208,27 +214,29 @@ export default function InscricaoForm({
 				placeholder: 'voce@exemplo.com',
 			})}
 
-			<div className="ch-field">
-				<label className="ch-label" htmlFor={idDe('curso')}>
-					Curso
-				</label>
-				<CampoCurso
-					id={idDe('curso')}
-					opcoes={COURSES}
-					valor={valores.curso}
-					aoEscolher={escolherCurso}
-					aoSair={() => aoSair('curso')}
-					invalido={mostrarErro('curso')}
-					descritoPor={mostrarErro('curso') ? idErroDe('curso') : undefined}
-					desabilitado={enviando}
-				/>
-				{mostrarErro('curso') && (
-					<p className="ch-error" id={idErroDe('curso')} role="alert">
-						<AlertCircle size={15} aria-hidden="true" />
-						{erros.curso}
-					</p>
-				)}
-			</div>
+			{!cursoFixo && (
+				<div className="ch-field">
+					<label className="ch-label" htmlFor={idDe('curso')}>
+						Curso
+					</label>
+					<CampoCurso
+						id={idDe('curso')}
+						opcoes={COURSES}
+						valor={valores.curso}
+						aoEscolher={escolherCurso}
+						aoSair={() => aoSair('curso')}
+						invalido={mostrarErro('curso')}
+						descritoPor={mostrarErro('curso') ? idErroDe('curso') : undefined}
+						desabilitado={enviando}
+					/>
+					{mostrarErro('curso') && (
+						<p className="ch-error" id={idErroDe('curso')} role="alert">
+							<AlertCircle size={15} aria-hidden="true" />
+							{erros.curso}
+						</p>
+					)}
+				</div>
+			)}
 
 			{perguntaCarona && (
 				<div className="ch-field">
@@ -256,7 +264,8 @@ export default function InscricaoForm({
 				</div>
 			)}
 
-			{/* A comanda aparece assim que o curso é escolhido. */}
+			{/* A comanda aparece assim que o curso é escolhido — de cara, num
+			    evento de curso fixo. */}
 			{resumo && (
 				<Comanda
 					curso={resumo.course}

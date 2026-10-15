@@ -471,8 +471,15 @@ byte no frontend; um teste falha se divergir). Cada evento tem:
 - **aba propria** — `CHURRASCO_SEMANA_SI_SHEET_NAME` (padrao
   `Inscrições Churrasco Semana SI`): colunas A–T identicas as do AMF e
   **U `Precisa de carona`** (`Sim`/`Não`). Criada sozinha no primeiro uso.
-- **preco** — R$ 20,00 por pessoa, recalculado no servidor (o curso e so
-  informativo). Uma inscricao = 1 pessoa, com nome e QR proprios.
+- **preco** — R$ 20,00 por pessoa, recalculado no servidor. Uma inscricao =
+  1 pessoa, com nome e QR proprios.
+- **curso fixo** — `cursoFixo: "Sistemas de Informação"`: o formulario tem so
+  nome, telefone e e-mail (mais a carona). A coluna E `Curso` continua na aba
+  e recebe sempre esse valor; qualquer curso enviado pelo navegador e
+  ignorado. A inscricao existente e reencontrada so pelo e-mail, entao quem se
+  inscreveu quando o curso ainda era perguntado nao e cobrado de novo.
+- **horario** — "A partir das 11h para quem precisar de transporte poder
+  participar" (pagina e comprovante).
 - **prazo** — `inscricoesAte: 2026-10-22T23:59:59.999-03:00`. Depois dele o
   checkout responde `403 { encerradas: true }` (nem inscricao nova, nem Pix
   novo) e a pagina mostra "Inscricoes encerradas". Um Pix gerado antes e pago
@@ -501,8 +508,8 @@ inexistente, de outro evento, mal digitado, e-mail que nao confere) recebe a
 codigo. No navegador, uma inscricao paga fica guardada sem vencer.
 
 **Comprovante:** o mesmo PDF do AMF, com subtitulo do evento e um painel com
-data e horario, local, quantidade de pessoas, valor pago, curso, forma de
-pagamento, data/hora da confirmacao e ID do pagamento no Mercado Pago, alem do
+data e horario (linha inteira), local, quantidade de pessoas, valor pago, forma
+de pagamento, data/hora da confirmacao e ID do pagamento no Mercado Pago, alem do
 codigo da inscricao e do QR de validacao
 (`/churrasco-semana-academica/validar/...`). O PDF do AMF continua identico.
 

@@ -28,14 +28,14 @@ export const PAGINAS_CHURRASCO = {
 		tituloDaAba: 'Churrasco da AASIAM — Semana Acadêmica de SI | AASIAM',
 		chaveArmazenamento: 'aasiam-churrasco-semana-si-pedido',
 		dicaDoFormulario:
-			'Quatro campos e pronto. R$ 20,00 por pessoa, pago por Pix aqui mesmo nesta página.',
+			'Três campos e pronto. R$ 20,00 por pessoa, pago por Pix aqui mesmo nesta página.',
 		banner: {
 			src: '/imgs/banner-churrasco-semana-academica.png',
 			webp: '/imgs/banner-churrasco-semana-academica.webp',
 			largura: 2172,
 			altura: 724,
 			alt:
-				'Churrasco da AASIAM na Semana Acadêmica de Sistemas de Informação, 24/10 ao meio-dia: ' +
+				'Churrasco da AASIAM na Semana Acadêmica de Sistemas de Informação, 24/10: ' +
 				'três lobos verdes da atlética, com o emblema SI no peito, assando carne, salsichão e ' +
 				'frango numa churrasqueira ao ar livre.',
 		},

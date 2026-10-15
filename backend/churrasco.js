@@ -69,7 +69,6 @@ import {
   formatBRL,
   isStatusFinal,
   maskEmail,
-  normalizeCourse,
   normalizeEmail,
   normalizeFullName,
   normalizePhoneDigits,
@@ -84,6 +83,7 @@ import {
   EVENTOS_CHURRASCO,
   EVENTO_AMF,
   EVENTO_SEMANA_SI,
+  cursoDaInscricao,
   eventoDaReferencia,
   inscricoesAbertas,
   precoCentsDoEvento,
@@ -229,7 +229,9 @@ export function parseInscricao(body, evento = EVENTO_PADRAO) {
   const emailError = validateEmail(body?.email);
   if (emailError) return { error: emailError, field: "email" };
 
-  const curso = normalizeCourse(body?.course);
+  // Evento de um curso só (a Semana Acadêmica de SI): o formulário não
+  // pergunta, e o curso gravado é sempre o do evento.
+  const curso = cursoDaInscricao(evento, body?.course);
   if (!curso) return { error: "Selecione um curso da lista.", field: "course" };
 
   const data = {
@@ -690,6 +692,17 @@ export function registrarRotasDoChurrasco(
       return indisponivel(res, "Google Sheets não configurado");
     }
 
+    /**
+     * A inscrição desta pessoa, se já existir. Num evento de curso fixo, só o
+     * e-mail conta: quem se inscreveu quando o curso ainda era perguntado
+     * (com outro curso na linha) é reencontrado, e não cobrado de novo.
+     */
+    const buscarPorPessoa = () =>
+      registro.findInscricaoPorPessoa(dados.email, dados.curso, {
+        fresh: true,
+        qualquerCurso: Boolean(evento.cursoFixo),
+      });
+
     /** Cria a order no Mercado Pago e grava os IDs na linha que já existe. */
     async function cobrar(inscricao) {
       const chave = chaveIdempotencia(inscricao.id, inscricao.orderMpId);
@@ -722,9 +735,7 @@ export function registrarRotasDoChurrasco(
     try {
       const chaveTrava = `${evento.id}|${dados.email}|${dados.curso}`;
       const resultado = await comTravaLogica(chaveTrava, async () => {
-        let existente = await registro.findInscricaoPorPessoa(dados.email, dados.curso, {
-          fresh: true,
-        });
+        let existente = await buscarPorPessoa();
 
         if (existente) {
           // Onde a inscrição se recupera com e-mail + código, ela não sai daqui
@@ -822,8 +833,7 @@ export function registrarRotasDoChurrasco(
       if (err instanceof MercadoPagoError) {
         console.error(`[${rotulo}] Mercado Pago recusou a cobrança: ${err.code} (${err.status}).`);
         // A linha pode já existir: marca o erro para a organização enxergar.
-        await registro
-          .findInscricaoPorPessoa(dados.email, dados.curso, { fresh: true })
+        await buscarPorPessoa()
           .then((inscricao) =>
             inscricao && inscricao.status === STATUS_PENDENTE && !inscricao.orderMpId
               ? registro.atualizarInscricao(inscricao.id, {

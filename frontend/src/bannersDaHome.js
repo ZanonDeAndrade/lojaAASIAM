@@ -19,7 +19,7 @@ export const BANNERS_DA_HOME = [
 		largura: 2172,
 		altura: 724,
 		alt:
-			'Churrasco da AASIAM na Semana Acadêmica de Sistemas de Informação, 24/10 ao meio-dia: ' +
+			'Churrasco da AASIAM na Semana Acadêmica de Sistemas de Informação, 24/10: ' +
 			'três lobos verdes da atlética assando carne, salsichão e frango numa churrasqueira. ' +
 			'Abre a página de inscrição.',
 	},

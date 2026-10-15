@@ -13,7 +13,13 @@
  * `CHURRASCO-`, então um evento novo NÃO pode usar `CHURRASCO-ALGUMA-COISA`,
  * senão o webhook o entregaria à planilha do AMF.
  */
-import { categoryForCourse, formatBRL, normalizeCourse, priceCentsForCourse } from "./churrasco.js";
+import {
+  SI_COURSE,
+  categoryForCourse,
+  formatBRL,
+  normalizeCourse,
+  priceCentsForCourse,
+} from "./churrasco.js";
 
 export const EVENTO_AMF = "amf-games-2026";
 export const EVENTO_SEMANA_SI = "semana-si-2026";
@@ -27,6 +33,8 @@ export const EVENTOS_CHURRASCO = {
     subtitulo: "",
     prefixo: "CHURRASCO-",
     caracteresDoCodigo: 8,
+    // A pessoa escolhe o curso no formulário; o preço sai dele.
+    cursoFixo: null,
     precoCents: null,
     pessoasPorInscricao: 1,
     inscricoesAte: null,
@@ -51,6 +59,9 @@ export const EVENTOS_CHURRASCO = {
     // junto com o e-mail para recuperar o comprovante, então precisa ser
     // impossível de adivinhar.
     caracteresDoCodigo: 10,
+    // Evento só de SI: o formulário não pergunta o curso, e a coluna "Curso"
+    // da planilha recebe sempre este valor (o cabeçalho não muda).
+    cursoFixo: SI_COURSE,
     precoCents: 2000,
     pessoasPorInscricao: 1,
     // 22/10/2026 às 23:59 em Brasília (UTC-03:00, sem horário de verão desde
@@ -65,7 +76,7 @@ export const EVENTOS_CHURRASCO = {
     carona: true,
     recuperacao: true,
     data: "24/10/2026",
-    horario: "Ao meio-dia",
+    horario: "A partir das 11h para quem precisar de transporte poder participar",
     local: "Projeto Terra",
     cardapio: ["Pão", "Salsichão", "Refri"],
     rotaPagina: "/churrasco-semana-academica",
@@ -83,6 +94,15 @@ export function eventoPorId(id) {
 export function eventoDaReferencia(referencia) {
   const ref = String(referencia || "");
   return LISTA_EVENTOS_CHURRASCO.find((evento) => ref.startsWith(evento.prefixo)) || null;
+}
+
+/**
+ * O curso da inscrição: o fixo do evento, quando houver (o que vier do
+ * navegador é ignorado), ou o escolhido, na grafia da lista. `null` se
+ * inválido.
+ */
+export function cursoDaInscricao(evento, cursoEscolhido) {
+  return evento?.cursoFixo || normalizeCourse(cursoEscolhido);
 }
 
 /** Valor em centavos para o curso escolhido. `null` para curso inválido. */
@@ -122,7 +142,7 @@ export function cardapioPorExtenso(evento) {
  * `buildRegistrationSummary`, com o preço do evento.
  */
 export function resumoDaInscricao(evento, cursoEscolhido) {
-  const course = normalizeCourse(cursoEscolhido);
+  const course = cursoDaInscricao(evento, cursoEscolhido);
   if (!course) return null;
   const priceCents = precoCentsDoEvento(evento, course);
   return {

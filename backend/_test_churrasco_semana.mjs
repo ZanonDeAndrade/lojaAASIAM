@@ -262,7 +262,9 @@ await test("os dados do evento são os combinados com a organização", () => {
   assert.equal(SEMANA.titulo, "Churrasco da AASIAM");
   assert.equal(SEMANA.subtitulo, "Semana Acadêmica de Sistemas de Informação");
   assert.equal(SEMANA.data, "24/10/2026");
-  assert.equal(SEMANA.horario, "Ao meio-dia");
+  assert.equal(SEMANA.horario, "A partir das 11h para quem precisar de transporte poder participar");
+  assert.equal(SEMANA.cursoFixo, "Sistemas de Informação");
+  assert.equal(AMF.cursoFixo, null, "o AMF ganhou curso fixo");
   assert.equal(SEMANA.local, "Projeto Terra");
   assert.equal(SEMANA.precoCents, 2000);
   assert.equal(SEMANA.pessoasPorInscricao, 1);
@@ -333,8 +335,10 @@ await test("o cabeçalho da aba nova é o do AMF mais a coluna de carona", () =>
   assert.deepEqual(registroAmf.cabecalhos, CHURRASCO_SHEET_HEADERS, "o cabeçalho do AMF mudou");
 });
 
-await test("o valor é R$ 20,00 para qualquer curso e o preço do navegador é ignorado", async () => {
-  for (const curso of ["Sistemas de Informação", "Direito", "Outro", "ciencias contabeis"]) {
+await test("o curso não é pedido: com ou sem curso, grava Sistemas de Informação e cobra R$ 20,00", async () => {
+  // Sem curso nenhum (o formulário novo), com qualquer curso (um navegador com
+  // a página antiga) e com lixo: tudo vira SI, e o preço forjado é ignorado.
+  for (const curso of [undefined, "", "Direito", "Medicina", ["Outro"], 42]) {
     const corpo = await inscrever({
       course: curso,
       amount: 1,
@@ -343,12 +347,47 @@ await test("o valor é R$ 20,00 para qualquer curso e o preço do navegador é i
       amountCents: 1,
       status: "pago",
     });
-    assert.equal(corpo.amountCents, 2000, `${curso} não cobrou R$ 20,00`);
+    assert.equal(corpo.amountCents, 2000, `curso ${JSON.stringify(curso)} não cobrou R$ 20,00`);
     assert.equal(corpo.status, "pendente", "status forjado foi aceito");
+    assert.equal(corpo.curso, "Sistemas de Informação");
     assert.equal(orderDe(corpo.orderId).total_amount, "20.00");
   }
+  for (const linha of linhasSemana()) {
+    assert.equal(linha[COL.curso], "Sistemas de Informação", "a coluna Curso não recebeu SI");
+    assert.equal(linha[5], "Aluno de SI");
+  }
+  assert.equal(resumoDaInscricao(SEMANA, "").course, "Sistemas de Informação");
   assert.equal(resumoDaInscricao(SEMANA, "Direito").priceCents, 2000);
-  assert.equal(resumoDaInscricao(SEMANA, "Curso que não existe"), null);
+});
+
+await test("inscrição feita quando o curso ainda era perguntado continua valendo", async () => {
+  // Uma linha antiga, com outro curso na coluna E, como as gravadas antes.
+  const antiga = createOrderNsu(new Date(), SEMANA);
+  await registroSemanaSi.criarInscricaoPendente({
+    id: antiga,
+    nome: "Bruna Costa Lima",
+    telefone: "55998765432",
+    curso: "Direito",
+    categoria: "Outro curso",
+    valorCents: 2000,
+    email: "antiga@exemplo.com",
+    precisaCarona: false,
+  });
+
+  // A mesma pessoa preenche o formulário novo (sem curso): reencontra a
+  // inscrição dela, sem linha nova e sem segunda inscrição.
+  const corpo = await inscrever({ email: "antiga@exemplo.com", course: undefined });
+  assert.equal(corpo.orderId, antiga, "virou uma inscrição nova");
+  assert.equal(linhasSemana().length, 1);
+  assert.equal(linhasSemana()[0][COL.curso], "Direito", "a linha antiga foi reescrita");
+
+  // E segue pagável, com comprovante e recuperação.
+  creditar(orderDe(antiga).id);
+  await notificar(orderDe(antiga).id);
+  assert.equal(linhasSemana()[0][COL.status], "Pago");
+  assert.equal((await baixar(antiga, corpo.token)).status, 200);
+  const recuperada = await recuperar({ email: "antiga@exemplo.com", codigo: antiga });
+  assert.equal(recuperada.status, 200);
 });
 
 await test("a order é só Pix e leva o evento na referência externa", async () => {
@@ -384,7 +423,6 @@ await test("campos inválidos são recusados como no AMF, sem linha nem cobranç
     [{ name: "Ana" }, "name"],
     [{ phone: "123" }, "phone"],
     [{ email: "sem-arroba" }, "email"],
-    [{ course: "Medicina" }, "course"],
   ];
   for (const [extra, campo] of casos) {
     const res = await checkout(dados(extra));
@@ -426,6 +464,15 @@ await test("o e-mail de outra pessoa no checkout não devolve código, nome nem 
   const dona = await checkout(dados({ email: "vitima@exemplo.com", phone: "55 99876 5432" }));
   assert.equal(dona.status, 201);
   assert.equal((await dona.json()).orderId, vitima.orderId);
+});
+
+await test("no AMF o curso continua obrigatório e define o preço", async () => {
+  const semCurso = await checkout(dados({ course: undefined }), AMF.apiBase);
+  assert.equal(semCurso.status, 400);
+  assert.equal((await semCurso.json()).field, "course");
+  const invalido = await checkout(dados({ course: "Medicina" }), AMF.apiBase);
+  assert.equal(invalido.status, 400);
+  assert.equal(linhasAmf().length, 0);
 });
 
 await test("no AMF o checkout segue como sempre: o e-mail basta para reencontrar a inscrição", async () => {
@@ -569,7 +616,7 @@ await test("o comprovante traz evento, data, quantidade, valor, ID do pagamento,
     "Churrasco da AASIAM",
     "Semana Acadêmica de Sistemas de Informação",
     "24/10/2026",
-    "Ao meio-dia",
+    "A partir das 11h para quem precisar de transporte poder participar",
     "Projeto Terra",
     "1 pessoa",
     "20,00",
@@ -582,6 +629,8 @@ await test("o comprovante traz evento, data, quantidade, valor, ID do pagamento,
     assert.ok(texto.includes(impresso(trecho)), `o PDF não traz "${trecho}"`);
   }
   assert.ok(!texto.includes(impresso("Churrasco da Alcateia")), "o PDF saiu com o nome do AMF");
+  assert.ok(!texto.includes(impresso("Ao meio-dia")), "o PDF ainda traz o horário antigo");
+  assert.ok(!texto.includes(impresso("CURSO")), "o PDF da Semana ainda mostra o curso");
 });
 
 await test("o comprovante não carrega e-mail, telefone, token nem credencial", async () => {

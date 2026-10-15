@@ -208,12 +208,14 @@ function serrilha(doc, y) {
 const LINHA_PAINEL = 38;
 
 /**
- * As linhas do painel: pares de { rotulo, valor, mono }.
+ * As linhas do painel: listas de { rotulo, valor, mono }. Uma linha com um
+ * campo só ocupa a largura inteira do painel.
  *
  * O AMF mantém as três linhas de sempre. Os outros eventos levam o que o
- * comprovante da Semana Acadêmica precisa mostrar: data e horário, local,
- * quantidade de pessoas, valor pago, quando o pagamento foi confirmado e o
- * identificador do pagamento no Mercado Pago.
+ * comprovante da Semana Acadêmica precisa mostrar: data e horário (numa linha
+ * inteira — o horário é uma frase), local, quantidade de pessoas, valor pago,
+ * quando o pagamento foi confirmado e o identificador do pagamento no Mercado
+ * Pago. O curso não aparece: o evento é só de Sistemas de Informação.
  */
 function camposDoPainel(inscricao, evento) {
   const valorPago = formatBRL(inscricao.valorPagoCents ?? inscricao.valorCents);
@@ -235,13 +237,13 @@ function camposDoPainel(inscricao, evento) {
 
   const quando = [evento.data, evento.horario].filter(Boolean).join(" · ") || "—";
   return [
-    [{ rotulo: "Data e horário", valor: quando }, { rotulo: "Local", valor: evento.local || "—" }],
+    [{ rotulo: "Data e horário", valor: quando }],
     [
+      { rotulo: "Local", valor: evento.local || "—" },
       { rotulo: "Quantidade de pessoas", valor: pessoasPorExtenso(evento.pessoasPorInscricao) },
-      { rotulo: "Valor pago", valor: valorPago },
     ],
     [
-      { rotulo: "Curso", valor: inscricao.curso || "—" },
+      { rotulo: "Valor pago", valor: valorPago },
       { rotulo: "Forma de pagamento", valor: "Pix · Mercado Pago" },
     ],
     [
@@ -338,13 +340,15 @@ export async function gerarComprovantePdf(inscricao, evento = EVENTO_PADRAO) {
   const colA = MARGEM + 22;
   const colB = MARGEM + CONTEUDO / 2 + 8;
   const larguraCol = CONTEUDO / 2 - 30;
+  const larguraCheia = CONTEUDO - 44;
 
   campos.forEach((linha, i) => {
     const y = painelY + 20 + i * LINHA_PAINEL;
+    const largura = linha.length === 1 ? larguraCheia : larguraCol;
     linha.forEach((campo, j) => {
       const x = j === 0 ? colA : colB;
-      rotulo(doc, campo.rotulo, x, y, larguraCol);
-      valor(doc, campo.valor, x, y + 12, larguraCol, campo.mono ? { fonte: "Courier", tamanho: 9 } : {});
+      rotulo(doc, campo.rotulo, x, y, largura);
+      valor(doc, campo.valor, x, y + 12, largura, campo.mono ? { fonte: "Courier", tamanho: 9 } : {});
     });
   });
 

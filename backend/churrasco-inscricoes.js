@@ -306,16 +306,17 @@ export function criarRegistroDeInscricoes({ abaPlanilha, valorCents, colunasExtr
   }
 
   /**
-   * Busca a inscrição da mesma pessoa no mesmo curso.
+   * Busca a inscrição da mesma pessoa no mesmo curso (ou em qualquer curso,
+   * com `qualquerCurso` — o caso dos eventos de curso fixo).
    *
    * É o que impede que um duplo clique, um F5 ou um restart do backend virem
    * duas linhas e duas cobranças: a segunda tentativa reencontra a primeira.
    * Quando há mais de uma (linhas antigas), vale a última.
    */
-  async function findInscricaoPorPessoa(email, curso, { fresh = false } = {}) {
+  async function findInscricaoPorPessoa(email, curso, { fresh = false, qualquerCurso = false } = {}) {
     if (!isChurrascoSheetConfigured()) return null;
     const alvo = normalizeEmail(email);
-    if (!alvo || !curso) return null;
+    if (!alvo || (!curso && !qualquerCurso)) return null;
 
     const sheets = createSheetsClient();
     await ensureSheet(sheets);
@@ -323,7 +324,8 @@ export function criarRegistroDeInscricoes({ abaPlanilha, valorCents, colunasExtr
 
     for (let i = rows.length - 1; i >= 0; i--) {
       const row = rows[i];
-      if (normalizeEmail(row[COL.email]) === alvo && (row[COL.curso] || "") === curso) {
+      const mesmoCurso = qualquerCurso || (row[COL.curso] || "") === curso;
+      if (normalizeEmail(row[COL.email]) === alvo && mesmoCurso) {
         return rowToInscricao(row, FIRST_DATA_ROW + i);
       }
     }
