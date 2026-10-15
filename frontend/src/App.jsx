@@ -522,7 +522,6 @@ export default function App() {
 				onScrollTo={scrollToCategory}
 				onHome={() => go('catalog')}
 				onCart={() => go('cart')}
-				onCombos={() => scrollToCategory('kits')}
 				onToggleTheme={toggleTheme}
 			/>
 
@@ -592,40 +591,19 @@ export default function App() {
    HEADER
 ══════════════════════════════════════════════════════ */
 /**
- * Atalho para a seção de combos. É uma âncora de verdade (`#combos`) — abre em
- * outra aba, copia o endereço, responde ao teclado —, mas o clique comum rola
- * a própria página, suavemente, sem recarregar. Aparece duas vezes no header e
- * o CSS mostra só a do momento: no desktop ao lado do carrinho, no celular na
- * barra de cima, porque a barra de baixo já divide o espaço entre as quatro
- * categorias. Estilo, tamanho, cor e ícone são os mesmos de sempre — só o
- * destino mudou, do evento do churrasco para os combos da própria loja.
+ * Atalho para a inscrição do churrasco da Semana Acadêmica. Mesmo estilo,
+ * cor e ícone de fogo do botão de destaque de sempre (antes levava aos
+ * combos, que continuam na navegação de categorias) e o mesmo mecanismo do
+ * botão do torneio: um link comum para a página do evento. Aparece duas vezes
+ * no header e o CSS mostra só a do momento: no desktop ao lado do carrinho, no
+ * celular na barra de cima, porque a barra de baixo já divide o espaço entre
+ * as quatro categorias.
  */
-function CombosLink({ onIr, className = '' }) {
+function ChurrascoLink({ className = '' }) {
 	return (
-		<a
-			className={`churrasco-link ${className}`.trim()}
-			href="#combos"
-			onClick={evento => {
-				// Clique com modificador ou botão do meio: deixa o navegador
-				// abrir em outra aba, como qualquer link.
-				if (
-					evento.metaKey ||
-					evento.ctrlKey ||
-					evento.shiftKey ||
-					evento.altKey ||
-					evento.button !== 0
-				) {
-					return;
-				}
-				evento.preventDefault();
-				// Âncora de verdade: atualiza a URL (compartilhável, funciona com
-				// o botão voltar) — a rolagem em si continua suave, via JS.
-				window.history.pushState(null, '', '#combos');
-				onIr();
-			}}
-		>
+		<a className={`churrasco-link ${className}`.trim()} href="/churrasco-semana-academica">
 			<Flame size={15} aria-hidden="true" />
-			<span>Combos</span>
+			<span>Churrasco</span>
 		</a>
 	);
 }
@@ -646,7 +624,6 @@ function SiteHeader({
 	onScrollTo,
 	onHome,
 	onCart,
-	onCombos,
 	onToggleTheme,
 }) {
 	const [brokenDesktop, setBrokenDesktop] = useState(false);
@@ -695,7 +672,7 @@ function SiteHeader({
 					<span className="wordmark">AASIAM</span>
 				</button>
 
-				<CombosLink onIr={onCombos} className="churrasco-link-topo" />
+				<ChurrascoLink className="churrasco-link-topo" />
 				<RocketLink className="rocket-link-topo" />
 			</div>
 
@@ -741,10 +718,7 @@ function SiteHeader({
 						{/* Theme toggle + cart */}
 						<div className="header-actions">
 							<RocketLink className="rocket-link-barra" />
-							<CombosLink
-								onIr={onCombos}
-								className="churrasco-link-barra"
-							/>
+							<ChurrascoLink className="churrasco-link-barra" />
 
 							<button
 								type="button"

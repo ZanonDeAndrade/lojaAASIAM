@@ -2145,3 +2145,66 @@ a { color: inherit; }
   align-items: center;
   gap: 6px;
 }
+
+/* ─── HEADER ENTRE O CELULAR E O DESKTOP LARGO ───
+   De 641px a 1180px a barra não comporta, no tamanho cheio, a navegação, os
+   botões do torneio e do churrasco, o tema e o carrinho — e a navegação, sem
+   poder encolher, empurrava as ações para fora da pílula (o carrinho ficava
+   cortado já em 1024px). Aqui quem cede é a navegação: aperta o espaçamento
+   e, se ainda faltar lugar, rola de lado. As ações ficam sempre inteiras. */
+@media (min-width: 641px) and (max-width: 1180px) {
+  .main-nav {
+    min-width: 0;
+    justify-content: flex-start;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .main-nav::-webkit-scrollbar { display: none; }
+  .nav-link {
+    flex-shrink: 0;
+    padding: 8px 10px;
+    letter-spacing: 0.08em;
+  }
+}
+
+/* Abaixo de 1000px as categorias já não cabem todas: a borda direita da
+   navegação esmaece, avisando que dá para rolar. */
+@media (min-width: 641px) and (max-width: 1000px) {
+  .main-nav {
+    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent);
+    mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent);
+  }
+}
+
+/* Abaixo de 900px a pílula fica só com a logo da marca: o nome AASIAM
+   cede o lugar para as categorias (o botão segue com aria-label "Início"). */
+@media (min-width: 641px) and (max-width: 900px) {
+  .header-bar > .brand-lockup .wordmark { display: none; }
+}
+
+/* ─── BARRA DE CIMA EM TELAS ESTREITAS ───
+   "Churrasco" é mais longo que o rótulo anterior ("Combos"), e a barra
+   completa pede ~410px. Abaixo disso as duas pílulas apertam o respiro —
+   padding, espaço entre ícone e texto, espaçamento das letras e a margem da
+   barra —, sem mudar cor, altura nem ícone. Abaixo de 370px o nome AASIAM
+   encolhe um pouco, e abaixo de 360px fica só a logo (o botão segue com
+   aria-label "Início"). */
+@media (max-width: 411px) {
+  .mobile-top-bar { padding-left: 12px; padding-right: 12px; }
+  .churrasco-link-topo,
+  .rocket-link-topo {
+    padding: 0 10px;
+    gap: 5px;
+    letter-spacing: 0.04em;
+  }
+  .rocket-link-topo { margin-left: 6px; }
+}
+
+@media (max-width: 370px) {
+  .mobile-top-bar .mobile-brand { gap: 8px; }
+  .mobile-top-bar .wordmark { font-size: 0.86rem; }
+}
+
+@media (max-width: 359px) {
+  .mobile-top-bar .wordmark { display: none; }
+}
