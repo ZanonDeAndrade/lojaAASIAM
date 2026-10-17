@@ -36,6 +36,10 @@ services:
         value: Cupons   # Aba dos cupons pessoais (cadastro + contador de usos)
       - key: ADMIN_TOKEN
         sync: false   # Opcional; se definido, habilita GET /api/loja/cupons (header X-Admin-Token)
+      - key: ADMIN_USERNAME
+        sync: false   # Usuário do painel /admin. Padrão: admin.
+      - key: ADMIN_PASSWORD
+        sync: false   # Senha do painel. Nunca usar prefixo VITE_.
       # LOJA_FEE_CARD_2X_BPS / _1X_ / _3X_ ... — só para sobrepor a tabela padrão
       - key: CHURRASCO_SHEET_NAME
         value: Inscrições Churrasco

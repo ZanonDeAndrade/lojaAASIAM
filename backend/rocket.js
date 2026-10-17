@@ -5,6 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import PDFDocument from "pdfkit";
+import { rocketRules } from './shared/site-rules.js';
 
 import { formatDateTime } from "./google-sheets.js";
 import { clientIp, rateLimit } from "./rate-limit.js";
@@ -42,8 +43,7 @@ export const ROCKET_AMOUNT_CENTS = 5000;
    horário de verão desde 2019). O offset explícito evita que um servidor em
    UTC encerre as inscrições três horas antes. */
 export const ROCKET_DEADLINE = new Date("2026-10-17T23:59:59.999-03:00").getTime();
-const CLOSED_MESSAGE = "As inscrições foram encerradas em 17/10/2026 às 23:59.";
-export function rocketRegistrationsOpen(now = Date.now()) { return now <= ROCKET_DEADLINE; }
+export function rocketRegistrationsOpen(now = Date.now()) { return rocketRules.enabled && now <= Date.parse(rocketRules.deadline); }
 const PIX_EXPIRATION = "PT30M";
 const LINKS = new Map();
 
@@ -119,7 +119,7 @@ function canonicalPlayer(raw, label) {
 
 /** Validação e normalização do corpo que chega do navegador. */
 export function parseRocketRegistration(body, now = Date.now()) {
-  if (!rocketRegistrationsOpen(now)) return { error: CLOSED_MESSAGE, field: "form" };
+  if (!rocketRegistrationsOpen(now)) return { error: `As inscri\u00e7\u00f5es foram encerradas em ${new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo" }).format(new Date(rocketRules.deadline))}.`, field: "form" };
   const nomeEquipe = normalizeText(body?.nomeEquipe, 70);
   if (nomeEquipe.length < 2) return { error: "Informe o nome da equipe.", field: "nomeEquipe" };
   const captainError = validateFullName(body?.capitao?.nome);
@@ -149,7 +149,7 @@ export function parseRocketRegistration(body, now = Date.now()) {
       nomeEquipe, chaveEquipe: teamKey(nomeEquipe), jogadores,
       capitaoNome: normalizeFullName(body.capitao.nome), capitaoWhatsapp: normalizePhoneDigits(body.capitao.whatsapp),
       capitaoEmail: normalizeEmail(body.capitao.email), regulamentoVersao: ROCKET_REGULATION_VERSION,
-      regulamentoAceitoEm: formatDateTime(), valorCents: ROCKET_AMOUNT_CENTS,
+      regulamentoAceitoEm: formatDateTime(), valorCents: rocketRules.amountCents,
     },
   };
 }
@@ -167,7 +167,7 @@ function applyOrder(registration, order) {
   let status = statusFromMercadoPago(order);
   if (registration.status === "Pendente" && registration.expiraEm && Date.parse(registration.expiraEm) <= Date.now() && status === "Pendente") status = "Expirado";
   const wrongMethod = order.metodoId && (order.metodoId !== "pix" || order.metodoTipo !== "bank_transfer");
-  const wrongAmount = order.totalAmountCents !== ROCKET_AMOUNT_CENTS || (status === "Pago" && order.paidAmountCents !== ROCKET_AMOUNT_CENTS);
+  const wrongAmount = order.totalAmountCents !== (registration.valorCents ?? ROCKET_AMOUNT_CENTS) || (status === "Pago" && order.paidAmountCents !== (registration.valorCents ?? ROCKET_AMOUNT_CENTS));
   if (wrongMethod || wrongAmount) status = "Revisão manual";
   return {
     status, orderMpId: order.orderId || registration.orderMpId, paymentMpId: order.paymentId || registration.paymentMpId,
@@ -196,7 +196,7 @@ function view(registration, order = null) {
     participants: registration.jogadores.map((p) => ({ nome: p.nome, vinculo: p.outraInstituicao ? p.nomeInstituicao : p.vinculo })),
     status: registration.status, statusLabel: registration.status,
     confirmed: registration.status === "Pago", final: FINAL.has(registration.status), renewable: RENEWABLE.has(registration.status),
-    amountCents: ROCKET_AMOUNT_CENTS, amount: formatBRL(ROCKET_AMOUNT_CENTS), paidAt: registration.pagoEm || null,
+    amountCents: registration.valorCents ?? ROCKET_AMOUNT_CENTS, amount: formatBRL(registration.valorCents ?? ROCKET_AMOUNT_CENTS), paidAt: registration.pagoEm || null,
     expiresAt: registration.expiraEm || null,
     pix: order && registration.status === "Pendente" && (order.qrCode || order.qrCodeBase64)
       ? { qrCode: order.qrCode || "", qrCodeBase64: order.qrCodeBase64 || "", expiresAt: order.expiraEm || registration.expiraEm || "" }
@@ -211,7 +211,7 @@ function mpError(res, error) {
 
 async function createPix(registration) {
   const raw = await criarOrderPix({
-    externalReference: registration.id, amountCents: ROCKET_AMOUNT_CENTS, payerEmail: registration.capitaoEmail,
+    externalReference: registration.id, amountCents: registration.valorCents ?? ROCKET_AMOUNT_CENTS, payerEmail: registration.capitaoEmail,
     idempotencyKey: idempotencyKey(registration.id), expiracao: PIX_EXPIRATION,
   });
   const order = lerOrder(raw);
@@ -232,7 +232,7 @@ function receiptPdf(registration) {
   doc.moveTo(48, 184).lineTo(547, 184).strokeColor("#C9D9CF").stroke();
   const line = (label, value) => { doc.font("Helvetica-Bold").fontSize(8).fillColor("#65766B").text(label.toUpperCase(), 48, doc.y + 17); doc.font("Helvetica").fontSize(12).fillColor("#101713").text(value, 48, doc.y + 4); };
   line("Equipe", registration.nomeEquipe); line("Código", registration.id); line("Participantes", registration.jogadores.map((p) => p.nome).join(" · "));
-  line("Valor pago", formatBRL(ROCKET_AMOUNT_CENTS)); line("Pagamento confirmado em", registration.pagoEm || "—");
+  line("Valor pago", formatBRL(registration.valorCents ?? ROCKET_AMOUNT_CENTS)); line("Pagamento confirmado em", registration.pagoEm || "—");
   doc.fontSize(9).fillColor("#65766B").text("Este comprovante é emitido após a confirmação do pagamento pelo Mercado Pago.", 48, 710, { width: 490 });
   doc.end();
   return finished;

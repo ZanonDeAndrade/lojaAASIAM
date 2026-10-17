@@ -1,3 +1,8 @@
+import PageIcon from './settings/PageIcon.jsx';
+import CustomPage from './settings/CustomPage.jsx';
+import { pageIcon, pageSettings, linkedEventId } from '../../backend/shared/page-settings.js';
+import { site, assetUrl, imageStyle, imageSettings } from './settings/site.js';
+import SiteImage from './settings/SiteImage.jsx';
 import {
 	AlertCircle,
 	ArrowLeft,
@@ -40,7 +45,7 @@ import {
 import ChurrascoPage from './churrasco/ChurrascoPage.jsx';
 import ValidacaoPage from './churrasco/ValidacaoPage.jsx';
 import { EVENTO_AMF, EVENTO_SEMANA_SI } from './shared/churrasco-eventos.js';
-import { BANNERS_DA_HOME, ordenarBanners, proporcaoDaCaixa } from './bannersDaHome.js';
+import { ordenarBanners, proporcaoDaCaixa } from './bannersDaHome.js';
 import RocketPage, { RocketRegulationPage } from './rocket/RocketPage.jsx';
 import CheckoutMercadoPago from './loja/CheckoutMercadoPago.jsx';
 import PersonalizationFields from './loja/PersonalizationFields.jsx';
@@ -55,13 +60,6 @@ const fmt = cents => currency.format(cents / 100);
 // Em dev o Vite proxy redireciona /api → localhost:3333.
 // Em produção (Vercel) VITE_API_URL aponta para o backend no Render.
 const API_BASE = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
-
-const CATEGORIES = [
-	{ id: 'moletom', label: 'Moletons' },
-	{ id: 'camiseta', label: 'Camisetas' },
-	{ id: 'acessorios', label: 'Acessórios' },
-	{ id: 'kits', label: 'Combos' },
-];
 
 const CATEGORY_MAP = {
 	'moletom-verde': 'moletom',
@@ -85,7 +83,7 @@ const CATEGORY_MAP = {
 
 // Ordem de renderização do catálogo (categorias × produtos) → prioridade de imagem.
 // Posições 1–4: alta (eager/high) · 5–8: média (lazy/auto) · 9+: baixa (lazy/low).
-const CATALOG_ORDER = CATEGORIES.flatMap(cat =>
+const CATALOG_ORDER = site.navigation.categories.flatMap(cat =>
 	PRODUCTS.filter(p => CATEGORY_MAP[p.id] === cat.id).map(p => p.id),
 );
 const IMG_PRIORITY_BY_ID = Object.fromEntries(
@@ -318,6 +316,15 @@ function AnimatedPage({ view, children }) {
  * para que as duas cheguem sempre à mesma conclusão.
  */
 function viewFromLocation() {
+	const currentPath = window.location.pathname.replace(/\/$/, '') || '/';
+	for (const key of ['rocket', 'churrasco']) {
+		const href = site.navigation[key].href;
+		if (href.startsWith('/') && !href.startsWith('//') && href.split('?')[0].replace(/\/$/, '') === currentPath) {
+			if (pageSettings(site, key).mode === 'custom') return `custom-${key}`;
+			if (key === 'rocket') return 'rocket';
+			return linkedEventId(site) === EVENTO_AMF ? 'churrasco' : 'churrasco-semana';
+		}
+	}
 	const path = window.location.pathname;
 	const params = new URLSearchParams(window.location.search);
 	// A validação do comprovante é aberta pela câmera na entrada do evento:
@@ -367,24 +374,24 @@ function lerArmazenado(chave, padrao) {
 	}
 }
 
-export default function App() {
+export default function App({ preview = false } = {}) {
 	const [view, setView] = useState(viewFromLocation);
 	const [selectedProduct, setProduct] = useState(null);
 	// Carrinho e cupom sobrevivem a um F5 (inclusive na página de checkout) —
 	// mesmo padrão já usado pelo tema, via localStorage. O backend nunca confia
 	// nisso: carrinho e cupom são sempre revalidados do zero a cada tela.
 	const [cart, setCart] = useState(() => {
-		const salvo = lerArmazenado('aasiam-cart', []);
+		const salvo = preview ? [] : lerArmazenado('aasiam-cart', []);
 		return Array.isArray(salvo) ? salvo : [];
 	});
 	const [theme, setTheme] = useState(() => {
 		try {
-			return localStorage.getItem('aasiam-theme') || 'dark';
+			return preview ? site.appearance.defaultTheme : localStorage.getItem('aasiam-theme') || site.appearance.defaultTheme;
 		} catch {
 			return 'dark'; // armazenamento bloqueado: o site abre no tema padrão
 		}
 	});
-	const [appliedCupom, setAppliedCupom] = useState(() => lerArmazenado('aasiam-cupom', null));
+	const [appliedCupom, setAppliedCupom] = useState(() => preview ? null : lerArmazenado('aasiam-cupom', null));
 
 	/* apply theme class to <html> */
 	useEffect(() => {
@@ -392,7 +399,7 @@ export default function App() {
 		html.classList.toggle('dark', theme === 'dark');
 		html.classList.toggle('light', theme === 'light');
 		try {
-			localStorage.setItem('aasiam-theme', theme);
+			if (!preview) localStorage.setItem('aasiam-theme', theme);
 		} catch {
 			/* armazenamento indisponível: o tema vale só nesta visita */
 		}
@@ -400,7 +407,7 @@ export default function App() {
 
 	useEffect(() => {
 		try {
-			localStorage.setItem('aasiam-cart', JSON.stringify(cart));
+			if (!preview) localStorage.setItem('aasiam-cart', JSON.stringify(cart));
 		} catch {
 			/* localStorage indisponível (modo privado, quota cheia): carrinho só na memória */
 		}
@@ -408,6 +415,7 @@ export default function App() {
 
 	useEffect(() => {
 		try {
+			if (preview) return;
 			if (appliedCupom) localStorage.setItem('aasiam-cupom', JSON.stringify(appliedCupom));
 			else localStorage.removeItem('aasiam-cupom');
 		} catch {
@@ -505,13 +513,18 @@ export default function App() {
 	if (view === 'churrasco-semana-validacao') {
 		return <ValidacaoPage key={EVENTO_SEMANA_SI} eventoId={EVENTO_SEMANA_SI} />;
 	}
+	if (view === 'churrasco-semana' && linkedEventId(site) === EVENTO_SEMANA_SI && pageSettings(site, 'churrasco').mode === 'custom') return <CustomPage pageKey="churrasco" />;
+	if (view === 'churrasco' && linkedEventId(site) === EVENTO_AMF && pageSettings(site, 'churrasco').mode === 'custom') return <CustomPage pageKey="churrasco" />;
 	if (view === 'churrasco-semana') {
-		return <ChurrascoPage key={EVENTO_SEMANA_SI} eventoId={EVENTO_SEMANA_SI} />;
+		return <ChurrascoPage preview={preview} key={EVENTO_SEMANA_SI} eventoId={EVENTO_SEMANA_SI} />;
 	}
 	if (view === 'churrasco-validacao') return <ValidacaoPage key={EVENTO_AMF} />;
-	if (view === 'churrasco') return <ChurrascoPage key={EVENTO_AMF} />;
+	if (view === 'churrasco') return <ChurrascoPage preview={preview} key={EVENTO_AMF} />;
+	if (view === 'custom-rocket') return <CustomPage pageKey="rocket" />;
+	if (view === 'custom-churrasco') return <CustomPage pageKey="churrasco" />;
 	if (view === 'rocket-regulation') return <RocketRegulationPage />;
-	if (view === 'rocket') return <RocketPage />;
+	if (view === 'rocket' && pageSettings(site, 'rocket').mode === 'custom') return <CustomPage pageKey="rocket" />;
+	if (view === 'rocket') return <RocketPage preview={preview} />;
 
 	return (
 		<div className="app-shell">
@@ -577,11 +590,7 @@ export default function App() {
 				</AnimatedPage>
 			</main>
 
-			<footer className="site-footer-copy">
-				<p>© 2026 AASIAM. Todos os direitos reservados.</p>
-				<p>
-					Desenvolvido por Arthur Zanon, Marcelo Telles e Milton Bortolanza.
-				</p>
+			<footer className="site-footer-copy"><p>{site.brand.footer}</p><p>{site.brand.credits}</p>
 			</footer>
 		</div>
 	);
@@ -600,19 +609,21 @@ export default function App() {
  * as quatro categorias.
  */
 function ChurrascoLink({ className = '' }) {
+	if (!site.navigation.churrasco.visible) return null;
 	return (
-		<a className={`churrasco-link ${className}`.trim()} href="/churrasco-semana-academica">
-			<Flame size={15} aria-hidden="true" />
-			<span>Churrasco</span>
+		<a className={`churrasco-link ${className}`.trim()} href={site.navigation.churrasco.href}>
+			<PageIcon name={pageIcon(site, 'churrasco')} size={15} aria-hidden="true" />
+			<span>{site.navigation.churrasco.label}</span>
 		</a>
 	);
 }
 
 function RocketLink({ className = '' }) {
+	if (!site.navigation.rocket.visible) return null;
 	return (
-		<a className={`rocket-link ${className}`.trim()} href="/torneio-rocket-league">
-			<Gamepad2 size={15} aria-hidden="true" />
-			<span>Torneio</span>
+		<a className={`rocket-link ${className}`.trim()} href={site.navigation.rocket.href}>
+			<PageIcon name={pageIcon(site, 'rocket')} size={15} aria-hidden="true" />
+			<span>{site.navigation.rocket.label}</span>
 		</a>
 	);
 }
@@ -661,15 +672,15 @@ function SiteHeader({
 						fallbackSpan
 					) : (
 						<SmartImage
-							src="/logo-aasiam.jpg"
-							alt="AASIAM"
+							src={site.brand.logo}
+							alt={site.brand.name}
 							className="brand-logo"
 							priority="high"
 							skeleton={false}
 							onError={() => setBrokenMobile(true)}
 						/>
 					)}
-					<span className="wordmark">AASIAM</span>
+					<span className="wordmark">{site.brand.name}</span>
 				</button>
 
 				<ChurrascoLink className="churrasco-link-topo" />
@@ -690,20 +701,20 @@ function SiteHeader({
 								fallbackSpan
 							) : (
 								<SmartImage
-									src="/logo-aasiam.jpg"
-									alt="AASIAM"
+									src={site.brand.logo}
+									alt={site.brand.name}
 									className="brand-logo"
 									priority="high"
 									skeleton={false}
 									onError={() => setBrokenDesktop(true)}
 								/>
 							)}
-							<span className="wordmark">AASIAM</span>
+							<span className="wordmark">{site.brand.name}</span>
 						</button>
 
 						{/* Category nav */}
 						<nav className="main-nav" aria-label="Categorias">
-							{CATEGORIES.map(c => (
+							{site.navigation.categories.map(c => (
 								<button
 									key={c.id}
 									type="button"
@@ -780,7 +791,7 @@ function focoDeTeclado(elemento) {
 
 function EventosCarousel() {
 	// A ordem é decidida na abertura da página (ver `primeiroAte`).
-	const banners = useMemo(() => ordenarBanners(BANNERS_DA_HOME), []);
+	const banners = useMemo(() => ordenarBanners(site.home.banners.filter(banner => banner.visible !== false)), []);
 	const count = banners.length;
 	const proporcao = useMemo(() => proporcaoDaCaixa(banners), [banners]);
 
@@ -806,7 +817,7 @@ function EventosCarousel() {
 	useEffect(() => {
 		if (count < 2 || pausado) return undefined;
 		if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return undefined;
-		const timer = setTimeout(() => setIndex(i => (i + 1) % count), EVENTOS_INTERVALO_MS);
+		const timer = setTimeout(() => setIndex(i => (i + 1) % count), site.home.interval);
 		return () => clearTimeout(timer);
 	}, [index, pausado, count]);
 
@@ -881,6 +892,7 @@ function EventosCarousel() {
 		encerrarGesto();
 	}
 
+	if (!count || !site.home.showBanners) return null;
 	return (
 		<section
 			className="eventos-carousel"
@@ -940,8 +952,8 @@ function EventosCarousel() {
 								}}
 							>
 								<picture>
-									<source srcSet={toWebp(banner.src)} type="image/webp" />
-									<img
+
+									<SiteImage
 										src={banner.src}
 										alt={banner.alt}
 										width={banner.largura}
@@ -1165,8 +1177,8 @@ function CatalogView({ onOpen, className }) {
 	const [activeFilter, setActiveFilter] = useState('todos');
 	const visibleCats =
 		activeFilter === 'todos'
-			? CATEGORIES
-			: CATEGORIES.filter(c => c.id === activeFilter);
+			? site.navigation.categories
+			: site.navigation.categories.filter(c => c.id === activeFilter);
 
 	return (
 		<div className={`page content-pad ${className || ''}`}>
@@ -1180,7 +1192,7 @@ function CatalogView({ onOpen, className }) {
 				>
 					Todos
 				</button>
-				{CATEGORIES.map(c => (
+				{site.navigation.categories.map(c => (
 					<button
 						key={c.id}
 						type="button"
@@ -1193,7 +1205,7 @@ function CatalogView({ onOpen, className }) {
 			</div>
 
 			{visibleCats.map(cat => {
-				const list = PRODUCTS.filter(p => CATEGORY_MAP[p.id] === cat.id);
+				const list = PRODUCTS.filter(p => (p.category || CATEGORY_MAP[p.id]) === cat.id && !p.hidden);
 				return (
 					<section
 						key={cat.id}
@@ -1256,13 +1268,13 @@ function SmartImage({
 				/>
 			)}
 			<picture className="smart-picture">
-				<source srcSet={toWebp(src)} type="image/webp" />
+				{!imageSettings(src) && !/^(https:|\/api\/)/.test(src) && <source srcSet={toWebp(src)} type="image/webp" />}
 				<img
 					ref={imgRef}
-					src={src}
-					alt={alt}
+					src={assetUrl(src)}
+					alt={imageSettings(src)?.alt || alt}
 					className={className}
-					style={style}
+					style={{ ...style, ...imageStyle(src) }}
 					draggable={false}
 					decoding="async"
 					loading={priority === 'high' ? 'eager' : 'lazy'}

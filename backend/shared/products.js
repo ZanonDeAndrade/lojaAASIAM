@@ -47,7 +47,7 @@ const colorAttribute = (options, label = 'Cor') => ({
 });
 const SHIRT_PERSONALIZATION = { noun: 'camiseta' };
 
-export const LOJA_ENCERRADA = process.env.LOJA_ENCERRADA !== "false";
+export let LOJA_ENCERRADA = process.env.LOJA_ENCERRADA !== "false";
 
 export const BACKPACK_MODELS = [
 	{
@@ -412,3 +412,16 @@ for (const _p of PRODUCTS) {
 export const PRODUCT_BY_ID = Object.fromEntries(
 	PRODUCTS.map(product => [product.id, product]),
 );
+
+// Atualiza os objetos existentes: os mapas de produtos do checkout mantêm as referências.
+const catalogDefaults = structuredClone(PRODUCTS);
+export function configureCatalog(settings) {
+  LOJA_ENCERRADA = settings.closed;
+  for (const product of PRODUCTS) {
+    const original = catalogDefaults.find(item => item.id === product.id);
+    const published = settings.products.find(item => item.id === product.id);
+    for (const key of Object.keys(product)) delete product[key];
+    Object.assign(product, structuredClone(original), structuredClone(published || {}));
+    if (product.hidden) product.soldOut = true;
+  }
+}

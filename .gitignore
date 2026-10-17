@@ -31,6 +31,8 @@ frontend/.vite/
 # ── Cache genérico ────────────────────────────────────────────────
 .cache/
 .temp/
+.site-data/
+backend/.site-data/
 tmp/
 
 # ── IDE ───────────────────────────────────────────────────────────
@@ -48,6 +50,7 @@ Thumbs.db
 !frontend/package.json
 !frontend/package-lock.json
 !frontend/vercel.json
+!vercel.json
 !backend/package.json
 !backend/package-lock.json
 

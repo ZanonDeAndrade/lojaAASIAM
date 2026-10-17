@@ -27,7 +27,7 @@ export default function ApresentacaoSemana({ evento, fechado }) {
 			</h1>
 
 			<p className="ch-subtitle">
-				Garanta seu lugar no churrasco da Semana Acadêmica de Sistemas de Informação.
+				{evento.description || evento.subtitulo}
 			</p>
 
 			<div className="ch-valores">
