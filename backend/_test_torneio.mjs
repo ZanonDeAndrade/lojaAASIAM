@@ -7,7 +7,7 @@ import express from 'express';
 import { registerSiteAdmin } from './site-admin.js';
 import { registerRocketTournament } from './rocket-torneio.js';
 import { createSiteStore } from './site-store.js';
-import { buildTournament, emptyTournament, GROUPS, updateQuarters, updateResult, updateTeams, updateTiebreak, validateResult } from './shared/rocket-tournament.js';
+import { buildTournament, deriveSeries, emptyTournament, GROUPS, normalizeTournament, updateQuarters, updateResult, updateTeams, updateTiebreak, validateResult, validateSeries } from './shared/rocket-tournament.js';
 
 let passed = 0;
 function check(condition, message) { assert.ok(condition, message); passed++; }
@@ -38,17 +38,49 @@ check(validateResult('single', { status: 'scheduled', a: 1, b: 0 }) !== null);
 check(validateResult('single', { status: 'scheduled', a: null, b: null }) === null);
 check(validateResult('single', { status: 'finished', a: 3, b: null }) !== null);
 check(validateResult('single', { status: 'finished', a: 1.5, b: 0 }) !== null);
-check(/exatamente 2/.test(validateResult('MD3', { status: 'finished', a: 3, b: 1 })));
-check(/exatamente 2/.test(validateResult('MD3', { status: 'finished', a: 1, b: 0 })));
-check(validateResult('MD3', { status: 'finished', a: 2, b: 1 }) === null);
-check(/exatamente 3/.test(validateResult('MD5', { status: 'finished', a: 2, b: 0 })));
-check(validateResult('MD5', { status: 'finished', a: 1, b: 3 }) === null);
-check(validateResult('MD3', { status: 'live', a: 2, b: 0 }) !== null);
-check(validateResult('MD3', { status: 'finished', a: 2, b: 1, games: [{ a: 3, b: 1 }, { a: 0, b: 2 }, { a: 2, b: 1 }] }) === null);
-check(validateResult('MD3', { status: 'finished', a: 2, b: 0, games: [{ a: 3, b: 1 }, { a: 0, b: 2 }] }) !== null, 'jogos precisam bater com a série');
-check(validateResult('MD3', { status: 'finished', a: 2, b: 0, games: [{ a: 1, b: 1 }] }) !== null);
 check(validateResult('MD1', { status: 'finished', a: 4, b: 2 }) === null);
 check(validateResult('MD1', { status: 'finished', a: 1, b: 0, games: [{ a: 1, b: 0 }] }) !== null);
+
+// Séries MD3/MD5: o placar da série sai dos jogos encerrados.
+const done = (a, b) => ({ status: 'finished', a, b });
+const live = (a = null, b = null) => ({ status: 'live', a, b });
+const todo = () => ({ status: 'scheduled', a: null, b: null });
+let series = deriveSeries('MD3', [done(3, 2), done(1, 4), done(5, 3)]);
+check(series.status === 'finished' && series.a === 2 && series.b === 1, 'MD3 2×1 pelos jogos');
+check(series.games.map(game => game.winner).join() === 'home,away,home' && series.games.every(game => game.needed));
+series = deriveSeries('MD3', [done(2, 0), done(4, 1)]);
+check(series.status === 'finished' && series.a === 2 && series.b === 0 && series.games[2].needed === false && series.games[2].status === 'scheduled', 'MD3 2×0: o Jogo 3 não é necessário');
+series = deriveSeries('MD3', [done(2, 0), live(1, 1)]);
+check(series.status === 'live' && series.a === 1 && series.b === 0 && series.games[2].needed, 'jogo ao vivo não conta vitória');
+series = deriveSeries('MD3', [done(2, 0)]);
+check(series.status === 'live' && series.a === 1, 'série incompleta fica ao vivo');
+check(deriveSeries('MD3', []).status === 'scheduled' && deriveSeries('MD3', []).games.length === 3);
+series = deriveSeries('MD5', [done(1, 0), done(2, 0), done(3, 0)]);
+check(series.status === 'finished' && series.a === 3 && series.games.length === 5 && series.games.slice(3).every(game => !game.needed), 'MD5 3×0: Jogos 4 e 5 não são necessários');
+series = deriveSeries('MD5', [done(0, 1), done(2, 0), done(0, 3), done(4, 1), done(2, 1)]);
+check(series.status === 'finished' && series.a === 3 && series.b === 2 && series.games.every(game => game.needed), 'MD5 3×2 usa os 5 jogos');
+check(deriveSeries('MD5', [done(1, 0), done(1, 0)]).status === 'live', 'MD5 2×0 ainda não acabou');
+
+// Validações dos jogos da série.
+check(validateSeries('MD3', [done(3, 2), done(1, 4), done(5, 3)]) === null);
+check(validateSeries('MD3', [done(-1, 2)]) === 'Os gols não podem ser negativos.');
+check(/empatado/.test(validateSeries('MD3', [done(2, 2)])), 'jogo encerrado não empata');
+check(validateSeries('MD3', [live(2, 2)]) === null, 'empate parcial ao vivo é permitido');
+check(validateSeries('MD3', [live()]) === null, 'jogo ao vivo ainda sem gols');
+check(/não é necessário/.test(validateSeries('MD3', [done(2, 0), done(3, 1), done(1, 0)])), 'nada depois da série decidida');
+check(/não é necessário/.test(validateSeries('MD3', [done(2, 0), done(3, 1), live(0, 0)])));
+check(validateSeries('MD3', [done(2, 0), done(3, 1), todo()]) === null, 'jogo vazio depois da série decidida é aceito');
+check(/não é necessário/.test(validateSeries('MD5', [done(1, 0), done(1, 0), done(1, 0), done(0, 1)])));
+check(/Jogo 2 só pode ser encerrado depois que o Jogo 1/.test(validateSeries('MD3', [live(1, 0), done(2, 0)])), 'Jogo N só encerra com o N-1 encerrado');
+check(/Jogo 2 só pode ser encerrado/.test(validateSeries('MD3', [todo(), done(2, 0)])));
+check(/Jogo 3 só pode começar/.test(validateSeries('MD3', [done(1, 0), live(1, 1), live(0, 0)])), 'dois jogos ao vivo na mesma série');
+check(/mude o status/.test(validateSeries('MD3', [{ status: 'scheduled', a: 1, b: 0 }])));
+check(/dois times/.test(validateSeries('MD3', [done(1, null)])));
+check(/inteiros/.test(validateSeries('MD3', [done(1.5, 0)])));
+check(/Escolha o status do Jogo 1/.test(validateSeries('MD3', [{ a: 1, b: 0 }])));
+check(validateSeries('MD3', [done(1, 0), done(0, 1), done(1, 0), done(1, 0)]) !== null, 'MD3 tem no máximo 3 jogos');
+check(validateSeries('MD3', undefined) !== null);
+check(validateResult('MD5', { games: [done(1, 0)] }) === null, 'validateResult encaminha séries para validateSeries');
 
 // Classificação: 3 pontos por vitória, SG, GP e confronto direto.
 function play(state, id, a, b, status = 'finished') {
@@ -105,25 +137,67 @@ check(view.suggestion.every(([x, y]) => x.split('-')[0] !== y.split('-')[0]), 's
 check(updateResult(full, 'QF1', { status: 'finished', a: 2, b: 0 }).error, 'quartas sem equipes não aceitam placar');
 check(updateQuarters(full, { quarterFormat: 'MD3', quarters: [['A-0', 'A-0'], [null, null], [null, null], [null, null]] }).error);
 full = updateQuarters(full, { quarterFormat: 'MD3', quarters: view.suggestion }).state;
-full = updateResult(full, 'QF1', { status: 'finished', a: 2, b: 1, games: [{ a: 2, b: 0 }, { a: 1, b: 3 }, { a: 4, b: 2 }] }).state;
-full = updateResult(full, 'QF2', { status: 'finished', a: 0, b: 2 }).state;
+const groupsBefore = JSON.stringify(buildTournament(full).groups);
+const seriesOf = (state, id, games) => { const result = updateResult(state, id, { games }); assert.ok(result.state, result.error); return result.state; };
+// Jogo a jogo: a série fica ao vivo e só avança quem chegar a 2 vitórias.
+full = seriesOf(full, 'QF1', [live(1, 0), todo(), todo()]);
+check(full.results.QF1.games.length === 1 && full.results.QF1.status === 'live', 'jogos vazios do fim não são gravados');
 view = buildTournament(full);
+check(view.knockout.QF1.status === 'live' && view.knockout.QF1.a === 0 && view.knockout.QF1.games[0].status === 'live' && view.knockout.SF1.home === null, 'série ao vivo não avança ninguém');
+full = seriesOf(full, 'QF1', [done(2, 0), done(1, 3)]);
+view = buildTournament(full);
+check(view.knockout.QF1.status === 'live' && view.knockout.QF1.a === 1 && view.knockout.QF1.b === 1 && view.knockout.SF1.home === null, '1×1 ainda não decide');
+full = seriesOf(full, 'QF1', [done(2, 0), done(1, 3), done(4, 2)]);
+full = seriesOf(full, 'QF2', [done(0, 1), done(2, 5)]);
+view = buildTournament(full);
+check(full.results.QF1.a === 2 && full.results.QF1.b === 1 && full.results.QF1.status === 'finished', 'placar da série gravado a partir dos jogos');
+check(view.knockout.QF1.status === 'finished' && view.knockout.QF1.a === 2 && view.knockout.QF1.b === 1 && !view.knockout.QF1.manual);
+check(view.knockout.QF2.games[2].needed === false, 'QF2 2×0: Jogo 3 não necessário');
 check(view.knockout.SF1.home.id === view.suggestion[0][0] && view.knockout.SF1.away.id === view.suggestion[1][1], 'vencedores avançam para a semifinal');
 check(view.knockout.SF2.home === null && view.knockout.SF2.placeholders[0] === 'Vencedor QF3');
+check(JSON.stringify(view.groups) === groupsBefore, 'mata-mata não altera a fase de grupos');
+check(updateResult(full, 'QF2', { games: [done(0, 1), done(2, 5), done(1, 0)] }).error, 'Jogo 3 bloqueado depois do 2×0');
+check(updateResult(full, 'QF3', { status: 'finished', a: 2, b: 0 }).error, 'placar manual da série é recusado');
+check(updateResult(full, 'QF3', { status: 'finished', a: 2, b: 0, games: [{ a: 1, b: 0 }, { a: 1, b: 0 }] }).error, 'painel desatualizado é recusado');
 check(updateQuarters(full, { quarterFormat: 'MD5', quarters: view.suggestion }).error, 'formato não muda com quartas jogadas');
 check(updateQuarters(full, { quarterFormat: 'MD3', quarters: [view.suggestion[1], view.suggestion[0], view.suggestion[2], view.suggestion[3]] }).error, 'quarta jogada não troca de equipes');
-full = updateResult(full, 'SF1', { status: 'finished', a: 2, b: 0 }).state;
-check(updateResult(full, 'QF1', { status: 'finished', a: 1, b: 2 }).error, 'não muda vencedor com a semifinal já jogada');
-check(updateResult(full, 'QF1', { status: 'finished', a: 2, b: 0 }).state, 'corrige placar mantendo o vencedor');
-full = updateResult(full, 'QF3', { status: 'finished', a: 2, b: 0 }).state;
-full = updateResult(full, 'QF4', { status: 'finished', a: 2, b: 0 }).state;
-full = updateResult(full, 'SF2', { status: 'finished', a: 1, b: 2 }).state;
-check(updateResult(full, 'F', { status: 'finished', a: 3, b: 3 }).error);
-full = updateResult(full, 'F', { status: 'finished', a: 3, b: 2 }).state;
+full = seriesOf(full, 'SF1', [done(1, 0), done(1, 0)]);
+check(updateResult(full, 'QF1', { games: [done(2, 0), done(1, 3), done(2, 4)] }).error, 'não muda vencedor com a semifinal já jogada');
+check(updateResult(full, 'QF1', { games: [done(2, 0), done(1, 3), done(7, 2)] }).state, 'corrige placar mantendo o vencedor');
+full = seriesOf(full, 'QF3', [done(1, 0), done(1, 0)]);
+full = seriesOf(full, 'QF4', [done(1, 0), done(1, 0)]);
+full = seriesOf(full, 'SF2', [done(0, 1), done(1, 0), done(0, 1)]);
+check(updateResult(full, 'F', { games: [done(3, 3)] }).error);
+full = seriesOf(full, 'F', [done(1, 0), done(1, 0)]);
+check(buildTournament(full).knockout.F.status === 'live' && buildTournament(full).champion === null, 'final MD5 em 2×0 continua');
+full = seriesOf(full, 'F', [done(1, 0), done(1, 0), done(0, 1), done(2, 1)]);
 view = buildTournament(full);
+check(view.knockout.F.a === 3 && view.knockout.F.b === 1 && view.knockout.F.games[4].needed === false, 'final 3×1: Jogo 5 não necessário');
 check(view.champion?.id === view.knockout.SF1.winner);
-const reset = updateResult(full, 'F', { status: 'scheduled', a: null, b: null }).state;
-check(!reset.results.F && buildTournament(reset).champion === null, 'zerar placar');
+const reset = updateResult(full, 'F', { games: [] }).state;
+check(!reset.results.F && buildTournament(reset).champion === null, 'zerar limpa todos os jogos da série');
+
+// Série lançada antes do placar por jogo: mantém o valor salvo, com aviso.
+const legacy = structuredClone(full);
+legacy.results.QF4 = { status: 'finished', a: 2, b: 1 };
+view = buildTournament(legacy);
+check(view.knockout.QF4.manual && view.knockout.QF4.a === 2 && view.knockout.QF4.b === 1 && view.knockout.QF4.status === 'finished', 'série sem jogos mantém o placar salvo');
+check(view.knockout.SF2.home.id === legacy.quarters[3][0] || view.knockout.SF2.away.id === legacy.quarters[3][0], 'vencedor da série antiga continua na chave');
+check(normalizeTournament(legacy).results.QF4.a === 2, 'normalizar não apaga a série antiga');
+legacy.results.QF4 = { status: 'finished', a: 2, b: 1, games: [{ a: 3, b: 1 }, { a: 0, b: 2 }, { a: 2, b: 1 }] };
+view = buildTournament(legacy);
+check(!view.knockout.QF4.manual && view.knockout.QF4.games.every(game => game.status === 'finished'), 'jogos antigos sem status contam como encerrados');
+legacy.results.QF4 = { status: 'finished', a: 2, b: 1, games: [{ a: 3, b: 1 }] };
+check(buildTournament(legacy).knockout.QF4.manual && buildTournament(legacy).knockout.QF4.a === 2, 'jogos que não explicam a série mantêm o placar salvo');
+legacy.results.QF4 = { status: 'finished', a: 2, b: 1 };
+const filled = updateResult(legacy, 'QF4', { games: [done(1, 0), done(0, 1), done(1, 0)] }).state;
+check(!buildTournament(filled).knockout.QF4.manual && filled.results.QF4.games.length === 3, 'preencher os jogos substitui o placar manual');
+
+// Quartas em partida única continuam com placar direto.
+let single = updateQuarters(emptyTournament(), { quarterFormat: 'MD1', quarters: [['A-0', 'B-1'], [null, null], [null, null], [null, null]] }).state;
+check(updateResult(single, 'QF1', { games: [done(1, 0)] }).error, 'MD1 não aceita jogos de série');
+single = updateResult(single, 'QF1', { status: 'finished', a: 4, b: 2 }).state;
+check(buildTournament(single).knockout.SF1.home.id === 'A-0', 'MD1 avança pelo placar');
 
 // Equipes e jogadores.
 check(updateTeams(emptyTournament(), { teams: { 'A-0': { name: 'Beekeepers', players: [] } } }).error, 'nomes repetidos');
@@ -147,6 +221,7 @@ async function call(url, { token, body } = {}) {
 try {
   const publicRead = await call('/api/rocket-league/torneio');
   check(publicRead.status === 200 && publicRead.data.torneio.revision === 0);
+  check(Object.keys(publicRead.data.series).join() === 'QF1,QF2,QF3,QF4,SF1,SF2,F' && publicRead.data.series.F.games.length === 5 && publicRead.data.series.SF1.format === 'MD3', 'rota pública devolve os jogos de cada série');
   check((await call('/api/admin/torneio/partidas/A01', { body: { status: 'finished', a: 2, b: 1 } })).status === 401);
   const token = (await call('/api/admin/login', { body: { username: 'admin', password: 'senha-de-teste' } })).data.token;
   const saved = await call('/api/admin/torneio/partidas/A01', { token, body: { status: 'finished', a: 2, b: 1 } });
@@ -165,8 +240,16 @@ try {
   const reloaded = registerRocketTournament(express(), { adminRouter: express.Router(), store });
   const reloadedState = await reloaded.load();
   check(reloadedState.revision === 5 && reloadedState.results.C01.b === 3, 'placar sobrevive a reinício do servidor');
+  // Série jogo a jogo pela API, gravada no mesmo documento sem apagar os grupos.
+  await call('/api/admin/torneio/mata-mata', { token, body: { quarterFormat: 'MD3', quarters: [['A-0', 'B-1'], [null, null], [null, null], [null, null]] } });
+  check((await call('/api/admin/torneio/partidas/QF1', { token, body: { status: 'finished', a: 2, b: 0 } })).status === 400, 'API recusa placar manual da série');
+  check((await call('/api/admin/torneio/partidas/QF1', { token, body: { games: [done(3, 1), live(0, 2)] } })).status === 200);
+  const seriesRead = await call('/api/rocket-league/torneio');
+  check(seriesRead.data.series.QF1.status === 'live' && seriesRead.data.series.QF1.a === 1 && seriesRead.data.series.QF1.games[1].status === 'live' && seriesRead.data.series.QF1.games[1].b === 2, 'rota pública mostra o jogo ao vivo');
+  const stored = await store.readTournament();
+  check(stored.results.QF1.games.length === 2 && stored.results.A01.a === 2 && stored.results.C01.b === 3, 'jogos gravados junto dos placares existentes');
 } finally {
   server.close();
   await rm(directory, { recursive: true, force: true });
 }
-console.log(`Torneio: ${passed} verificações passaram (tabela oficial, classificação, desempates, mata-mata, validações e API).`);
+console.log(`Torneio: ${passed} verificações passaram (tabela oficial, classificação, desempates, mata-mata jogo a jogo, validações e API).`);

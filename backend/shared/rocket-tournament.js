@@ -35,6 +35,8 @@ const GROUP_MATCH_IDS = new Set(GROUPS.flatMap(group => group.matches.map(match 
 export const STATUS_LABELS = { scheduled: 'A jogar', live: 'Ao vivo', finished: 'Encerrado' };
 export const QUARTER_FORMATS = ['MD1', 'MD3', 'MD5'];
 const WINS = { MD1: 1, MD3: 2, MD5: 3 };
+export const isSeries = format => format === 'MD3' || format === 'MD5';
+export const seriesLength = format => (isSeries(format) ? WINS[format] * 2 - 1 : 0);
 export const KNOCKOUT_ROUNDS = [
   { id: 'QF', name: 'Quartas de final', venue: 'Online', matches: ['QF1', 'QF2', 'QF3', 'QF4'] },
   { id: 'SF', name: 'Semifinal', venue: 'Online', format: 'MD3', matches: ['SF1', 'SF2'] },
@@ -53,8 +55,12 @@ export function emptyTournament() {
 
 const isScore = value => Number.isInteger(value) && value >= 0 && value <= 99;
 const scoreOrNull = value => (value === null || value === undefined || value === '' ? null : value);
+const cleanGame = game => ({ status: game?.status, a: scoreOrNull(game?.a), b: scoreOrNull(game?.b) });
+// Jogos salvos antes do placar por jogo não tinham status, mas só eram aceitos
+// completos e sem empate: equivalem a jogos encerrados.
+const savedGame = game => ({ ...cleanGame(game), status: STATUS_LABELS[game?.status] ? game.status : 'finished' });
 function cleanResult(raw) {
-  const games = Array.isArray(raw?.games) ? raw.games.map(game => ({ a: scoreOrNull(game?.a), b: scoreOrNull(game?.b) })) : [];
+  const games = Array.isArray(raw?.games) ? raw.games.map(savedGame) : [];
   return { status: raw?.status, a: scoreOrNull(raw?.a), b: scoreOrNull(raw?.b), games };
 }
 
@@ -85,34 +91,79 @@ export function matchFormat(state, id) {
 }
 function resultOf(state, id) { return state.results[id] || { status: 'scheduled', a: null, b: null, games: [] }; }
 
-/* Regras de um placar. Partida única não tem empate (a prorrogação decide);
-   numa série MD3/MD5 o vencedor precisa ter exatamente 2/3 vitórias. Os jogos
-   da série são opcionais, mas quando informados precisam bater com a série. */
+/* Regras de um placar. Partida única não tem empate (a prorrogação decide).
+   Numa série MD3/MD5 quem manda são os jogos: ver validateSeries. */
 export function validateResult(format, raw) {
+  if (isSeries(format)) return validateSeries(format, raw?.games);
   const { status, a, b, games } = cleanResult(raw);
-  const series = format === 'MD3' || format === 'MD5';
-  const needed = WINS[format] || 1;
   if (!STATUS_LABELS[status]) return 'Escolha o status: A jogar, Ao vivo ou Encerrado.';
-  const numbers = [a, b, ...games.flatMap(game => [game.a, game.b])];
-  if (numbers.some(value => typeof value === 'number' && value < 0)) return 'Os gols não podem ser negativos.';
-  if (numbers.some(value => value !== null && !isScore(value))) return 'Use apenas números inteiros no placar.';
+  if ([a, b].some(value => typeof value === 'number' && value < 0)) return 'Os gols não podem ser negativos.';
+  if ([a, b].some(value => value !== null && !isScore(value))) return 'Use apenas números inteiros no placar.';
   if ((a === null) !== (b === null)) return 'Preencha o placar dos dois times.';
-  if (games.length > (series ? needed * 2 - 1 : 0)) return 'Quantidade de jogos da série inválida.';
-  if (games.some(game => game.a === null || game.b === null)) return 'Preencha os dois lados de cada jogo da série.';
-  if (status === 'scheduled') return a === null && !games.length ? null : 'Para lançar o placar, mude o status para Ao vivo ou Encerrado.';
-  if (games.some(game => game.a === game.b)) return 'Um jogo da série não pode terminar empatado.';
-  if (status === 'live' && series && a !== null && Math.max(a, b) >= needed) return `Com ${needed} vitórias a série terminou: marque como Encerrado.`;
+  if (games.length) return 'Quantidade de jogos da série inválida.';
+  if (status === 'scheduled') return a === null ? null : 'Para lançar o placar, mude o status para Ao vivo ou Encerrado.';
   if (status === 'finished') {
     if (a === null) return 'Preencha o placar final para encerrar a partida.';
-    if (!series && a === b) return 'Partida única não pode terminar empatada: no Rocket League a prorrogação define o vencedor.';
-    if (series && (Math.max(a, b) !== needed || Math.min(a, b) >= needed)) return `Em ${format}, o vencedor precisa ter exatamente ${needed} vitórias.`;
-  }
-  if (games.length) {
-    if (a === null) return 'Preencha o placar da série.';
-    const winsA = games.filter(game => game.a > game.b).length;
-    if (winsA > a || games.length - winsA > b) return 'Os placares dos jogos não batem com o placar da série.';
+    if (a === b) return 'Partida única não pode terminar empatada: no Rocket League a prorrogação define o vencedor.';
   }
   return null;
+}
+
+/* Jogos de uma série, na ordem. Cada um tem status próprio; o Jogo N só começa
+   depois do N-1 encerrado, e nada é lançado depois que alguém chega a 2 (MD3)
+   ou 3 (MD5) vitórias. */
+export function validateSeries(format, raw) {
+  const target = WINS[format];
+  if (!Array.isArray(raw) || raw.length > seriesLength(format)) return 'Quantidade de jogos da série inválida.';
+  const games = raw.map(cleanGame);
+  const wins = [0, 0];
+  for (const [index, game] of games.entries()) {
+    const label = `Jogo ${index + 1}`;
+    if (!STATUS_LABELS[game.status]) return `Escolha o status do ${label}: A jogar, Ao vivo ou Encerrado.`;
+    if ([game.a, game.b].some(value => typeof value === 'number' && value < 0)) return 'Os gols não podem ser negativos.';
+    if ([game.a, game.b].some(value => value !== null && !isScore(value))) return 'Use apenas números inteiros no placar.';
+    if ((game.a === null) !== (game.b === null)) return `Preencha o placar dos dois times no ${label}.`;
+    if (game.status === 'scheduled') {
+      if (game.a !== null) return `Para lançar o placar do ${label}, mude o status dele para Ao vivo ou Encerrado.`;
+      continue;
+    }
+    if (Math.max(...wins) === target) return `A série já terminou ${wins[0]} × ${wins[1]}: o ${label} não é necessário.`;
+    if (index && games[index - 1].status !== 'finished') return `O ${label} só pode ${game.status === 'finished' ? 'ser encerrado' : 'começar'} depois que o Jogo ${index} estiver encerrado.`;
+    if (game.status === 'finished') {
+      if (game.a === null) return `Preencha o placar do ${label} para encerrá-lo.`;
+      if (game.a === game.b) return `O ${label} não pode terminar empatado: no Rocket League a prorrogação define o vencedor.`;
+      wins[game.a > game.b ? 0 : 1]++;
+    }
+  }
+  return null;
+}
+
+/* Placar da série calculado pelos jogos encerrados. Devolve sempre a lista
+   completa (3 ou 5 jogos); os que vêm depois da série decidida saem com
+   needed: false ("Não necessário"). */
+export function deriveSeries(format, games = []) {
+  const target = WINS[format];
+  let a = 0;
+  let b = 0;
+  const list = Array.from({ length: seriesLength(format) }, (_, index) => {
+    const game = games[index] || { status: 'scheduled', a: null, b: null };
+    const needed = a < target && b < target;
+    const winner = needed && game.status === 'finished' && game.a !== null && game.b !== null && game.a !== game.b ? (game.a > game.b ? 'home' : 'away') : null;
+    if (winner === 'home') a++;
+    if (winner === 'away') b++;
+    return { number: index + 1, status: game.status, a: game.a, b: game.b, needed, winner };
+  });
+  const status = Math.max(a, b) === target ? 'finished' : list.some(game => game.needed && game.status !== 'scheduled') ? 'live' : 'scheduled';
+  return { status, a, b, games: list };
+}
+
+/* Visão de uma série salva. Uma série lançada antes do placar por jogo (ou
+   com jogos que não explicam o placar salvo) mantém o placar salvo e sai com
+   manual: true até alguém preencher os jogos. */
+export function seriesResult(format, saved) {
+  const derived = deriveSeries(format, saved?.games);
+  const manual = !!saved && (saved.status !== derived.status || saved.a !== derived.a || saved.b !== derived.b);
+  return manual ? { ...derived, status: saved.status, a: saved.a, b: saved.b, manual } : { ...derived, manual };
 }
 
 /* ─── classificação ─── */
@@ -197,13 +248,20 @@ export function buildTournament(raw) {
     const index = quarter ? Number(quarter[1]) - 1 : -1;
     const sides = quarter ? state.quarters[index] : FEEDS[id].map(feed => knockout[feed].winner);
     const placeholders = quarter ? [`Classificado ${index * 2 + 1}`, `Classificado ${index * 2 + 2}`] : FEEDS[id].map(feed => `Vencedor ${feed}`);
-    const result = resultOf(state, id);
+    const format = matchFormat(state, id);
+    const result = isSeries(format) ? seriesResult(format, state.results[id]) : resultOf(state, id);
     const winner = result.status === 'finished' && sides[0] && sides[1] ? (result.a > result.b ? sides[0] : sides[1]) : null;
-    knockout[id] = { id, format: matchFormat(state, id), ...result, home: sides[0] ? team(sides[0]) : null, away: sides[1] ? team(sides[1]) : null, placeholders, winner };
+    knockout[id] = { id, format, ...result, home: sides[0] ? team(sides[0]) : null, away: sides[1] ? team(sides[1]) : null, placeholders, winner };
   }
   const rounds = KNOCKOUT_ROUNDS.map(round => ({ ...round, format: round.format || state.quarterFormat, matches: round.matches.map(id => knockout[id]) }));
 
   return { state, teams: TEAM_IDS.map(team), groups, groupsComplete, thirds, thirdTies, seeds, suggestion: seeds && suggestQuarters(seeds), rounds, knockout, champion: knockout.F.winner ? team(knockout.F.winner) : null };
+}
+
+// Séries do mata-mata com todos os jogos, para a rota pública do placar.
+export function seriesSummary(raw) {
+  const state = normalizeTournament(raw);
+  return Object.fromEntries(KNOCKOUT_IDS.filter(id => isSeries(matchFormat(state, id))).map(id => [id, { format: matchFormat(state, id), ...seriesResult(matchFormat(state, id), state.results[id]) }]));
 }
 
 /* ─── alterações feitas pelo painel: cada uma devolve { state } ou { error } ─── */
@@ -211,14 +269,27 @@ export function updateResult(raw, id, payload) {
   const state = normalizeTournament(raw);
   const format = matchFormat(state, id);
   if (!format) return { error: 'Partida não encontrada.' };
-  const result = cleanResult(payload);
-  const error = validateResult(format, result);
-  if (error) return { error };
+  let saved;
+  if (isSeries(format)) {
+    // Painel aberto antes da mudança ainda manda o placar da série à mão.
+    if (['status', 'a', 'b'].some(key => payload?.[key] !== undefined)) return { error: 'O placar da série agora é calculado pelos jogos. Recarregue a página do painel e lance o placar de cada jogo.' };
+    const error = validateSeries(format, payload?.games);
+    if (error) return { error };
+    const games = payload.games.map(cleanGame);
+    while (games.length && games.at(-1).status === 'scheduled') games.pop();
+    const series = deriveSeries(format, games);
+    saved = series.status === 'scheduled' ? null : { status: series.status, a: series.a, b: series.b, games };
+  } else {
+    const result = cleanResult(payload);
+    const error = validateResult(format, result);
+    if (error) return { error };
+    saved = result.status === 'scheduled' ? null : { status: result.status, a: result.a, b: result.b };
+  }
   const before = buildTournament(state);
-  if (before.knockout[id] && result.status !== 'scheduled' && (!before.knockout[id].home || !before.knockout[id].away)) return { error: 'Defina as duas equipes desta partida antes de lançar o placar.' };
+  if (before.knockout[id] && saved && (!before.knockout[id].home || !before.knockout[id].away)) return { error: 'Defina as duas equipes desta partida antes de lançar o placar.' };
   const next = structuredClone(state);
-  if (result.status === 'scheduled') delete next.results[id];
-  else next.results[id] = { status: result.status, a: result.a, b: result.b, ...(result.games.length ? { games: result.games } : {}) };
+  if (saved) next.results[id] = saved;
+  else delete next.results[id];
   // Trocar o vencedor depois que a fase seguinte já começou bagunçaria a chave.
   const fed = Object.keys(FEEDS).find(key => FEEDS[key].includes(id));
   if (fed && state.results[fed] && before.knockout[id].winner !== buildTournament(next).knockout[id].winner) return { error: `A ${fed === 'F' ? 'final' : fed} já tem placar. Zere a ${fed === 'F' ? 'final' : fed} antes de mudar o vencedor desta série.` };

@@ -1,6 +1,6 @@
-import { CalendarDays, CheckCircle2, RefreshCw, Trophy, WifiOff } from 'lucide-react';
+import { CalendarDays, CheckCircle2, ChevronDown, RefreshCw, Trophy, WifiOff } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
-import { buildTournament, formatLabel, STATUS_LABELS } from '../../../backend/shared/rocket-tournament.js';
+import { buildTournament, formatLabel, isSeries, STATUS_LABELS } from '../../../backend/shared/rocket-tournament.js';
 import { API_BASE, site } from '../settings/site.js';
 
 const REFRESH_MS = 20000;
@@ -100,15 +100,44 @@ function ThirdsCard({ tournament }) {
 function BracketSide({ team, placeholder, score, state }) {
   return <div className={`rl-br-side ${state}`}><span>{team ? <><strong>{team.name}</strong><Players team={team} /></> : <em>{shortId(placeholder)}</em>}</span><b>{score}</b></div>;
 }
-function BracketCard({ match, round }) {
+/* Jogos da série: os não necessários somem, os não jogados mostram "—" e o
+   placar de cada jogo segue a ordem do card (de cima × de baixo). */
+function SeriesGames({ match, id }) {
+  const home = match.home?.name || shortId(match.placeholders[0]);
+  const away = match.away?.name || shortId(match.placeholders[1]);
+  const games = match.games.filter(game => game.needed && (!match.manual || game.status !== 'scheduled'));
+  const score = (game, side) => <b className={game.winner ? (game.winner === side ? 'is-winner' : 'is-loser') : ''}>{(side === 'home' ? game.a : game.b) ?? 0}</b>;
+  return <div className="rl-br-games" id={id}>
+    {match.manual && <p>Série lançada sem placar por jogo.</p>}
+    {games.length > 0 && <ol>{games.map(game => {
+      const played = game.status !== 'scheduled';
+      const spoken = played ? `${home} ${game.a ?? 0}, ${away} ${game.b ?? 0}${game.status === 'live' ? ', ao vivo' : ''}` : 'ainda não jogado';
+      return <li key={game.number} className={`is-${game.status}`} aria-label={`Jogo ${game.number}: ${spoken}`}>
+        <span aria-hidden="true">Jogo {game.number}</span><span className="rl-br-game-dot" aria-hidden="true">·</span>
+        <span className="rl-br-game-score" aria-hidden="true">{played ? <>{score(game, 'home')}<span>×</span>{score(game, 'away')}</> : '—'}</span>
+        {game.status === 'live' && <span className="rl-br-game-live" aria-hidden="true"><i />Ao vivo</span>}
+      </li>;
+    })}</ol>}
+  </div>;
+}
+
+function BracketCard({ match, round, open, onToggle }) {
   const played = match.status !== 'scheduled';
   const side = index => (match.winner ? ((index ? match.away : match.home)?.id === match.winner ? 'is-winner' : 'is-loser') : '');
   const label = match.id === 'F' ? 'F' : shortId(match.id);
-  return <article className={`rl-br-card is-${match.status} ${match.id === 'F' ? 'is-final' : ''}`} aria-label={`${match.id === 'F' ? 'Grande final' : label}: ${match.home?.name || shortId(match.placeholders[0])} contra ${match.away?.name || shortId(match.placeholders[1])}`}>
+  const series = isSeries(match.format);
+  const liveGame = series && match.games.find(game => game.needed && game.status === 'live');
+  // Tocar em qualquer parte do card abre ou fecha a lista de jogos.
+  return <article className={`rl-br-card is-${match.status} ${match.id === 'F' ? 'is-final' : ''} ${series ? 'has-games' : ''} ${open ? 'is-open' : ''}`} aria-label={`${match.id === 'F' ? 'Grande final' : label}: ${match.home?.name || shortId(match.placeholders[0])} contra ${match.away?.name || shortId(match.placeholders[1])}`} onClick={series ? onToggle : undefined}>
     <header><strong>{label}</strong><span className="rl-br-format">{formatLabel(round.format)} · {round.venue}</span><StatusBadge status={match.status} /></header>
     <BracketSide team={match.home} placeholder={match.placeholders[0]} score={played ? match.a ?? 0 : '—'} state={side(0)} />
     <BracketSide team={match.away} placeholder={match.placeholders[1]} score={played ? match.b ?? 0 : '—'} state={side(1)} />
-    {match.games?.length > 0 && <footer>Jogos: {match.games.map(game => `${game.a}–${game.b}`).join(', ')}</footer>}
+    {series && <>
+      <button type="button" className="rl-br-toggle" aria-expanded={open} aria-controls={`rl-jogos-${match.id}`}>
+        <span>Jogos da série</span>{liveGame && <span className="rl-br-game-live"><i aria-hidden="true" />Jogo {liveGame.number} ao vivo</span>}<ChevronDown size={16} aria-hidden="true" />
+      </button>
+      <SeriesGames match={match} id={`rl-jogos-${match.id}`} />
+    </>}
   </article>;
 }
 function Champion({ team }) {
@@ -116,10 +145,19 @@ function Champion({ team }) {
 }
 
 function Bracket({ tournament }) {
+  // Um card aberto por vez; tocar fora dele fecha a lista de jogos.
+  const [openId, setOpenId] = useState(null);
+  useEffect(() => {
+    if (!openId) return undefined;
+    const close = event => { if (!event.target.closest?.('.rl-br-card')) setOpenId(null); };
+    document.addEventListener('click', close);
+    return () => document.removeEventListener('click', close);
+  }, [openId]);
+  const card = (match, round) => <BracketCard match={match} round={round} open={openId === match.id} onToggle={() => setOpenId(current => (current === match.id ? null : match.id))} />;
   return <div className="rl-bracket">{tournament.rounds.map(round => <section className={`rl-br-round rl-br-${round.id}`} key={round.id} aria-labelledby={`rl-br-${round.id}-titulo`}>
     <header className="rl-br-heading"><h4 id={`rl-br-${round.id}-titulo`}>{round.id === 'SF' ? 'Semifinais' : round.name}</h4><span>{formatLabel(round.format)} · {round.venue}</span></header>
     <div className="rl-br-slots">{round.matches.map((match, index) => <div key={match.id} className={['rl-br-slot', index % 2 ? 'is-lower' : 'is-upper', match.winner && 'has-winner', match.home && match.away && 'is-fed'].filter(Boolean).join(' ')}>
-      {round.id === 'F' ? <div className="rl-br-final"><BracketCard match={match} round={round} /><Champion team={tournament.champion} /></div> : <BracketCard match={match} round={round} />}
+      {round.id === 'F' ? <div className="rl-br-final">{card(match, round)}<Champion team={tournament.champion} /></div> : card(match, round)}
     </div>)}</div>
   </section>)}</div>;
 }

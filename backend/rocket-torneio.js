@@ -1,5 +1,5 @@
 import { createSiteStore } from './site-store.js';
-import { normalizeTournament, updateQuarters, updateResult, updateTeams, updateTiebreak } from './shared/rocket-tournament.js';
+import { normalizeTournament, seriesSummary, updateQuarters, updateResult, updateTeams, updateTiebreak } from './shared/rocket-tournament.js';
 
 // Placar ao vivo da Copa AASIAM. A leitura é pública e leve (a página consulta
 // a cada ~20 s); as alterações usam a mesma sessão do painel /admin.
@@ -15,9 +15,10 @@ export function registerRocketTournament(app, { adminRouter, store = createSiteS
     catch (error) { if (!force && cached) return cached; throw error; }
   }
 
+  // "series" traz cada confronto MD3/MD5 do mata-mata com a lista de jogos.
   app.get('/api/rocket-league/torneio', async (_req, res) => {
     res.set('Cache-Control', 'no-store');
-    try { res.json({ ok: true, torneio: await load() }); }
+    try { const torneio = await load(); res.json({ ok: true, torneio, series: seriesSummary(torneio) }); }
     catch { res.status(503).json({ ok: false, error: 'Placar temporariamente indisponível.' }); }
   });
 
