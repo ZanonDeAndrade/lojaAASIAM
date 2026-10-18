@@ -56,7 +56,8 @@ const { criarTokenVerificacao, lerTokenVerificacao, nomeArquivoComprovante } = a
 
 const app = express();
 app.use(express.json());
-registerChurrascoRoutes(app);
+// As inscrições do AMF fecharam em 12/09: o fluxo roda num relógio de antes do prazo.
+registerChurrascoRoutes(app, { agora: () => Date.parse("2026-09-01T12:00:00-03:00") });
 
 const server = app.listen(0);
 await new Promise((r) => server.once("listening", r));

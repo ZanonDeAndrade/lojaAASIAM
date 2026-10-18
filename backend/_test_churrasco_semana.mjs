@@ -91,7 +91,8 @@ const app = express();
 // X-Forwarded-For, que o teste usa para simular visitantes diferentes.
 app.set("trust proxy", 1);
 app.use(express.json());
-registrarRotasDoChurrasco(app, { evento: AMF, registro: registroAmf, webhookLegado: true });
+// As inscrições do AMF fecharam em 12/09: o fluxo dele roda num relógio de antes do prazo.
+registrarRotasDoChurrasco(app, { evento: AMF, registro: registroAmf, webhookLegado: true, agora: () => Date.parse("2026-09-01T12:00:00-03:00") });
 registrarRotasDoChurrasco(app, { evento: SEMANA, registro: registroSemanaSi, agora });
 // A mesma aba, com limite de 2 vagas, numa base só dos testes.
 const SEMANA_COM_VAGAS = { ...SEMANA, vagas: 2, apiBase: "/api/teste-semana-vagas" };
@@ -478,11 +479,16 @@ await test("no AMF o curso continua obrigatório e define o preço", async () =>
   assert.equal(linhasAmf().length, 0);
 });
 
-await test("no AMF o checkout segue como sempre: o e-mail basta para reencontrar a inscrição", async () => {
+await test("no AMF o e-mail só reencontra a inscrição com o mesmo telefone", async () => {
   const primeira = await inscrever({ email: "amf@exemplo.com", course: "Direito" }, AMF.apiBase);
-  const outra = await checkout(dados({ email: "amf@exemplo.com", course: "Direito", phone: "(51) 98888-1111" }), AMF.apiBase);
-  assert.equal(outra.status, 201);
-  assert.equal((await outra.json()).orderId, primeira.orderId);
+  const outroTelefone = await checkout(dados({ email: "amf@exemplo.com", course: "Direito", phone: "(51) 98888-1111" }), AMF.apiBase);
+  assert.equal(outroTelefone.status, 409, "o e-mail de outra pessoa devolveu a inscrição dela");
+  const recusa = await outroTelefone.json();
+  assert.equal(recusa.orderId, undefined);
+  assert.equal(recusa.token, undefined);
+  const mesmaPessoa = await checkout(dados({ email: "amf@exemplo.com", course: "Direito" }), AMF.apiBase);
+  assert.equal(mesmaPessoa.status, 201);
+  assert.equal((await mesmaPessoa.json()).orderId, primeira.orderId);
 });
 
 await test("ao renovar um Pix vencido, vale a resposta de carona mais recente", async () => {
@@ -754,7 +760,8 @@ await test("aberto até 22/10 23:59:59 em Brasília e fechado a partir de 23/10 
   assert.ok(inscricoesAbertas(SEMANA, PRAZO));
   assert.ok(!inscricoesAbertas(SEMANA, PRAZO + 1));
   assert.ok(!inscricoesAbertas(SEMANA, Date.parse("2026-10-23T00:00:00-03:00")));
-  assert.ok(inscricoesAbertas(AMF, Date.parse("2030-01-01T00:00:00Z")), "o AMF ganhou prazo");
+  assert.ok(inscricoesAbertas(AMF, Date.parse("2026-09-12T23:59:59-03:00")), "o AMF fechou antes do fim de 12/09");
+  assert.ok(!inscricoesAbertas(AMF, Date.parse("2026-09-13T00:00:00-03:00")), "o AMF continua aberto depois de 12/09");
 
   relogio.agora = PRAZO;
   assert.equal((await checkout(dados())).status, 201, "fechou antes da hora");

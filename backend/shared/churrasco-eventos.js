@@ -37,8 +37,9 @@ export const EVENTOS_CHURRASCO = {
     cursoFixo: null,
     precoCents: null,
     pessoasPorInscricao: 1,
-    inscricoesAte: null,
-    inscricoesAteTexto: "",
+    // O evento foi em 12/09; as inscrições fecham no fim daquele dia.
+    inscricoesAte: "2026-09-12T23:59:59.999-03:00",
+    inscricoesAteTexto: "12/09 às 23h59",
     vagas: null,
     carona: false,
     recuperacao: false,

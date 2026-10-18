@@ -78,7 +78,9 @@ const app = express();
 // X-Forwarded-For, que o teste usa para simular visitantes diferentes.
 app.set("trust proxy", 1);
 app.use(express.json());
-registerChurrascoRoutes(app);
+// As inscrições do AMF fecharam em 12/09: os testes do fluxo rodam num
+// relógio de antes do prazo.
+registerChurrascoRoutes(app, { agora: () => Date.parse("2026-09-01T12:00:00-03:00") });
 
 const server = app.listen(0);
 await new Promise((resolve) => server.once("listening", resolve));

@@ -738,13 +738,10 @@ export function registrarRotasDoChurrasco(
         let existente = await buscarPorPessoa();
 
         if (existente) {
-          // Onde a inscrição se recupera com e-mail + código, ela não sai daqui
-          // só pelo e-mail: o telefone também precisa conferir. Sem isso,
-          // bastaria o e-mail de alguém para levar o código e o token dela.
-          if (
-            evento.recuperacao &&
-            normalizePhoneDigits(existente.telefone) !== dados.telefone
-          ) {
+          // A inscrição existente só volta (com código e token) se o telefone
+          // também conferir. Sem isso, bastaria o e-mail de alguém para levar
+          // o código, o token e o comprovante dela.
+          if (normalizePhoneDigits(existente.telefone) !== dados.telefone) {
             throw new OutraPessoa();
           }
 
@@ -1124,14 +1121,18 @@ export function registrarRotasDoChurrasco(
 }
 
 /** Todas as rotas de churrasco: o AMF em /api/churrasco, a Semana em /api/churrasco-semana-si. */
-export function registerChurrascoRoutes(app) {
+/** `agora` troca o relógio dos prazos — só os testes usam. */
+export function registerChurrascoRoutes(app, { agora } = {}) {
+  const relogio = agora ? { agora } : {};
   registrarRotasDoChurrasco(app, {
     evento: EVENTOS_CHURRASCO[EVENTO_AMF],
     registro: registroAmf,
     webhookLegado: true,
+    ...relogio,
   });
   registrarRotasDoChurrasco(app, {
     evento: EVENTOS_CHURRASCO[EVENTO_SEMANA_SI],
     registro: registroSemanaSi,
+    ...relogio,
   });
 }

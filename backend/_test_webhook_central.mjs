@@ -209,17 +209,22 @@ await test("pedido da loja no webhook do churrasco: ignorado, loja intacta", asy
 });
 
 await test("inscrição do churrasco: central despacha para o churrasco e confirma", async () => {
-  const criado = await (
-    await post("/api/churrasco/checkout", {
-      name: "Bruno Lima",
-      phone: "(51) 98888-7777",
-      email: "bruno@exemplo.com",
-      course: "Direito",
-    })
-  ).json();
-  const ref = criado.orderId;
-  assert.match(ref, /^CHURRASCO-/);
-  const orderId = [...mp.orders.values()].find((o) => o.external_reference === ref).id;
+  // A linha é plantada direto no registro: o checkout do AMF fechou em 12/09.
+  const { registroAmf } = await import("./churrasco-inscricoes.js");
+  const { categoryForCourse, priceCentsForCourse } = await import("./shared/churrasco.js");
+  const ref = "CHURRASCO-2026-WHCENTRAL1";
+  await registroAmf.criarInscricaoPendente({
+    id: ref,
+    nome: "Bruno Lima",
+    telefone: "51988887777",
+    curso: "Direito",
+    categoria: categoryForCourse("Direito"),
+    valorCents: priceCentsForCourse("Direito"),
+    email: "bruno@exemplo.com",
+  });
+  const order = novaOrder({ external_reference: ref, total_amount: (priceCentsForCourse("Direito") / 100).toFixed(2), processing_mode: "automatic" });
+  mp.orders.set(order.id, order);
+  const orderId = order.id;
 
   acreditar(orderId);
   assert.equal((await central(orderId)).status, 200);
