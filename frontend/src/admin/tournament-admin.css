@@ -1,4 +1,7 @@
-/* Torneio ao vivo: lançamento de placares pensado para o celular. */
+/* Placar do torneio: lançamento de placares pensado para o celular. */
+.adm-update { flex-wrap:wrap; }
+.adm-update > span { flex:1 1 220px; }
+.adm-page .adm-feedback .adm-reload { min-height:36px; padding:6px 14px; border:1px solid currentColor; border-radius:8px; color:inherit; font-weight:750; }
 .adm-tour-bar { display:flex; align-items:flex-start; justify-content:space-between; gap:10px; flex-wrap:wrap; }
 .adm-tour-bar > button small { color:var(--adm-dim); font-size:.66rem; }
 .adm-tour-list { display:grid; gap:12px; }

@@ -23,14 +23,14 @@ O frontend continua usando `VITE_API_URL` para chegar ao backend. O CORS aceita 
 - Banners: adicionar, remover, ordenar, enviar imagens, descrições acessíveis, links, dimensões, prioridade por data e intervalo do carrossel.
 - Imagens: upload PNG/JPEG/WebP/GIF de até 3 MB. Na seção Ajustes de imagens, use a mesma URL da imagem para definir enquadramento, posição, zoom, proporção, descrição e bordas.
 - Loja: abrir/encerrar, editar os produtos existentes, preços, descrições, imagens, capas, categorias, tamanhos, variações e estoque. Os identificadores e tipos dos produtos são preservados para manter a compatibilidade dos pedidos. Produtos ocultos também ficam indisponíveis no checkout.
-- Torneio: nome, banner, textos, abas, valor e prazo das inscrições, premiação, regulamento da página, URL de um novo PDF e textos da tabela (data, regra de classificação e observações). Placares, equipes e chaveamento ficam em **Torneio ao vivo**.
+- Torneio: nome, banner, textos, abas, valor e prazo das inscrições, premiação, regulamento da página, URL de um novo PDF e textos da tabela (data, regra de classificação e observações). Placares, equipes e chaveamento ficam em **Placar do torneio**.
 - Eventos: textos, banners, datas e horários exibidos, local e cardápio. Esses campos de apresentação não alteram os prazos e preços de cobrança dos churrascos, que continuam em `shared/churrasco-eventos.js`.
 
 Os dados de apresentação e regras publicados estão em uma configuração compartilhada. Os valores iniciais ficam em `backend/shared/site-defaults.js`. Não há edição de credenciais de pagamento, chaves privadas, código JavaScript ou regras de autenticação pelo painel.
 
-## Torneio ao vivo (placares da Copa AASIAM)
+## Placar do torneio (placares da Copa AASIAM)
 
-É a primeira seção do menu (`/admin?section=tournament`). Diferente das outras, **não usa Publicar alterações**: cada placar é salvo na hora e a página `/torneio-rocket-league` busca os dados sozinha a cada 20 segundos.
+É a primeira seção do menu (`/admin?section=placar`) e a que abre depois do login. Diferente das outras, **não usa Publicar alterações**: cada placar é salvo na hora e a página `/torneio-rocket-league` busca os dados sozinha a cada 20 segundos.
 
 - **Grupo A, B e C**: classificação calculada e as partidas do grupo. Em cada partida, preencha os gols, escolha o status (A jogar, Ao vivo ou Encerrado) e toque em **Salvar**. **Zerar** volta a partida para "A jogar". Só partidas encerradas contam na tabela.
 - **Mata-mata**: formato das quartas (MD3 por padrão), confrontos das quartas (com **Sugerir pela classificação** depois dos 26 jogos dos grupos) e as séries. Nas séries, informe as vitórias (ex.: 2 × 1) e, opcionalmente, o placar de cada jogo. O vencedor avança sozinho.
@@ -60,7 +60,9 @@ A interface é organizada por tarefa. Em **Aparência**, selecione a página e a
 
 Em **Loja e produtos**, busque e selecione um produto para editar seus detalhes. Os banners têm miniaturas e controles de ordem. A página do torneio tem abas para apresentação, inscrições, grupos, jogos, premiação e regulamento; os grupos oferecem edição direta dos nomes de equipes e jogadores. A data de encerramento das inscrições usa um seletor de data e hora de Brasília.
 
-As seções também podem ser abertas diretamente, por exemplo `/admin?section=appearance`. O login continua obrigatório.
+As seções também podem ser abertas diretamente, por exemplo `/admin?section=appearance`. O login continua obrigatório e, ao entrar, o painel abre em Placar do torneio.
+
+Quando um deploy novo é publicado com o painel aberto, aparece o aviso "Há uma versão nova do painel publicada". Recarregue a página e entre de novo para usar a versão atual.
 
 1. Entre em `/admin`.
 2. Escolha uma seção e edite os campos. Listas possuem botões para adicionar, remover e ordenar quando isso é compatível com o cadastro.

@@ -1,7 +1,7 @@
 import PageIcon from '../settings/PageIcon.jsx';
 import { pageName, pageIcon, synchronizePages } from '../../../backend/shared/page-settings.js';
 import { useEffect, useRef, useState } from 'react';
-import { ArrowUpRight, Check, Eye, Gamepad2, Image, LayoutTemplate, LogOut, Menu, Palette, Save, Settings2, ShieldCheck, ShoppingBag, Trophy, Users, X } from 'lucide-react';
+import { ArrowUpRight, Check, Eye, Gamepad2, Image, LayoutTemplate, LogOut, Menu, Palette, RefreshCw, Save, Settings2, ShieldCheck, ShoppingBag, Trophy, Users, X } from 'lucide-react';
 import { API_BASE, SITE_DEFAULTS } from '../settings/site.js';
 import { validateSiteConfig } from '../../../backend/shared/site-validation.js';
 import AdminEditors from './AdminEditors.jsx';
@@ -10,7 +10,7 @@ import './admin.css';
 import './admin-redesign.css';
 
 const sections = [
-  { id: 'tournament', title: 'Torneio ao vivo', icon: Trophy, description: 'Placares, classificação, mata-mata e equipes da Copa AASIAM. Cada placar é salvo na hora e aparece no site em até 20 segundos, sem precisar publicar.' },
+  { id: 'tournament', title: 'Placar do torneio', icon: Trophy, description: 'Lance os gols e o status das 26 partidas dos grupos e do mata-mata. Cada placar é salvo na hora, sem publicar, e aparece no site em até 20 segundos.' },
   { id: 'brand', title: 'Identidade', icon: Settings2, description: 'Nome da marca, logo, descrição e rodapé.' },
   { id: 'appearance', title: 'Aparência', icon: Palette, description: 'Cores, fonte e arredondamento em cada página e tema.' },
   { id: 'navigation', title: 'Barra de navegação', icon: Menu, description: 'Nomes das categorias e botões de eventos, links e visibilidade.' },
@@ -28,7 +28,7 @@ export default function AdminPage() {
   const [draft, setDraft] = useState(null);
   const [saved, setSaved] = useState(null);
   const [revision, setRevision] = useState(0);
-  const [active, setActive] = useState(() => { let section = new URLSearchParams(location.search).get('section'); section = ({ rocket: 'page-1', events: 'page-2', barbecue: 'page-2', torneio: 'tournament' })[section] || section; return sections.some(item => item.id === section) ? section : 'tournament'; });
+  const [active, setActive] = useState(() => { let section = new URLSearchParams(location.search).get('section'); section = ({ rocket: 'page-1', events: 'page-2', barbecue: 'page-2', torneio: 'tournament', placar: 'tournament' })[section] || section; return sections.some(item => item.id === section) ? section : 'tournament'; });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -36,6 +36,7 @@ export default function AdminPage() {
   const [preview, setPreview] = useState(false);
   const [previewPath, setPreviewPath] = useState('/');
   const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const [outdated, setOutdated] = useState(false);
   const frame = useRef(null);
   const draftRef = useRef(draft);
   draftRef.current = draft;
@@ -67,6 +68,24 @@ export default function AdminPage() {
   }, []);
   useEffect(() => { const timer = setTimeout(updatePreview, 600); return () => clearTimeout(timer); }, [draft, preview]);
 
+  /* Uma aba aberta antes de um deploy continua rodando o painel antigo (a sessão
+     fica só na memória, então ninguém recarrega). Compara o bundle carregado com
+     o publicado e avisa quando houver versão nova. */
+  useEffect(() => {
+    const loaded = document.querySelector('script[type="module"][src*="/assets/index-"]')?.getAttribute('src');
+    if (!loaded) return;
+    let alive = true;
+    async function check() {
+      try {
+        const latest = /\/assets\/index-[\w-]+\.js/.exec(await (await fetch('/', { cache: 'no-store' })).text())?.[0];
+        if (alive && latest && !loaded.endsWith(latest)) setOutdated(true);
+      } catch { /* sem rede: tenta de novo depois */ }
+    }
+    const timer = setInterval(check, 60000);
+    window.addEventListener('focus', check);
+    return () => { alive = false; clearInterval(timer); window.removeEventListener('focus', check); };
+  }, []);
+  const updateBanner = outdated && <div className="adm-feedback adm-success adm-update" role="status"><RefreshCw size={17} /><span>Há uma versão nova do painel publicada. Recarregue a página para usá-la; será preciso entrar de novo.</span><button type="button" className="adm-reload" onClick={() => location.reload()}>Recarregar</button></div>;
   async function request(path, options = {}, auth = token) {
     const response = await fetch(`${API_BASE}/api/admin${path}`, { ...options, headers: { 'Content-Type': 'application/json', ...(auth ? { Authorization: `Bearer ${auth}` } : {}), ...options.headers }, cache: 'no-store' });
     const data = await response.json().catch(() => ({}));
@@ -79,9 +98,11 @@ export default function AdminPage() {
     const config = synchronizePages(data.config || SITE_DEFAULTS);
     setDraft(config); setSaved(structuredClone(config)); setRevision(data.revision); setStorage(data.storage); setConfirmDiscard(false);
   }
+  // Depois do login o painel sempre abre no placar, a tarefa do dia do torneio.
+  function openSection(id) { setActive(id); setNotice(''); window.history.replaceState(null, '', `${location.pathname}?section=${id}`); window.scrollTo({ top: 0 }); }
   async function login(event) {
     event.preventDefault(); setBusy(true); setError('');
-    try { const data = await request('/login', { method: 'POST', body: JSON.stringify({ username, password }) }, ''); setToken(data.token); setPassword(''); await load(data.token); }
+    try { const data = await request('/login', { method: 'POST', body: JSON.stringify({ username, password }) }, ''); setToken(data.token); setPassword(''); await load(data.token); openSection('tournament'); }
     catch (error) { setError(error.message); }
     finally { setBusy(false); }
   }
@@ -104,12 +125,12 @@ export default function AdminPage() {
     catch (error) { setError(error.message); }
     finally { setBusy(false); }
   }
-  if (!token) return <div className="adm-page adm-login-page"><main className="adm-login"><div className="adm-emblem"><ShieldCheck size={28} /></div><span className="adm-eyebrow">AASIAM · ACESSO RESTRITO</span><h1>Seu site, do seu jeito.</h1><p>Entre para administrar o conteúdo e a aparência da loja.</p><form onSubmit={login}><label className="adm-field"><span>Usuário</span><input value={username} onChange={event => setUsername(event.target.value)} autoComplete="username" required /></label><label className="adm-field"><span>Senha</span><input type="password" value={password} onChange={event => setPassword(event.target.value)} autoComplete="current-password" required /></label>{error && <p className="adm-error" role="alert">{error}</p>}<button className="adm-primary" disabled={busy}>{busy ? 'Entrando…' : 'Entrar no painel'} <ArrowUpRight size={17} /></button></form><small>Área privada da administração.</small></main></div>;
+  if (!token) return <div className="adm-page adm-login-page"><main className="adm-login"><div className="adm-emblem"><ShieldCheck size={28} /></div><span className="adm-eyebrow">AASIAM · ACESSO RESTRITO</span><h1>Seu site, do seu jeito.</h1><p>Entre para administrar o conteúdo e a aparência da loja.</p>{updateBanner}<form onSubmit={login}><label className="adm-field"><span>Usuário</span><input value={username} onChange={event => setUsername(event.target.value)} autoComplete="username" required /></label><label className="adm-field"><span>Senha</span><input type="password" value={password} onChange={event => setPassword(event.target.value)} autoComplete="current-password" required /></label>{error && <p className="adm-error" role="alert">{error}</p>}<button className="adm-primary" disabled={busy}>{busy ? 'Entrando…' : 'Entrar no painel'} <ArrowUpRight size={17} /></button></form><small>Área privada da administração.</small></main></div>;
   if (!draft) return <div className="adm-page adm-login-page"><div className="adm-login"><h1>Carregando configurações…</h1>{error && <p className="adm-error" role="alert">{error}</p>}<button onClick={() => { setError(''); load().catch(error => setError(error.message)); }}>Tentar novamente</button></div></div>;
-  return <div className="adm-page"><aside className="adm-sidebar"><div className="adm-brand"><ShieldCheck size={22} /><div>AASIAM <span>Administração</span></div></div><span className="adm-nav-caption">CONFIGURAÇÕES DO SITE</span><nav aria-label="Configurações administrativas">{visibleSections.map(item => <button type="button" key={item.id} className={active === item.id ? 'is-active' : ''} aria-current={active === item.id ? 'page' : undefined} onClick={() => { setActive(item.id); setNotice(''); window.history.replaceState(null, '', `${location.pathname}?section=${item.id}`); window.scrollTo({ top: 0 }); }}><item.icon size={18} />{item.title}</button>)}</nav><div className="adm-sidebar-footer"><span><ShieldCheck size={14} /> Sessão protegida · 4 horas</span><button type="button" disabled={busy} onClick={() => dirty ? setConfirmDiscard('logout') : logout()}><LogOut size={16} /> Sair do painel</button></div></aside>
+  return <div className="adm-page"><aside className="adm-sidebar"><div className="adm-brand"><ShieldCheck size={22} /><div>AASIAM <span>Administração</span></div></div><span className="adm-nav-caption">CONFIGURAÇÕES DO SITE</span><nav aria-label="Configurações administrativas">{visibleSections.map(item => <button type="button" key={item.id} className={active === item.id ? 'is-active' : ''} aria-current={active === item.id ? 'page' : undefined} onClick={() => openSection(item.id)}><item.icon size={18} />{item.title}</button>)}</nav><div className="adm-sidebar-footer"><span><ShieldCheck size={14} /> Sessão protegida · 4 horas</span><button type="button" disabled={busy} onClick={() => dirty ? setConfirmDiscard('logout') : logout()}><LogOut size={16} /> Sair do painel</button></div></aside>
     <div className="adm-workspace">{(active !== 'tournament' || dirty) && <header className="adm-topbar"><div><span className={`adm-status ${dirty ? 'is-dirty' : ''}`} />{dirty ? 'Alterações não publicadas' : 'Tudo publicado'}<small>{dirty ? 'Confira a prévia e publique quando estiver pronto.' : 'As configurações estão sincronizadas.'}</small></div><div className="adm-top-actions"><button type="button" onClick={() => setPreview(true)}><Eye size={16} /> Prévia do site</button><button type="button" className="adm-primary" disabled={busy || !dirty} onClick={publish}><Save size={16} />{busy ? 'Publicando…' : 'Publicar alterações'}</button></div></header>}
       <main className="adm-main"><div className="adm-page-heading"><span className="adm-eyebrow">SEU SITE, DO SEU JEITO</span><h1>{section.title}</h1><p>{section.description}</p></div>
-        {error && <div className="adm-feedback adm-error" role="alert">{error}<button aria-label="Fechar erro" onClick={() => setError('')}><X size={16} /></button></div>}{notice && <div className="adm-feedback adm-success" role="status"><Check size={17} />{notice}</div>}
+        {updateBanner}{error && <div className="adm-feedback adm-error" role="alert">{error}<button aria-label="Fechar erro" onClick={() => setError('')}><X size={16} /></button></div>}{notice && <div className="adm-feedback adm-success" role="status"><Check size={17} />{notice}</div>}
         <div className="adm-editor adm-editor-workspace" key={active}>{active === 'tournament' ? <TournamentAdmin request={request} /> : <AdminEditors onConfigChange={next => { setDraft(synchronizePages(next)); setNotice(''); }} section={active} value={draft[active]} config={draft} upload={upload} onChange={value => { setDraft(current => synchronizePages({ ...current, [active]: value })); setNotice(''); }} />}</div>
         {active !== 'tournament' && <div className="adm-bottom-actions"><p>As alterações só entram no site depois de publicar.</p><button type="button" disabled={busy || !dirty} onClick={() => setConfirmDiscard('reload')}>Descartar alterações</button></div>}
       </main></div>
