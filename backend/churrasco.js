@@ -868,7 +868,7 @@ export function registrarRotasDoChurrasco(
     statusPorPedidoLimiter,
     async (req, res) => {
       const orderId = String(req.params.orderId || "").slice(0, 60);
-      const token = req.get("X-Inscricao-Token") || String(req.query.token || "");
+      const token = req.get("X-Inscricao-Token") || "";
 
       // Token errado responde 404: nem confirma nem nega que o pedido existe.
       if (!referenciaDoEvento(orderId, evento) || !tokenConfere(orderId, token)) {

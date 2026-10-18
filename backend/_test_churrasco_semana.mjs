@@ -87,6 +87,9 @@ const relogio = { agora: ANTES_DO_PRAZO };
 const agora = () => relogio.agora;
 
 const app = express();
+// Igual à produção (index.js): o IP do cliente vem do último salto do
+// X-Forwarded-For, que o teste usa para simular visitantes diferentes.
+app.set("trust proxy", 1);
 app.use(express.json());
 registrarRotasDoChurrasco(app, { evento: AMF, registro: registroAmf, webhookLegado: true });
 registrarRotasDoChurrasco(app, { evento: SEMANA, registro: registroSemanaSi, agora });

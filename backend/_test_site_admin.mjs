@@ -92,8 +92,10 @@ try {
   const server2 = app2.listen(0, '127.0.0.1'); await once(server2, 'listening');
   try { check((await fetch(`http://127.0.0.1:${server2.address().port}/api/admin/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: 'admin', password }) })).status === 503); }
   finally { await new Promise(resolve => server2.close(resolve)); }
-  for (let i = 0; i < 8; i++) await call('/api/admin/login', { body: { username: 'admin', password: 'errada' } });
-  check((await call('/api/admin/login', { body: { username: 'admin', password: 'errada' } })).status === 429);
+  // Login: o acerto acima zerou a contagem; 10 erradas passam, a 11ª é bloqueada.
+  for (let i = 0; i < 10; i++) check((await call('/api/admin/login', { body: { username: 'admin', password: 'errada' } })).status === 401);
+  const blocked = await call('/api/admin/login', { body: { username: 'admin', password: 'errada' } });
+  check(blocked.status === 429 && /^Muitas tentativas, aguarde 15 minutos\.$/.test(blocked.data.error) && Number(blocked.headers.get('retry-after')) > 840);
   const table = new Map();
   const ranges = [];
   const fakeSheets = { spreadsheets: {

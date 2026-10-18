@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import express from 'express';
 import { promisify } from 'node:util';
-import { rateLimit } from './rate-limit.js';
+import { attemptLimiter, rateLimit } from './rate-limit.js';
 import { createSiteStore } from './site-store.js';
 import { validateSiteConfig } from './shared/site-validation.js';
 import { applySiteCommerce } from './site-commerce.js';
@@ -75,11 +75,23 @@ export function registerSiteAdmin(app, { store = createSiteStore(), password = p
   });
   const router = express.Router();
   router.use((_req, res, next) => { res.set('Cache-Control', 'no-store'); res.set('X-Robots-Tag', 'noindex, nofollow, noarchive'); next(); });
-  router.post('/login', rateLimit({ windowMs: 15 * 60000, max: 10, keyFrom: req => req.ip }), async (req, res) => {
+  // 10 tentativas erradas por IP a cada 15 min; o acerto zera a contagem.
+  const loginAttempts = attemptLimiter({ windowMs: 15 * 60000, max: 10 });
+  router.post('/login', async (req, res) => {
     if (!enabled) return res.status(503).json({ ok: false, error: 'Acesso administrativo ainda não configurado no servidor.' });
+    const wait = loginAttempts.bloqueado(req);
+    if (wait) {
+      const minutes = Math.ceil(wait / 60);
+      res.set('Retry-After', String(wait));
+      return res.status(429).json({ ok: false, error: `Muitas tentativas, aguarde ${minutes} ${minutes === 1 ? 'minuto' : 'minutos'}.` });
+    }
     const candidate = typeof req.body?.password === 'string' ? req.body.password.slice(0, 1024) : '';
     const actual = await scrypt(candidate, salt, 64);
-    if (!crypto.timingSafeEqual(actual, await expected) || !equal(req.body?.username, username)) return res.status(401).json({ ok: false, error: 'Usuário ou senha inválidos.' });
+    if (!crypto.timingSafeEqual(actual, await expected) || !equal(req.body?.username, username)) {
+      loginAttempts.falhou(req);
+      return res.status(401).json({ ok: false, error: 'Usuário ou senha inválidos.' });
+    }
+    loginAttempts.acertou(req);
     for (const [key, session] of sessions) if (session.expiresAt <= Date.now()) sessions.delete(key);
     if (sessions.size >= 50) sessions.delete(sessions.keys().next().value);
     const token = crypto.randomBytes(32).toString('base64url');
@@ -117,7 +129,7 @@ export function registerSiteAdmin(app, { store = createSiteStore(), password = p
     };
     queue = queue.then(task, task);
   });
-  router.post('/media', rateLimit({ windowMs: 60000, max: 15, keyFrom: req => req.ip }), async (req, res) => {
+  router.post('/media', rateLimit({ windowMs: 60000, max: 15 }), async (req, res) => {
     const mime = req.body?.mime;
     const data = req.body?.base64;
     if (!['image/png', 'image/jpeg', 'image/webp', 'image/gif'].includes(mime) || typeof data !== 'string' || !/^[A-Za-z0-9+/]+={0,2}$/.test(data)) return res.status(400).json({ ok: false, error: 'Envie uma imagem PNG, JPEG, WebP ou GIF.' });
@@ -139,7 +151,7 @@ export function registerSiteAdmin(app, { store = createSiteStore(), password = p
     try { res.json({ ok: true, ...await load() }); }
     catch { res.status(503).json({ ok: false, error: 'Configuração temporariamente indisponível.' }); }
   });
-  app.get('/api/site/media/:id', rateLimit({ windowMs: 60000, max: 300, keyFrom: req => req.ip }), async (req, res) => {
+  app.get('/api/site/media/:id', rateLimit({ windowMs: 60000, max: 300 }), async (req, res) => {
     if (!/^[a-f0-9]{40}$/.test(req.params.id)) return res.sendStatus(404);
     try {
       const id = req.params.id;

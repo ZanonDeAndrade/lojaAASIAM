@@ -74,6 +74,9 @@ const {
 } = await import("./shared/churrasco.js");
 
 const app = express();
+// Igual à produção (index.js): o IP do cliente vem do último salto do
+// X-Forwarded-For, que o teste usa para simular visitantes diferentes.
+app.set("trust proxy", 1);
 app.use(express.json());
 registerChurrascoRoutes(app);
 

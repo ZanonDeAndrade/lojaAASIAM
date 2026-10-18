@@ -34,12 +34,27 @@ import {
   registerRocketRoutes,
   aplicarWebhookRocket,
 } from "./rocket.js";
-import { rateLimit } from "./rate-limit.js";
+import { rateLimit, rateLimitDisabled } from "./rate-limit.js";
 import { registerSiteAdmin } from './site-admin.js';
 import { registerRocketTournament } from './rocket-torneio.js';
 
 const app = express();
 const port = process.env.PORT || 3333;
+
+/* ─── PROXY ───
+   No Render o IP do cliente chega no X-Forwarded-For, mas só os últimos
+   TRUST_PROXY_HOPS endereços foram escritos pela infraestrutura — o resto o
+   próprio cliente pode inventar. O Express usa isso para calcular `req.ip`,
+   que é a chave de todos os limites de requisições. */
+const TRUST_PROXY_HOPS = trustProxyHops(process.env.TRUST_PROXY_HOPS);
+app.set("trust proxy", TRUST_PROXY_HOPS);
+app.disable("x-powered-by");
+
+function trustProxyHops(valor) {
+  if (valor === undefined || String(valor).trim() === "") return 1;
+  const saltos = Number(valor);
+  return Number.isInteger(saltos) && saltos >= 0 && saltos <= 10 ? saltos : 1;
+}
 const defaultGoogleSheetName = process.env.GOOGLE_SHEETS_SHEET_NAME || "Pedidos";
 
 // Cache em memória dos pedidos recentes do checkout legado (orderId → { items, totalCents, customer })
@@ -167,9 +182,15 @@ app.post("/api/mercadopago/webhook", webhookCentralLimiter, async (req, res) => 
   }
 });
 
-app.get("/api/health", (_req, res) => {
+app.get("/api/health", (req, res) => {
   res.json({
     ok: true,
+    // Diagnóstico do proxy, sem expor endereços: quantos IPs chegaram no
+    // X-Forwarded-For e quantos saltos o servidor confia (TRUST_PROXY_HOPS).
+    proxy: {
+      xffHops: String(req.get("x-forwarded-for") || "").split(",").map((ip) => ip.trim()).filter(Boolean).length,
+      trustProxyHops: TRUST_PROXY_HOPS,
+    },
     infinitePayConfigured: Boolean(process.env.INFINITEPAY_HANDLE),
     googleSheetsConfigured: isGoogleSheetsConfigured(),
     // Só diz se está configurado — nunca a credencial em si.
@@ -379,6 +400,8 @@ app.listen(port, () => {
   console.log(`API_URL : ${process.env.API_URL  || "⚠ não definido (fallback localhost)"}`);
   console.log(`CORS    : ${[...ALLOWED_ORIGINS].join(", ")} + *.vercel.app`);
   console.log(`InfinitePay handle: ${process.env.INFINITEPAY_HANDLE || "⚠ NÃO CONFIGURADO"}`);
+  console.log(`Proxy   : confia em ${TRUST_PROXY_HOPS} salto(s) do X-Forwarded-For (TRUST_PROXY_HOPS)`);
+  if (rateLimitDisabled()) console.log("Limites : ⚠ DESLIGADOS (RATE_LIMIT_DISABLED=true)");
 
   // Diagnóstico do Mercado Pago — churrasco (Pix) + loja (cartão e Pix).
   const apiBase = (process.env.API_URL || "http://localhost:3333").replace(/\/$/, "");

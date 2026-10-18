@@ -866,7 +866,7 @@ export function registerLojaRoutes(app) {
   /** Status do pedido — exige o token derivado da própria referência. */
   app.get("/api/loja/pedidos/:orderId/status", statusPorPedidoLimiter, async (req, res) => {
     const orderId = String(req.params.orderId || "").slice(0, 60);
-    const token = req.get("X-Pedido-Token") || String(req.query.token || "");
+    const token = req.get("X-Pedido-Token") || "";
 
     if (!isLojaOrder(orderId) || !tokenConfere(orderId, token)) {
       return res.status(404).json({ ok: false, error: "Pedido não encontrado." });
