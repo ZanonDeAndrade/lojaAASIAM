@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "test:admin": "node _test_site_admin.mjs",
     "start": "node index.js",
     "build": "for f in *.js shared/*.js; do node --check \"$f\" || exit 1; done",
     "dev": "node --watch index.js",

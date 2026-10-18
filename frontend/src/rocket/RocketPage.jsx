@@ -1,32 +1,16 @@
+import { PageSections } from '../settings/CustomPage.jsx';
+import PageIcon from '../settings/PageIcon.jsx';
+import { pageIcon, pageName, pageSettings } from '../../../backend/shared/page-settings.js';
 import { AlertCircle, ArrowLeft, Award, CheckCircle2, Copy, Download, ExternalLink, FileText, Gamepad2, Loader2, Medal, QrCode, ShieldCheck, Trophy, Users } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
-import rocketBanner from '../../../BannerRocket.png';
 import officialRegulation from '../../../Regulamento Oficial - Campeonato Rocket League AASIAM.pdf_20260925_153129_0000.pdf';
 import { formatPhoneBR, validatePhone } from '../shared/churrasco.js';
 import './rocket.css';
+
 import MatchSchedule from './MatchSchedule.jsx';
-
-const AVISO_TROFEU = 'Imagem do troféu meramente ilustrativa. O modelo final pode sofrer alterações.';
-const AVISO_MEDALHAS = 'Imagens das medalhas meramente ilustrativas. Os modelos finais podem sofrer alterações.';
-
-/* Artes oficiais da premiação (1º, 2º e 3º lugar), 4:5, com os itens de cada
-   colocação (só o 1º lugar tem troféu) e o selo "IMAGEM ILUSTRATIVA" dentro da própria arte. Ficam em
-   /public/imgs (webp com fallback png) e entram inteiras, sem corte. */
-const PRIZES = [
-	{
-		place: '1º lugar', medal: 'ouro', text: '1 troféu, 2 medalhas e 2 Jerseys AASIAM.', note: AVISO_TROFEU,
-		image: '/imgs/premio-1o-lugar', alt: 'Premiação do 1º lugar: troféu, duas jerseys oficiais da AASIAM e medalhas',
-	},
-	{
-		place: '2º lugar', medal: 'prata', text: '2 medalhas e 2 camisetas AASIAM.', note: AVISO_MEDALHAS,
-		image: '/imgs/premio-2o-lugar', alt: 'Premiação do 2º lugar: duas camisas oficiais da AASIAM e medalhas',
-	},
-	{
-		place: '3º lugar', medal: 'bronze', text: '2 medalhas e 2 canecas AASIAM.', note: AVISO_MEDALHAS,
-		image: '/imgs/premio-3o-lugar', alt: 'Premiação do 3º lugar: duas canecas com tirante da AASIAM e medalhas',
-	},
-];
+import { site, assetUrl, tournamentInfo } from '../settings/site.js';
+import SiteImage from '../settings/SiteImage.jsx';
 
 const API_BASE = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
 const STORAGE_ORDER = 'aasiam-rocket-registration';
@@ -40,82 +24,6 @@ const EMPTY_DRAFT = {
 
 /* Os três destaques que o PDF oficial traz logo abaixo do título — abrem
    também o regulamento nesta página. */
-const TORNEIO_INFO = [
-	{ label: 'Valor por equipe', value: 'R$ 50,00', hint: 'Com ou sem reserva' },
-	{ label: 'Prazo de inscrição', value: '17/10/2026', hint: 'Até 23:59 (horário de Brasília)' },
-	{ label: 'Modalidade', value: '2x2', hint: 'Sem limite de equipes' },
-];
-
-/* Transcrição fiel do Regulamento Oficial (PDF anexo) — nenhuma regra, número
-   ou palavra das seções 1 a 4 foi alterada, exceto o prazo da seção 2
-   (prorrogado para 17/10/2026). A seção 5 (Premiação) também é uma exceção
-   deliberada: veja a nota junto a ela. Estrutura em dados, e não em
-   texto solto, só para reaproveitar o mesmo componente de seção no documento
-   inteiro. */
-/* PENDÊNCIAS PARA A ORGANIZAÇÃO (uso interno — não aparecem na página):
-   - O limite de 20 equipes deixou de valer nas inscrições feitas neste site. O trecho acima segue igual ao PDF oficial e precisa de nova versão da organização.
-   - Este formato depende de 20 equipes. Como as inscrições não têm mais limite, a organização precisa definir e publicar o formato oficial atualizado.
-   - O site aceita participantes de outras instituições (sem vínculo nem RA da AMF). O "Requisito Acadêmico" da seção 2 ainda exige que todos sejam da instituição e precisa de nova versão da organização.
-   - Prazo prorrogado para 17/10/2026 (23:59, horário de Brasília). A seção 2 abaixo já traz a nova data; o PDF oficial ainda diz 10/10/2026.
-   - O PDF para download ainda traz a premiação anterior: 1º lugar sem medalhas, 2º lugar com "Duas Camisas Oficiais (verde/cinza)" sem medalhas e 3º lugar sem medalhas. A organização precisa publicar uma nova versão do PDF com a lista acima.
-   Os textos abaixo seguem o PDF oficial, exceto o prazo da seção 2 e a seção 5, que já traz a premiação atual. */
-const REGULATION_SECTIONS = [
-	{
-		title: '1. Organização e apresentação',
-		paragraphs: [
-			'O presente regulamento rege o campeonato de Rocket League 2x2 promovido pela AASIAM (Associação Atlética de Sistemas de Informação Antonio Meneghetti - Alcateia de Chernobyl). O evento tem como objetivos integrar a comunidade acadêmica, fomentar os e-sports na instituição e arrecadar fundos para as iniciativas da atlética.',
-		],
-	},
-	{
-		title: '2. Inscrições, elegibilidade e jogador reserva',
-		items: [
-			{ label: 'Composição da Equipe', text: 'Cada equipe deve ser formada obrigatoriamente por 2 (dois) jogadores titulares.' },
-			{ label: 'Atleta Reserva (Opcional)', text: 'A inscrição de 1 (um) jogador reserva por equipe é totalmente opcional, não sendo obrigatória para a participação no campeonato. Caso inscrito, o reserva deve ser cadastrado previamente junto aos titulares.' },
-			{ label: 'Requisito Acadêmico', text: 'Todos os integrantes (titulares e eventuais reservas) devem ser alunos atuais, professores ou egressos (ex-alunos) da instituição de ensino.' },
-			{ label: 'Dados Obrigatórios', text: 'No ato da inscrição, a equipe deve fornecer: Nome da Equipe, Nome Completo e RA de todos os integrantes (e do reserva, se houver), além do contato do capitão.' },
-			{ label: 'Confirmação de Vaga', text: 'A inscrição é validada estritamente mediante o envio do comprovante de pagamento da taxa de R$ 50,00 aos canais oficiais da AASIAM (https://www.aasiam.com.br/) até 17/10/2026.' },
-		],
-		callout: 'Atenção: Vagas limitadas a 20 equipes. O preenchimento obedece à ordem de envio do comprovante de pagamento à organização.',
-	},
-	{
-		title: '3. Formato do campeonato e sistema de pontuação',
-		items: [
-			{ label: 'Fase de Grupos (Online)', text: 'As 20 equipes serão divididas em 4 grupos de 5 equipes. Todos jogam contra todos em partida única. Cada vitória soma +1 ponto na tabela de classificação. Para agilidade, 4 partidas simultâneas ocorrerão por blocos de horários. Avançam os 2 melhores de cada grupo (Total: 8 equipes).' },
-			{
-				label: 'Critérios de Desempate (Fase de Grupos)',
-				text: 'Em caso de empate em pontos entre duas ou mais equipes, os critérios aplicados em ordem estrita são:',
-				list: [
-					'1) Confronto Direto;',
-					'2) Saldo de Gols (SG);',
-					'3) Maior Número de Gols Marcados (GM);',
-					'4) Menor Número de Gols Sofridos (GS);',
-					'5) Partida de desempate (Tiebreaker) organizada pela Comissão Organizador.',
-				],
-			},
-			{ label: 'Quartas de Final e Semifinais (Online)', text: 'Sistema eliminatório simples em MD3 (Melhor de 3 partidas).' },
-			{ label: 'Grande Final (Presencial)', text: 'Realizada na faculdade em confronto decisivo MD5 (Melhor de 5 partidas).' },
-		],
-	},
-	{
-		title: '4. Regras de queda de conexão e W.O.',
-		callout: 'Regra de Queda de Conexão: Se houver queda de conexão, a partida será reiniciada mantendo o placar atual proporcional ao momento da queda. Caso a queda ocorra com menos de 1 minuto de jogo decorrido, a partida será reiniciada do zero. Se a queda do mesmo jogador ocorrer mais de uma vez na mesma série, o uso do jogador reserva (caso cadastrado) será obrigatório para a continuidade.',
-		calloutFirst: true,
-		items: [
-			{ label: 'Regra Rigorosa de W.O.', text: 'Tolerância máxima de 15 minutos a partir do horário oficial da partida. A ausência de jogadores suficientes acarreta W.O. (derrota por 1x0) ou seja o time que ganhar a partida por W.O soma +1 ponto e +1x gol para o saldo de gols, consequentemente a equipe penalizada por W.O não soma pontos e recebe -1 gol no saldo de gols.' },
-			{ label: 'Conduta e Integridade', text: 'Ofensas no chat, toxicidade ou tentativas de burlar regras resultam em advertência e desclassificação imediata sem reembolso.' },
-		],
-	},
-	{
-		/* Premiação atualizada em 2026-09-29 (igual aos cards da página). O PDF
-		   oficial para download traz outra lista (ver as pendências no topo). */
-		title: '5. Premiação oficial',
-		items: [
-			{ icon: Trophy, label: '1º Lugar (Campeões)', text: '1 troféu, 2 medalhas e 2 Jerseys AASIAM.' },
-			{ icon: Medal, label: '2º Lugar (Vice-campeões)', text: '2 medalhas e 2 camisetas AASIAM.' },
-			{ icon: Award, label: '3º Lugar', text: '2 medalhas e 2 canecas AASIAM.' },
-		],
-	},
-];
 
 function load(key, fallback) {
 	try { const value = JSON.parse(localStorage.getItem(key) || ''); return value || fallback; } catch { return fallback; }
@@ -133,7 +41,7 @@ function validEmail(value) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(val
 function scrollTop() { window.scrollTo({ top: 0, behavior: 'smooth' }); }
 
 function Header() {
-	return <header className="rl-header"><a href="/" className="rl-brand"><img src="/logo-aasiam.webp" alt="" /><span>AASIAM</span></a><a className="rl-store-link" href="/"><ArrowLeft size={16} /> Loja oficial</a></header>;
+	return <header className="rl-header"><a href="/" className="rl-brand"><img src={assetUrl(site.brand.logo)} alt="" /><span>{site.brand.name}</span></a><a className="rl-store-link" href="/"><ArrowLeft size={16} /> Loja oficial</a></header>;
 }
 
 /* Faixa reaproveitada em cima da inscrição (valor/prazo/vagas) e do
@@ -144,13 +52,13 @@ function InfoStrip({ items }) {
 
 function RegulationSection({ section }) {
 	const callout = section.callout && <div className="rl-callout"><AlertCircle size={18} aria-hidden="true" /><p>{section.callout}</p></div>;
-	const items = section.items && <ul className="rl-reg-list">{section.items.map(item => { const Icon = item.icon; return <li key={item.label}>{Icon && <Icon size={18} className="rl-reg-icon" aria-hidden="true" />}<div><strong>{item.label}:</strong> {item.text}{item.pendencia && pending(item.pendencia)}{item.list && <ul className="rl-reg-sublist">{item.list.map(entry => <li key={entry}>{entry}</li>)}</ul>}</div></li>; })}</ul>;
+	const items = section.items && <ul className="rl-reg-list">{section.items.map(item => { const Icon = { Trophy, Medal, Award }[item.icon]; return <li key={item.label}>{Icon && <Icon size={18} className="rl-reg-icon" aria-hidden="true" />}<div><strong>{item.label}:</strong> {item.text}{item.list && <ul className="rl-reg-sublist">{item.list.map(entry => <li key={entry}>{entry}</li>)}</ul>}</div></li>; })}</ul>;
 	return <section className="rl-reg-section"><h2>{section.title}</h2>{section.paragraphs?.map(p => <p key={p}>{p}</p>)}{section.calloutFirst ? <>{callout}{items}</> : <>{items}{callout}</>}</section>;
 }
 
 export function RocketRegulationPage() {
-	useEffect(() => { document.title = 'Regulamento Oficial | Rocket League AASIAM'; }, []);
-	return <div className="rl-page"><Header /><main className="rl-regulation-wrap"><a className="rl-back-link" href="/torneio-rocket-league"><ArrowLeft size={17} /> Voltar ao torneio</a><div className="rl-regulation-head"><span className="rl-eyebrow"><FileText size={16} /> Documento oficial</span><h1>Regulamento Oficial: Torneio Rocket League 2x2</h1><p>Associação Atlética de Sistemas de Informação Antonio Meneghetti (AASIAM — Alcateia de Chernobyl)</p><a className="rl-button rl-button-primary" href={officialRegulation} download="Regulamento Oficial - Campeonato Rocket League AASIAM.pdf"><Download size={18} /> Baixar regulamento em PDF</a></div><InfoStrip items={TORNEIO_INFO} /><div className="rl-reg-body">{REGULATION_SECTIONS.map(section => <RegulationSection key={section.title} section={section} />)}</div></main><footer className="rl-footer">© 2026 AASIAM · Torneio Rocket League 2x2</footer></div>;
+	useEffect(() => { document.title = `Regulamento | ${site.rocket.title}`; }, []);
+	return <div className="rl-page"><Header /><main className="rl-regulation-wrap"><a className="rl-back-link" href="/torneio-rocket-league"><ArrowLeft size={17} /> Voltar para {pageName(site, 'rocket')}</a><div className="rl-regulation-head"><span className="rl-eyebrow"><FileText size={16} /> Documento oficial</span><h1>Regulamento Oficial: {site.rocket.title}</h1><p>Associação Atlética de Sistemas de Informação Antonio Meneghetti (AASIAM — Alcateia de Chernobyl)</p><a className="rl-button rl-button-primary" href={site.rocket.regulationUrl || officialRegulation} download="Regulamento Oficial - Campeonato Rocket League AASIAM.pdf"><Download size={18} /> Baixar regulamento em PDF</a></div><InfoStrip items={tournamentInfo()} /><div className="rl-reg-body">{site.rocket.regulation.map(section => <RegulationSection key={section.title} section={section} />)}</div></main><footer className="rl-footer">{site.brand.footer} · {site.rocket.title}</footer></div>;
 }
 
 /* A arte já traz o título pintado (TORNEIO DE ROCKET LEAGUE — AASIAM), então
@@ -158,24 +66,20 @@ export function RocketRegulationPage() {
    banner da home. O H1 de verdade (para leitor de tela e SEO) vem logo
    abaixo, sobre o fundo da própria página. */
 function Hero({ availability, onRegister }) {
-	return <section className="rl-hero-block"><div className="rl-hero"><img className="rl-hero-img" src={rocketBanner} alt="Arte oficial do Torneio de Rocket League da AASIAM" /></div><div className="rl-hero-intro"><span className="rl-eyebrow"><Gamepad2 size={16} /> AASIAM apresenta</span><h1>Torneio Rocket League 2x2</h1><p>Monte sua dupla e entre na arena.</p><button className="rl-button rl-button-primary" type="button" onClick={onRegister} disabled={availability && !availability.open}>{availability?.reason === 'encerradas' ? 'Inscrições encerradas' : 'Inscrever equipe'}</button></div></section>;
+	return <section className="rl-hero-block"><div className="rl-hero"><SiteImage className="rl-hero-img" src={site.rocket.banner} alt={site.rocket.bannerAlt} /></div><div className="rl-hero-intro"><span className="rl-eyebrow"><PageIcon name={pageIcon(site, 'rocket')} size={16} /> {site.brand.name} apresenta</span><h1>{site.rocket.title}</h1><p>{site.rocket.subtitle}</p>{pageSettings(site, 'rocket').showRegistration && <button className="rl-button rl-button-primary" type="button" onClick={onRegister} disabled={availability && !availability.open}>{availability?.reason === 'encerradas' ? 'Inscrições encerradas' : site.rocket.registerLabel}</button>}</div></section>;
 }
 
 function About() {
-	const info = [
-		{ label: 'Valor por equipe', value: 'R$ 50,00', hint: 'Com ou sem reserva' },
-		{ label: 'Prazo de inscrição', value: '17/10/2026', hint: 'Até 23:59 (horário de Brasília)' },
-		{ label: 'Formação', value: '2 titulares', hint: '+ 1 reserva opcional' },
-	];
-	return <section className="rl-about"><div className="rl-panel-head"><span className="rl-eyebrow"><Trophy size={16} /> Sobre o torneio</span><h2>Grupos e mata-mata online, grande final presencial</h2><p>Rocket League 2x2 promovido pela AASIAM — Alcateia de Chernobyl. As equipes inscritas se enfrentam em grupos e mata-mata online; a grande final acontece presencialmente na faculdade.</p></div><InfoStrip items={info} /></section>;
+
+	return <section className="rl-about"><div className="rl-panel-head"><span className="rl-eyebrow"><Trophy size={16} /> Sobre {pageName(site, 'rocket')}</span><h2>{site.rocket.aboutTitle}</h2><p>{site.rocket.aboutDescription}</p></div><InfoStrip items={tournamentInfo()} /></section>;
 }
 
 function PrizeCard({ prize }) {
 	return <article className={`rl-prize-card rl-prize-${prize.medal}`}>
 		<figure className="rl-prize-media">
 			<picture>
-				<source srcSet={`${prize.image}.webp`} type="image/webp" />
-				<img src={`${prize.image}.png`} alt={prize.alt} width="1080" height="1350" loading="lazy" decoding="async" />
+
+				<SiteImage src={/\.[a-z]+$/i.test(prize.image) || prize.image.startsWith('/api/') ? prize.image : `${prize.image}.png`} alt={prize.alt} width="1080" height="1350" loading="lazy" decoding="async" />
 			</picture>
 			<figcaption className="rl-prize-trophy-note">{prize.note}</figcaption>
 		</figure>
@@ -189,7 +93,7 @@ function PrizeCard({ prize }) {
 /* Premiação em cards — um por colocação, cada um com a arte oficial inteira
    (4:5) e o aviso de que os itens mostrados são ilustrativos. */
 function Prizes() {
-	return <section className="rl-prizes"><div className="rl-panel-head"><span className="rl-eyebrow"><Award size={16} /> Premiação oficial</span><h2>O que sua equipe leva pra casa</h2></div><div className="rl-prize-grid">{PRIZES.map(prize => <PrizeCard key={prize.place} prize={prize} />)}</div></section>;
+	return <section className="rl-prizes"><div className="rl-panel-head"><span className="rl-eyebrow"><Award size={16} /> Premiação oficial</span><h2>O que sua equipe leva pra casa</h2></div><div className="rl-prize-grid">{site.rocket.prizes.map(prize => <PrizeCard key={prize.place} prize={prize} />)}</div></section>;
 }
 
 /* Fecha a hierarquia da página: depois de ler sobre o torneio e preencher a
@@ -245,8 +149,8 @@ function RegistrationForm({ draft, setDraft, availability, onCheckout }) {
 		try { const result = await onCheckout(draft); if (!result.ok) { setServerError(result.error); if (result.field) setErrors(prev => ({ ...prev, [result.field]: result.error })); } }
 		finally { setSending(false); }
 	}
-	const closed = availability && !availability.open;
-	return <section className="rl-form-card" id="inscricao"><div className="rl-panel-head"><span className="rl-eyebrow"><Users size={16} /> Inscrição da equipe</span><h2>Dados para a inscrição</h2><p>Os dois titulares são obrigatórios; o reserva não altera o valor.</p></div>{closed ? <div className="rl-alert"><AlertCircle size={18} /> As inscrições foram encerradas.</div> : <form onSubmit={submit} noValidate><Field label="Nome da equipe" error={errors.nomeEquipe}><input value={draft.nomeEquipe} onChange={e => setDraft(prev => ({ ...prev, nomeEquipe: e.target.value }))} maxLength="70" disabled={sending} placeholder="Nome que aparecerá na tabela" /></Field><PlayerFields index={0} player={draft.jogadores[0]} onChange={changePlayer} errors={errors['jogadores.0']} disabled={sending} /><PlayerFields index={1} player={draft.jogadores[1]} onChange={changePlayer} errors={errors['jogadores.1']} disabled={sending} /><label className="rl-toggle"><input type="checkbox" checked={draft.temReserva} onChange={e => setDraft(prev => ({ ...prev, temReserva: e.target.checked }))} disabled={sending} /><span><strong>Adicionar jogador reserva</strong><small>Opcional e sem custo adicional.</small></span></label>{draft.temReserva && <PlayerFields index={2} player={draft.jogadores[2]} onChange={changePlayer} errors={errors['jogadores.2']} disabled={sending} />}<fieldset className="rl-captain"><legend>Capitão da equipe</legend><p>Usaremos estes contatos exclusivamente para comunicações sobre a inscrição.</p><div className="rl-fields-grid"><Field label="Nome completo" error={errors['capitao.nome']}><input value={draft.capitao.nome} onChange={e => setDraft(prev => ({ ...prev, capitao: { ...prev.capitao, nome: e.target.value } }))} disabled={sending} autoComplete="name" /></Field><Field label="WhatsApp" error={errors['capitao.whatsapp']}><input value={draft.capitao.whatsapp} onChange={e => setDraft(prev => ({ ...prev, capitao: { ...prev.capitao, whatsapp: formatPhoneBR(e.target.value) } }))} disabled={sending} inputMode="tel" autoComplete="tel" /></Field><Field label="E-mail" error={errors['capitao.email']}><input value={draft.capitao.email} onChange={e => setDraft(prev => ({ ...prev, capitao: { ...prev.capitao, email: e.target.value } }))} disabled={sending} type="email" autoComplete="email" /></Field></div></fieldset><label className="rl-consent"><input type="checkbox" checked={draft.aceiteRegulamento} onChange={e => setDraft(prev => ({ ...prev, aceiteRegulamento: e.target.checked }))} disabled={sending} /><span>Li e concordo com o <a href="/torneio-rocket-league/regulamento" target="_blank" rel="noreferrer">Regulamento Oficial</a> do Torneio de Rocket League da AASIAM.</span></label>{errors.aceiteRegulamento && <p className="rl-field-error" role="alert">{errors.aceiteRegulamento}</p>}{serverError && <div className="rl-alert" role="alert"><AlertCircle size={18} /> {serverError}</div>}<button className="rl-button rl-button-primary rl-pay" type="submit" disabled={sending}>{sending ? <><Loader2 className="rl-spin" size={18} /> Abrindo pagamento...</> : <>Ir para o pagamento de R$ 50,00</>}</button></form>}</section>;
+	const closed = !site.rocket.registration.enabled || Date.now() > Date.parse(site.rocket.registration.deadline) || (availability && !availability.open);
+	return <section className="rl-form-card" id="inscricao"><div className="rl-panel-head"><span className="rl-eyebrow"><Users size={16} /> Inscrição da equipe</span><h2>Dados para a inscrição</h2><p>Os dois titulares são obrigatórios; o reserva não altera o valor.</p></div>{closed ? <div className="rl-alert"><AlertCircle size={18} /> As inscrições foram encerradas.</div> : <form onSubmit={submit} noValidate><Field label="Nome da equipe" error={errors.nomeEquipe}><input value={draft.nomeEquipe} onChange={e => setDraft(prev => ({ ...prev, nomeEquipe: e.target.value }))} maxLength="70" disabled={sending} placeholder="Nome que aparecerá na tabela" /></Field><PlayerFields index={0} player={draft.jogadores[0]} onChange={changePlayer} errors={errors['jogadores.0']} disabled={sending} /><PlayerFields index={1} player={draft.jogadores[1]} onChange={changePlayer} errors={errors['jogadores.1']} disabled={sending} /><label className="rl-toggle"><input type="checkbox" checked={draft.temReserva} onChange={e => setDraft(prev => ({ ...prev, temReserva: e.target.checked }))} disabled={sending} /><span><strong>Adicionar jogador reserva</strong><small>Opcional e sem custo adicional.</small></span></label>{draft.temReserva && <PlayerFields index={2} player={draft.jogadores[2]} onChange={changePlayer} errors={errors['jogadores.2']} disabled={sending} />}<fieldset className="rl-captain"><legend>Capitão da equipe</legend><p>Usaremos estes contatos exclusivamente para comunicações sobre a inscrição.</p><div className="rl-fields-grid"><Field label="Nome completo" error={errors['capitao.nome']}><input value={draft.capitao.nome} onChange={e => setDraft(prev => ({ ...prev, capitao: { ...prev.capitao, nome: e.target.value } }))} disabled={sending} autoComplete="name" /></Field><Field label="WhatsApp" error={errors['capitao.whatsapp']}><input value={draft.capitao.whatsapp} onChange={e => setDraft(prev => ({ ...prev, capitao: { ...prev.capitao, whatsapp: formatPhoneBR(e.target.value) } }))} disabled={sending} inputMode="tel" autoComplete="tel" /></Field><Field label="E-mail" error={errors['capitao.email']}><input value={draft.capitao.email} onChange={e => setDraft(prev => ({ ...prev, capitao: { ...prev.capitao, email: e.target.value } }))} disabled={sending} type="email" autoComplete="email" /></Field></div></fieldset><label className="rl-consent"><input type="checkbox" checked={draft.aceiteRegulamento} onChange={e => setDraft(prev => ({ ...prev, aceiteRegulamento: e.target.checked }))} disabled={sending} /><span>Li e concordo com o <a href="/torneio-rocket-league/regulamento" target="_blank" rel="noreferrer">Regulamento Oficial</a> de {pageName(site, 'rocket')}.</span></label>{errors.aceiteRegulamento && <p className="rl-field-error" role="alert">{errors.aceiteRegulamento}</p>}{serverError && <div className="rl-alert" role="alert"><AlertCircle size={18} /> {serverError}</div>}<button className="rl-button rl-button-primary rl-pay" type="submit" disabled={sending}>{sending ? <><Loader2 className="rl-spin" size={18} /> Abrindo pagamento...</> : <>Ir para o pagamento de {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(site.rocket.registration.amountCents / 100)}</>}</button></form>}</section>;
 }
 
 function copy(text, onDone) { navigator.clipboard?.writeText(text).then(() => onDone?.()).catch(() => {}); }
@@ -287,11 +191,11 @@ function PaymentPanel({ order, onBack }) {
 	return <section className="rl-payment-card" role="status" aria-live="polite"><span className="rl-eyebrow"><ShieldCheck size={16} /> {heading}</span><h2>{data.teamName}</h2>{terminal ? <>{<div className="rl-alert"><AlertCircle size={18} /> {finalMessage}</div>}{review && <p><small>Código da inscrição: {data.registrationId}</small></p>}{!review && <button className="rl-button rl-button-primary" onClick={onBack}>Voltar à inscrição</button>}</> : <><p>Sua vaga fica reservada enquanto este Pix estiver válido. A confirmação só ocorre após a verificação do Mercado Pago no servidor.</p>{data.pix?.qrCodeBase64 ? <img className="rl-qr" src={`data:image/png;base64,${data.pix.qrCodeBase64}`} alt="QR Code Pix para pagamento" /> : <QrCode className="rl-qr-placeholder" size={96} />}{data.pix?.qrCode && <div className="rl-copy-code"><code>{data.pix.qrCode}</code><button type="button" onClick={() => { copy(data.pix.qrCode, () => { setCopied(true); setTimeout(() => setCopied(false), 1800); }); }}><Copy size={16} /> {copied ? 'Copiado' : 'Copiar Pix'}</button></div>}<p className="rl-payment-status"><Loader2 className="rl-spin" size={17} /> Aguardando confirmação do pagamento...</p><button type="button" className="rl-button rl-button-secondary" onClick={verifyNow} disabled={verifying}>{verifying ? 'Verificando...' : 'Já paguei, verificar agora'}</button></>}{error && <p className="rl-field-error">{error}</p>}</section>;
 }
 
-export default function RocketPage() {
+export default function RocketPage({ preview = false }) {
 	const [activeTab, setActiveTab] = useState('torneio');
-	const [draft, setDraft] = useState(() => load(STORAGE_DRAFT, EMPTY_DRAFT)); const [order, setOrder] = useState(() => load(STORAGE_ORDER, null) || orderFromHash()); const [availability, setAvailability] = useState(null);
-	useEffect(() => { document.title = 'Torneio Rocket League 2x2 | AASIAM'; fetch(`${API_BASE}/api/rocket-league/availability`).then(r => r.json()).then(data => data.ok && setAvailability(data)).catch(() => {}); }, []);
-	useEffect(() => save(STORAGE_DRAFT, draft), [draft]);
+	const [draft, setDraft] = useState(() => preview ? structuredClone(EMPTY_DRAFT) : load(STORAGE_DRAFT, EMPTY_DRAFT)); const [order, setOrder] = useState(() => preview ? null : load(STORAGE_ORDER, null) || orderFromHash()); const [availability, setAvailability] = useState(null);
+	useEffect(() => { document.title = `${site.rocket.title} | ${site.brand.name}`; fetch(`${API_BASE}/api/rocket-league/availability`).then(r => r.json()).then(data => data.ok && setAvailability(data)).catch(() => {}); }, []);
+	useEffect(() => { if (!preview) save(STORAGE_DRAFT, draft); }, [draft, preview]);
 	async function checkout(values) {
 		const payload = { ...values, jogadores: values.jogadores.map(p => p.outraInstituicao
 				? { nome: p.nome, ra: '', vinculo: '', identificacaoAlternativa: '', outraInstituicao: true, nomeInstituicao: (p.nomeInstituicao || '').trim() }
@@ -299,5 +203,5 @@ export default function RocketPage() {
 		try { const response = await fetch(`${API_BASE}/api/rocket-league/checkout`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }); const data = await response.json(); if (!response.ok || !data.ok) return { ok: false, error: data.error, field: data.field }; const next = { registrationId: data.registrationId, token: data.token }; setOrder(next); save(STORAGE_ORDER, next); orderToHash(next); scrollTop(); return { ok: true }; } catch { return { ok: false, error: 'Não foi possível conectar ao servidor. Tente novamente.' }; }
 	}
 	function edit() { setOrder(null); clear(STORAGE_ORDER); orderToHash(null); scrollTop(); }
-	return <div className="rl-page"><Header /><main className="rl-main">{order ? <PaymentPanel order={order} onBack={edit} /> : <div className="rl-layout"><Hero availability={availability} onRegister={() => { setActiveTab('torneio'); requestAnimationFrame(() => document.getElementById('inscricao')?.scrollIntoView({ behavior: 'smooth' })); }} /><nav className="rl-section-tabs" aria-label="Seções do torneio"><button type="button" aria-pressed={activeTab === 'torneio'} aria-controls="rl-tournament-content" onClick={() => setActiveTab('torneio')}>Sobre e inscrições</button><button type="button" aria-pressed={activeTab === 'jogos'} aria-controls="rl-tournament-content" onClick={() => setActiveTab('jogos')}>Jogos e duplas</button></nav><div id="rl-tournament-content" className="rl-tab-content">{activeTab === 'jogos' ? <MatchSchedule /> : <><About /><Prizes /><RegistrationForm draft={draft} setDraft={setDraft} availability={availability} onCheckout={checkout} /></>}</div><RegulationAccess /></div>}</main><footer className="rl-footer">© 2026 AASIAM · Torneio Rocket League 2x2</footer></div>;
+	return <div className="rl-page"><Header /><main className="rl-main">{order ? <PaymentPanel order={order} onBack={edit} /> : <div className="rl-layout"><Hero availability={availability} onRegister={() => { setActiveTab('torneio'); requestAnimationFrame(() => document.getElementById('inscricao')?.scrollIntoView({ behavior: 'smooth' })); }} /><nav className="rl-section-tabs" aria-label={`Seções de ${pageName(site, 'rocket')}`}><button type="button" aria-pressed={activeTab === 'torneio'} aria-controls="rl-tournament-content" onClick={() => setActiveTab('torneio')}>{site.rocket.registrationTab}</button>{pageSettings(site, 'rocket').showSchedule && <button type="button" aria-pressed={activeTab === 'jogos'} aria-controls="rl-tournament-content" onClick={() => setActiveTab('jogos')}>{site.rocket.gamesTab}</button>}</nav><div id="rl-tournament-content" className="rl-tab-content">{activeTab === 'jogos' ? <MatchSchedule /> : <>{pageSettings(site, 'rocket').showAbout && <About />}{pageSettings(site, 'rocket').showPrizes && <Prizes />}{pageSettings(site, 'rocket').showRegistration && <RegistrationForm draft={draft} setDraft={setDraft} availability={availability} onCheckout={checkout} />}</>}</div><PageSections pageKey="rocket" />{pageSettings(site, 'rocket').showRegulation && <RegulationAccess />}</div>}</main><footer className="rl-footer">{site.brand.footer} · {site.rocket.title}</footer></div>;
 }

@@ -1,5 +1,9 @@
+import { pageSettings, linkedEventId } from '../../../backend/shared/page-settings.js';
+import { PageSections } from '../settings/CustomPage.jsx';
+import { site, assetUrl } from '../settings/site.js';
+import SiteImage from '../settings/SiteImage.jsx';
 import { CalendarX2 } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import EventoApresentacao from './components/EventoApresentacao.jsx';
 import ApresentacaoSemana from './components/ApresentacaoSemana.jsx';
@@ -88,11 +92,11 @@ function useFechamento(evento) {
  *
  * Duas telas no mesmo endereço: o formulário e, depois dele, o Pix.
  */
-export default function ChurrascoPage({ eventoId = EVENTO_AMF }) {
-	const pagina = paginaDoEvento(eventoId);
+export default function ChurrascoPage({ eventoId = EVENTO_AMF, preview = false }) {
+	const pagina = useMemo(() => ({ ...paginaDoEvento(eventoId), ...site.events[eventoId] }), [eventoId]);
 	const chave = pagina.chaveArmazenamento;
 
-	const [pedido, setPedido] = useState(() => lerPedido(chave));
+	const [pedido, setPedido] = useState(() => preview ? null : lerPedido(chave));
 	const [enviando, setEnviando] = useState(false);
 	const [gerandoNovo, setGerandoNovo] = useState(false);
 	const { fechado, setPeloServidor } = useFechamento(pagina);
@@ -275,7 +279,7 @@ export default function ChurrascoPage({ eventoId = EVENTO_AMF }) {
 						</h2>
 						<p className="ch-panel-hint">
 							{porVagas
-								? 'Todas as vagas do churrasco foram preenchidas.'
+								? 'Todas as vagas deste evento foram preenchidas.'
 								: pagina.inscricoesAteTexto
 									? `As inscrições terminaram em ${pagina.inscricoesAteTexto}.`
 									: 'As inscrições terminaram.'}{' '}
@@ -304,12 +308,12 @@ export default function ChurrascoPage({ eventoId = EVENTO_AMF }) {
 			<header className="ch-brandbar">
 				<div className="ch-container ch-brandbar-inner">
 					<picture>
-						<source srcSet="/logo-aasiam.webp" type="image/webp" />
-						<img className="ch-brand-logo" src="/logo-aasiam.jpg" alt="" width="34" height="34" />
+
+						<img className="ch-brand-logo" src={assetUrl(site.brand.logo)} alt="" width="34" height="34" />
 					</picture>
 					<span className="ch-brand-text">
-						<span className="ch-brand-name">AASIAM</span>
-						<span className="ch-brand-sub">Atlética de Sistemas de Informação</span>
+						<span className="ch-brand-name">{site.brand.name}</span>
+						<span className="ch-brand-sub">{site.brand.description}</span>
 					</span>
 					<a className="ch-brand-link" href="/">
 						Loja oficial
@@ -321,8 +325,8 @@ export default function ChurrascoPage({ eventoId = EVENTO_AMF }) {
 				{pagina.banner && (
 					<div className="ch-container">
 						<picture className="ch-banner">
-							<source srcSet={pagina.banner.webp} type="image/webp" />
-							<img
+
+							<SiteImage
 								src={pagina.banner.src}
 								alt={pagina.banner.alt}
 								width={pagina.banner.largura}
@@ -336,19 +340,16 @@ export default function ChurrascoPage({ eventoId = EVENTO_AMF }) {
 
 				<div className="ch-container ch-grid">
 					{eventoId === EVENTO_AMF ? (
-						<EventoApresentacao />
+						<EventoApresentacao evento={pagina} />
 					) : (
 						<ApresentacaoSemana evento={pagina} fechado={Boolean(fechado)} />
 					)}
-					<div className="ch-panel">{painel()}</div>
+					{(eventoId !== linkedEventId(site) || pageSettings(site, 'churrasco').showRegistration) && <div className="ch-panel">{painel()}</div>}
 				</div>
+				{eventoId === linkedEventId(site) && <div className="ch-container"><PageSections pageKey="churrasco" includeDescription /></div>}
 			</main>
 
-			<footer className="ch-footer">
-				<div className="ch-container">
-					<p>© 2026 AASIAM. Todos os direitos reservados.</p>
-				</div>
-			</footer>
+			<footer className="ch-footer"><div className="ch-container"><p>{site.brand.footer}</p></div></footer>
 		</div>
 	);
 }

@@ -1,4 +1,6 @@
-import { CHURRASCO_EVENTO, LOBO_IMAGE, detalhesPreenchidos } from '../config.js';
+import { site } from '../../settings/site.js';
+import SiteImage from '../../settings/SiteImage.jsx';
+import { detalhesPreenchidos } from '../config.js';
 import {
 	PRICE_OTHER_CENTS,
 	PRICE_SI_CENTS,
@@ -12,16 +14,17 @@ import {
  * na base da seção. A regra de valores vem antes dele, compacta, para não
  * disputar atenção.
  */
-export default function EventoApresentacao() {
-	const detalhes = detalhesPreenchidos();
+export default function EventoApresentacao({ evento }) {
+	const image = site.barbecue.image;
+	const detalhes = detalhesPreenchidos(evento);
 
 	return (
 		<section className="ch-apresentacao" aria-labelledby="ch-titulo">
 			<h1 className="ch-title" id="ch-titulo">
-				Churrasco <span>da Alcateia</span>
+				{evento.titulo}
 			</h1>
 
-			<p className="ch-subtitle">{CHURRASCO_EVENTO.subtitulo}</p>
+			<p className="ch-subtitle">{evento.subtitulo || site.barbecue.subtitulo}</p>
 
 			{/* Duas faixas porque o valor é uma condição (que curso você faz),
 			    não uma sequência de etapas. */}
@@ -54,12 +57,12 @@ export default function EventoApresentacao() {
 
 			<div className="ch-lobo">
 				<picture>
-					<source srcSet={LOBO_IMAGE.webp} type="image/webp" />
-					<img
-						src={LOBO_IMAGE.fallback}
-						alt={LOBO_IMAGE.alt}
-						width={LOBO_IMAGE.width}
-						height={LOBO_IMAGE.height}
+
+					<SiteImage
+						src={image.fallback}
+						alt={image.alt}
+						width={image.width}
+						height={image.height}
 						fetchpriority="high"
 						decoding="async"
 					/>

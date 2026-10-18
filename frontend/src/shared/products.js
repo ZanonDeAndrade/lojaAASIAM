@@ -76,7 +76,7 @@ const SHIRT_PERSONALIZATION = { noun: 'camiseta' };
 
 // O lote foi encerrado. O catálogo continua visível, mas nenhum card pode ser
 // aberto para compra. Para reabrir a loja, altere esta constante para `false`.
-export const LOJA_ENCERRADA = true;
+export let LOJA_ENCERRADA = true;
 
 export const BACKPACK_MODELS = [
 	{
@@ -462,3 +462,16 @@ for (const _p of PRODUCTS) {
 export const PRODUCT_BY_ID = Object.fromEntries(
 	PRODUCTS.map(product => [product.id, product]),
 );
+
+// Atualiza os objetos existentes: os mapas de produtos do checkout mantêm as referências.
+const catalogDefaults = structuredClone(PRODUCTS);
+export function configureCatalog(settings) {
+  LOJA_ENCERRADA = settings.closed;
+  for (const product of PRODUCTS) {
+    const original = catalogDefaults.find(item => item.id === product.id);
+    const published = settings.products.find(item => item.id === product.id);
+    for (const key of Object.keys(product)) delete product[key];
+    Object.assign(product, structuredClone(original), structuredClone(published || {}));
+    if (product.hidden) product.soldOut = true;
+  }
+}

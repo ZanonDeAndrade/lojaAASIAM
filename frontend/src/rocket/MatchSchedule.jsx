@@ -1,41 +1,27 @@
+import { pageName } from '../../../backend/shared/page-settings.js';
 import { CalendarDays, Clock3, Users } from 'lucide-react';
-import { schedule } from './schedule.js';
-import { groups } from './groups.js';
-
-const rounds = [
-  { name: 'Quartas de final', format: 'MD3 · Online', matches: [
-    { id: 'Q1', sides: ['Classificado a definir', 'Classificado a definir'] },
-    { id: 'Q2', sides: ['Classificado a definir', 'Classificado a definir'] },
-    { id: 'Q3', sides: ['Classificado a definir', 'Classificado a definir'] },
-    { id: 'Q4', sides: ['Classificado a definir', 'Classificado a definir'] },
-  ] },
-  { name: 'Semifinais', format: 'MD3 · Online', matches: [
-    { id: 'S1', sides: ['Vencedor Q1', 'Vencedor Q2'] },
-    { id: 'S2', sides: ['Vencedor Q3', 'Vencedor Q4'] },
-  ] },
-  { name: 'Grande final', format: 'MD5 · Presencial', matches: [
-    { id: 'F', sides: ['Vencedor S1', 'Vencedor S2'] },
-  ] },
-];
+import { site } from '../settings/site.js';
 
 export default function MatchSchedule() {
+  const { groups, rounds } = site.rocket;
+  const schedule = { ...site.rocket.schedule, teams: groups.flatMap(group => group.teams) };
   const teamsById = new Map(schedule.teams.map(team => [team.id, team]));
 
   return <section className="rl-schedule" aria-labelledby="rl-schedule-title">
     <div className="rl-panel-head">
-      <span className="rl-eyebrow"><CalendarDays size={16} /> Agenda do torneio</span>
+      <span className="rl-eyebrow"><CalendarDays size={16} /> Agenda de {pageName(site, 'rocket')}</span>
       <h2 id="rl-schedule-title">Jogos e duplas</h2>
       <p>Confira os confrontos, os horários e quem entra em campo.</p>
     </div>
-    <div className="rl-stage-heading"><h3>Fase de grupos</h3><span>14 equipes · 3 grupos</span></div>
+    <div className="rl-stage-heading"><h3>Fase de grupos</h3><span>{schedule.teams.length} equipes · {groups.length} grupos</span></div>
     <div className="rl-group-grid">{groups.map(group => <section className="rl-group-card" key={group.id} aria-labelledby={`rl-group-${group.id}`}>
       <div className="rl-group-header"><h3 id={`rl-group-${group.id}`}>Grupo {group.id}</h3><span>{group.teams.length} equipes</span></div>
       <table className="rl-group-table"><caption className="rl-visually-hidden">Equipes do grupo {group.id}, sem classificação definida</caption><thead><tr><th scope="col">Equipe</th><th scope="col"><abbr title="Jogos">J</abbr></th><th scope="col"><abbr title="Pontos">PTS</abbr></th></tr></thead><tbody>{group.teams.map(team => <tr key={team.id}><th scope="row">{team.name}</th><td>—</td><td>—</td></tr>)}</tbody></table>
     </section>)}</div>
-    <p className="rl-group-note">A ordem das equipes é apenas de apresentação. A classificação será definida após os jogos.</p>
-    <div className="rl-callout"><Users size={18} aria-hidden="true" /><p><strong>Classificação para as quartas de final:</strong> avançam o 1º e o 2º colocados de cada grupo e os dois melhores 3º colocados, totalizando 8 equipes. A definição dos classificados considera os critérios de desempate do <a href="/torneio-rocket-league/regulamento">regulamento</a>.</p></div>
+    <p className="rl-group-note">{site.rocket.groupNote}</p>
+    <div className="rl-callout"><Users size={18} aria-hidden="true" /><p><strong>Classificação para as quartas de final:</strong> {site.rocket.qualification}</p></div>
     <div className="rl-stage-heading"><h3>Chaveamento eliminatório</h3><span>8 equipes · 1 campeão</span></div>
-    <p className="rl-group-note">Os confrontos das quartas serão definidos pela organização após a fase de grupos. Datas e horários a confirmar.</p>
+    <p className="rl-group-note">{site.rocket.bracketNote}</p>
     <div className="rl-bracket-scroll" role="region" aria-label="Chaveamento das quartas de final até a final. Role horizontalmente para ver todas as fases." tabIndex={0}>
       <div className="rl-bracket">{rounds.map((round, index) => <section className={`rl-bracket-round rl-bracket-round-${index}`} key={round.name} aria-label={round.name}>
         <div className="rl-bracket-heading"><h4>{round.name}</h4><span>{round.format}</span></div>

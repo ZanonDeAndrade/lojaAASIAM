@@ -2,7 +2,7 @@
 // googleapis carregar (imports ESM executam em ordem).
 import "./ssl-legacy.js";
 
-import "dotenv/config";
+import './env.js';
 
 import express from "express";
 import { google } from "googleapis";
@@ -44,6 +44,7 @@ import {
   aplicarWebhookRocket,
 } from "./rocket.js";
 import { rateLimit } from "./rate-limit.js";
+import { registerSiteAdmin } from './site-admin.js';
 
 const app = express();
 const port = process.env.PORT || 3333;
@@ -105,14 +106,16 @@ app.use((req, res, next) => {
     // X-Inscricao-Token: status da inscrição do churrasco.
     // X-Inscricao-Token: status do churrasco e do torneio Rocket League.
     // X-Pedido-Token: status do pedido da loja (polling do Pix pós-pagamento).
-    res.setHeader("Access-Control-Allow-Headers", "Content-Type, X-Inscricao-Token, X-Pedido-Token");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Inscricao-Token, X-Pedido-Token");
     res.setHeader("Access-Control-Max-Age", "86400");
   }
   if (req.method === "OPTIONS") return res.sendStatus(204);
   next();
 });
 
+app.use('/api/admin/media', express.json({ limit: '5mb' }));
 app.use(express.json({ limit: "1mb" }));
+registerSiteAdmin(app);
 
 /* ─── CHURRASCOS (AMF Games e Semana Acadêmica de SI) ─── */
 // /api/churrasco/*           Churrasco da Alcateia (AMF Games)
