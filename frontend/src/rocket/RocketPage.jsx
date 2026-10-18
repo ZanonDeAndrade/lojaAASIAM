@@ -5,6 +5,7 @@ import rocketBanner from '../../../BannerRocket.png';
 import officialRegulation from '../../../Regulamento Oficial - Campeonato Rocket League AASIAM.pdf_20260925_153129_0000.pdf';
 import { formatPhoneBR, validatePhone } from '../shared/churrasco.js';
 import './rocket.css';
+import MatchSchedule from './MatchSchedule.jsx';
 
 const AVISO_TROFEU = 'Imagem do troféu meramente ilustrativa. O modelo final pode sofrer alterações.';
 const AVISO_MEDALHAS = 'Imagens das medalhas meramente ilustrativas. Os modelos finais podem sofrer alterações.';
@@ -287,6 +288,7 @@ function PaymentPanel({ order, onBack }) {
 }
 
 export default function RocketPage() {
+	const [activeTab, setActiveTab] = useState('torneio');
 	const [draft, setDraft] = useState(() => load(STORAGE_DRAFT, EMPTY_DRAFT)); const [order, setOrder] = useState(() => load(STORAGE_ORDER, null) || orderFromHash()); const [availability, setAvailability] = useState(null);
 	useEffect(() => { document.title = 'Torneio Rocket League 2x2 | AASIAM'; fetch(`${API_BASE}/api/rocket-league/availability`).then(r => r.json()).then(data => data.ok && setAvailability(data)).catch(() => {}); }, []);
 	useEffect(() => save(STORAGE_DRAFT, draft), [draft]);
@@ -297,5 +299,5 @@ export default function RocketPage() {
 		try { const response = await fetch(`${API_BASE}/api/rocket-league/checkout`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }); const data = await response.json(); if (!response.ok || !data.ok) return { ok: false, error: data.error, field: data.field }; const next = { registrationId: data.registrationId, token: data.token }; setOrder(next); save(STORAGE_ORDER, next); orderToHash(next); scrollTop(); return { ok: true }; } catch { return { ok: false, error: 'Não foi possível conectar ao servidor. Tente novamente.' }; }
 	}
 	function edit() { setOrder(null); clear(STORAGE_ORDER); orderToHash(null); scrollTop(); }
-	return <div className="rl-page"><Header /><main className="rl-main">{order ? <PaymentPanel order={order} onBack={edit} /> : <div className="rl-layout"><Hero availability={availability} onRegister={() => document.getElementById('inscricao')?.scrollIntoView({ behavior: 'smooth' })} /><About /><Prizes /><RegistrationForm draft={draft} setDraft={setDraft} availability={availability} onCheckout={checkout} /><RegulationAccess /></div>}</main><footer className="rl-footer">© 2026 AASIAM · Torneio Rocket League 2x2</footer></div>;
+	return <div className="rl-page"><Header /><main className="rl-main">{order ? <PaymentPanel order={order} onBack={edit} /> : <div className="rl-layout"><Hero availability={availability} onRegister={() => { setActiveTab('torneio'); requestAnimationFrame(() => document.getElementById('inscricao')?.scrollIntoView({ behavior: 'smooth' })); }} /><nav className="rl-section-tabs" aria-label="Seções do torneio"><button type="button" aria-pressed={activeTab === 'torneio'} aria-controls="rl-tournament-content" onClick={() => setActiveTab('torneio')}>Sobre e inscrições</button><button type="button" aria-pressed={activeTab === 'jogos'} aria-controls="rl-tournament-content" onClick={() => setActiveTab('jogos')}>Jogos e duplas</button></nav><div id="rl-tournament-content" className="rl-tab-content">{activeTab === 'jogos' ? <MatchSchedule /> : <><About /><Prizes /><RegistrationForm draft={draft} setDraft={setDraft} availability={availability} onCheckout={checkout} /></>}</div><RegulationAccess /></div>}</main><footer className="rl-footer">© 2026 AASIAM · Torneio Rocket League 2x2</footer></div>;
 }
