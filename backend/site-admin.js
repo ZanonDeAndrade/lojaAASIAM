@@ -11,12 +11,39 @@ const scrypt = promisify(crypto.scrypt);
 const digest = value => crypto.createHash('sha256').update(String(value)).digest();
 const equal = (a, b) => crypto.timingSafeEqual(digest(a), digest(b));
 const SESSION_MS = 4 * 60 * 60 * 1000;
+const MEDIA_INDEX_MS = 10 * 60 * 1000;
+const MEDIA_MISS_MS = 10 * 60 * 1000;
+const MEDIA_MISS_MAX = 10000;
 
 export function registerSiteAdmin(app, { store = createSiteStore(), password = process.env.ADMIN_PASSWORD, username = process.env.ADMIN_USERNAME || 'admin', apply = applySiteCommerce } = {}) {
   const sessions = new Map();
   const mediaCache = new Map();
   const mediaReads = new Map();
   let mediaCacheBytes = 0;
+  /* Imagens: um índice em memória diz quais ids existem (e em que linhas da
+     planilha estão). Id fora do índice responde 404 sem ler nada, e o "não
+     encontrado" fica guardado por 10 min. Assim nenhuma requisição pública
+     dispara leitura da aba inteira nem gasta a cota do Google Sheets. */
+  const mediaMisses = new Map();
+  let mediaIndex = null;
+  let mediaIndexLoading = null;
+  function refreshMediaIndex() {
+    mediaIndexLoading ||= Promise.resolve().then(() => store.listMedia()).then(index => { mediaIndex = index; }).catch(() => {}).finally(() => { mediaIndexLoading = null; });
+    return mediaIndexLoading;
+  }
+  function rememberMiss(id) {
+    mediaMisses.delete(id);
+    mediaMisses.set(id, Date.now() + MEDIA_MISS_MS);
+    while (mediaMisses.size > MEDIA_MISS_MAX) mediaMisses.delete(mediaMisses.keys().next().value);
+  }
+  function knownMiss(id) {
+    const until = mediaMisses.get(id);
+    if (until && until > Date.now()) return true;
+    mediaMisses.delete(id);
+    return false;
+  }
+  refreshMediaIndex();
+  setInterval(refreshMediaIndex, MEDIA_INDEX_MS).unref();
   function rememberMedia(id, media) {
     if (mediaCache.has(id)) mediaCacheBytes -= mediaCache.get(id).bytes.length;
     mediaCache.delete(id);
@@ -99,7 +126,9 @@ export function registerSiteAdmin(app, { store = createSiteStore(), password = p
     if (!matches || bytes.length > 3 * 1024 * 1024) return res.status(400).json({ ok: false, error: 'Imagem inválida ou maior que 3 MB.' });
     try {
       const id = crypto.randomBytes(20).toString('hex');
-      await store.writeMedia(id, mime, bytes);
+      const location = await store.writeMedia(id, mime, bytes);
+      mediaIndex?.set(id, location ?? null);
+      mediaMisses.delete(id);
       rememberMedia(id, { mime, bytes });
       res.json({ ok: true, url: `/api/site/media/${id}` });
     } catch { res.status(503).json({ ok: false, error: 'Não foi possível enviar a imagem.' }); }
@@ -110,16 +139,20 @@ export function registerSiteAdmin(app, { store = createSiteStore(), password = p
     try { res.json({ ok: true, ...await load() }); }
     catch { res.status(503).json({ ok: false, error: 'Configuração temporariamente indisponível.' }); }
   });
-  app.get('/api/site/media/:id', async (req, res) => {
+  app.get('/api/site/media/:id', rateLimit({ windowMs: 60000, max: 300, keyFrom: req => req.ip }), async (req, res) => {
     if (!/^[a-f0-9]{40}$/.test(req.params.id)) return res.sendStatus(404);
     try {
       const id = req.params.id;
       let media = mediaCache.get(id);
       if (!media) {
-        if (!mediaReads.has(id)) mediaReads.set(id, store.readMedia(id).then(found => found ? rememberMedia(id, found) : null).finally(() => mediaReads.delete(id)));
+        if (knownMiss(id)) return res.sendStatus(404);
+        if (!mediaIndex) await mediaIndexLoading;
+        if (!mediaIndex) return res.sendStatus(503);
+        if (!mediaIndex.has(id)) { rememberMiss(id); return res.sendStatus(404); }
+        if (!mediaReads.has(id)) mediaReads.set(id, store.readMedia(id, mediaIndex.get(id)).then(found => found ? rememberMedia(id, found) : null).finally(() => mediaReads.delete(id)));
         media = await mediaReads.get(id);
       }
-      if (!media) return res.sendStatus(404);
+      if (!media) { rememberMiss(id); return res.sendStatus(404); }
       res.set({ 'Content-Type': media.mime, 'X-Content-Type-Options': 'nosniff', 'Cache-Control': 'public, max-age=31536000, immutable' });
       res.send(media.bytes);
     } catch { res.sendStatus(503); }

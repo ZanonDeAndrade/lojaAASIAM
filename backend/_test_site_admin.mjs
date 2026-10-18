@@ -95,10 +95,11 @@ try {
   for (let i = 0; i < 8; i++) await call('/api/admin/login', { body: { username: 'admin', password: 'errada' } });
   check((await call('/api/admin/login', { body: { username: 'admin', password: 'errada' } })).status === 429);
   const table = new Map();
+  const ranges = [];
   const fakeSheets = { spreadsheets: {
     get: async () => ({ data: { sheets: ['Site Config', 'Site Midia'].map(title => ({ properties: { title } })) } }),
     values: {
-      get: async ({ range }) => ({ data: { values: table.get(range.includes('Site Config') ? 'config' : 'media') || [] } }),
+      get: async ({ range }) => { ranges.push(range); return { data: { values: table.get(range.includes('Site Config') ? 'config' : 'media') || [] } }; },
       update: async ({ requestBody }) => { table.set('config', requestBody.values); },
       append: async ({ requestBody }) => { table.set('media', [...(table.get('media') || []), ...requestBody.values]); },
     },
@@ -110,8 +111,14 @@ try {
   check(JSON.stringify(await sheetsStore.readConfig()) === JSON.stringify(largeDocument));
   await sheetsStore.writeConfig({ revision: 8, config: null });
   check((await sheetsStore.readConfig()).revision === 8 && (await sheetsStore.readConfig()).config === null);
-  await sheetsStore.writeMedia('test-media', 'image/png', Buffer.from(png, 'base64'));
-  check((await sheetsStore.readMedia('test-media')).bytes.equals(Buffer.from(png, 'base64')));
+  // Imagens na planilha: o índice lê só as colunas leves; a imagem, só as suas linhas.
+  const mediaId = 'ab'.repeat(20);
+  await sheetsStore.writeMedia(mediaId, 'image/png', Buffer.from(png, 'base64'));
+  const mediaIndex = await sheetsStore.listMedia();
+  check(mediaIndex.get(mediaId)?.first === 1 && ranges.at(-1).endsWith('!A:C'));
+  check((await sheetsStore.readMedia(mediaId, mediaIndex.get(mediaId))).bytes.equals(Buffer.from(png, 'base64')) && ranges.at(-1).endsWith('!A1:D1'));
+  const readsBefore = ranges.length;
+  check(await sheetsStore.readMedia(mediaId) === null && ranges.length === readsBefore);
   console.log(`Admin: ${passed} verificações passaram (autenticação, autorização, publicação, conflito, persistência, preços e imagens).`);
 } finally {
   await new Promise(resolve => server.close(resolve));
