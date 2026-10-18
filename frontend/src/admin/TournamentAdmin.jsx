@@ -1,22 +1,20 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowDown, ArrowUp, Check, RefreshCw, RotateCcw, Save, Sparkles } from 'lucide-react';
-import { buildTournament, formatLabel, GROUPS, QUARTER_FORMATS, STATUS_LABELS, validateResult } from '../../../backend/shared/rocket-tournament.js';
+import { AlertTriangle, ArrowDown, ArrowUp, Check, RefreshCw, RotateCcw, Save, Sparkles } from 'lucide-react';
+import { buildTournament, deriveSeries, formatLabel, GROUPS, isSeries, QUARTER_FORMATS, STATUS_LABELS, validateResult } from '../../../backend/shared/rocket-tournament.js';
 import './tournament-admin.css';
 
 const FILTERS = [{ id: 'A', label: 'Grupo A' }, { id: 'B', label: 'Grupo B' }, { id: 'C', label: 'Grupo C' }, { id: 'KO', label: 'Mata-mata' }, { id: 'teams', label: 'Equipes' }];
 const time = () => new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 const toNumber = value => (value === '' ? null : Number(value));
-const gameCount = format => ({ MD3: 3, MD5: 5 })[format] || 0;
 
 function Card({ title, description, action, children }) {
   return <section className="adm-card"><header className="adm-card-head"><div><h2>{title}</h2>{description && <p>{description}</p>}</div>{action}</header>{children}</section>;
 }
 
-/* Uma partida: placar, status, salvar e zerar. Edições locais não são
+/* Uma partida única: placar, status, salvar e zerar. Edições locais não são
    sobrescritas pela atualização automática enquanto não forem salvas. */
 function MatchEditor({ match, label, format, onSave }) {
-  const games = gameCount(format);
-  const server = JSON.stringify({ status: match.status, a: match.a ?? '', b: match.b ?? '', games: Array.from({ length: games }, (_, i) => ({ a: match.games?.[i]?.a ?? '', b: match.games?.[i]?.b ?? '' })) });
+  const server = JSON.stringify({ status: match.status, a: match.a ?? '', b: match.b ?? '' });
   const [draft, setDraft] = useState(() => JSON.parse(server));
   const [dirty, setDirty] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -28,7 +26,7 @@ function MatchEditor({ match, label, format, onSave }) {
     setDraft(current => {
       const merged = { ...current, ...next };
       // Digitar um placar numa partida "A jogar" já a coloca como "Ao vivo".
-      if (current.status === 'scheduled' && ('a' in next || 'b' in next || 'games' in next)) merged.status = 'live';
+      if (current.status === 'scheduled' && ('a' in next || 'b' in next)) merged.status = 'live';
       return merged;
     });
   }
@@ -41,15 +39,14 @@ function MatchEditor({ match, label, format, onSave }) {
     finally { setBusy(false); }
   }
   function save() {
-    const filled = draft.games.filter(game => game.a !== '' || game.b !== '').map(game => ({ a: toNumber(game.a), b: toNumber(game.b) }));
-    submit({ status: draft.status, a: toNumber(draft.a), b: toNumber(draft.b), games: filled });
+    submit({ status: draft.status, a: toNumber(draft.a), b: toNumber(draft.b) });
   }
   function reset() {
     if (!window.confirm(`Zerar o placar de ${label}? A partida volta para "A jogar".`)) return;
     setDirty(false);
-    submit({ status: 'scheduled', a: null, b: null, games: [] });
+    submit({ status: 'scheduled', a: null, b: null });
   }
-  const scoreInput = (side, name) => <input type="number" inputMode="numeric" min="0" step="1" aria-label={`${format === 'single' || format === 'MD1' ? 'Gols' : 'Vitórias na série'} de ${name}`} value={draft[side]} disabled={!ready || busy} onChange={event => change({ [side]: event.target.value })} />;
+  const scoreInput = (side, name) => <input type="number" inputMode="numeric" min="0" step="1" aria-label={`Gols de ${name}`} value={draft[side]} disabled={!ready || busy} onChange={event => change({ [side]: event.target.value })} />;
   return <article className={`adm-tour-match is-${match.status} ${dirty ? 'is-dirty' : ''}`}>
     <header><strong>{label}</strong><span className={`adm-tour-status is-${match.status}`}>{STATUS_LABELS[match.status]}</span></header>
     <div className="adm-tour-score">
@@ -58,11 +55,87 @@ function MatchEditor({ match, label, format, onSave }) {
       <span className="adm-tour-team is-away">{match.away?.name || <em>{match.placeholders?.[1]}</em>}</span>
     </div>
     {!ready && <p className="adm-context-note">Defina as duas equipes antes de lançar o placar.</p>}
-    {games > 0 && ready && <details className="adm-tour-games"><summary>Placar de cada jogo da série (opcional)</summary><div>{draft.games.map((game, index) => <label key={index}><span>Jogo {index + 1}</span><input type="number" inputMode="numeric" min="0" step="1" aria-label={`Gols de ${match.home.name} no jogo ${index + 1}`} value={game.a} disabled={busy} onChange={event => change({ games: draft.games.map((item, i) => (i === index ? { ...item, a: event.target.value } : item)) })} /><span aria-hidden="true">×</span><input type="number" inputMode="numeric" min="0" step="1" aria-label={`Gols de ${match.away.name} no jogo ${index + 1}`} value={game.b} disabled={busy} onChange={event => change({ games: draft.games.map((item, i) => (i === index ? { ...item, b: event.target.value } : item)) })} /></label>)}</div></details>}
     <div className="adm-tour-actions">
       <div className="adm-tour-segment" role="group" aria-label={`Status de ${label}`}>{Object.entries(STATUS_LABELS).map(([status, text]) => <button type="button" key={status} aria-pressed={draft.status === status} disabled={!ready || busy} onClick={() => change({ status })}>{text}</button>)}</div>
       <button type="button" className="adm-primary" disabled={!ready || busy || !dirty} onClick={save}><Save size={15} /> {busy ? 'Salvando…' : 'Salvar'}</button>
       <button type="button" title="Zerar placar" disabled={busy || match.status === 'scheduled'} onClick={reset}><RotateCcw size={15} /> Zerar</button>
+    </div>
+    {feedback?.error && <p className="adm-error" role="alert">{feedback.error}</p>}
+    {feedback?.ok && <p className="adm-tour-ok" role="status"><Check size={14} /> {feedback.ok}</p>}
+  </article>;
+}
+
+/* Confronto MD3/MD5: um jogo por linha, cada um com placar e status. O placar
+   da série sai dos jogos encerrados e os jogos depois da série decidida ficam
+   bloqueados. Salvar e Zerar valem para a série inteira. */
+function SeriesEditor({ match, label, onSave }) {
+  const server = JSON.stringify(match.games.map(game => ({ status: game.needed ? game.status : 'scheduled', a: game.needed ? game.a ?? '' : '', b: game.needed ? game.b ?? '' : '' })));
+  const [draft, setDraft] = useState(() => JSON.parse(server));
+  const [dirty, setDirty] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [feedback, setFeedback] = useState(null);
+  useEffect(() => { if (!dirty) setDraft(JSON.parse(server)); }, [server, dirty]);
+  const ready = match.home && match.away;
+  // Prévia ao vivo: o placar da série e os jogos "Não necessário" seguem o que está sendo digitado.
+  const preview = deriveSeries(match.format, draft.map(game => ({ status: game.status, a: toNumber(game.a), b: toNumber(game.b) })));
+  const shown = dirty || !match.manual ? preview : match;
+  function change(index, next) {
+    setDirty(true); setFeedback(null);
+    setDraft(current => current.map((game, i) => {
+      if (i !== index) return game;
+      const merged = { ...game, ...next };
+      // Digitar um placar num jogo "A jogar" já o coloca como "Ao vivo".
+      if (game.status === 'scheduled' && ('a' in next || 'b' in next)) merged.status = 'live';
+      return merged;
+    }));
+  }
+  async function submit(games) {
+    const error = validateResult(match.format, { games });
+    if (error) { setFeedback({ error }); return; }
+    setBusy(true); setFeedback(null);
+    try { await onSave(match.id, { games }); setDirty(false); setFeedback({ ok: `Salvo às ${time()}` }); }
+    catch (error) { setFeedback({ error: error.message }); }
+    finally { setBusy(false); }
+  }
+  function save() {
+    submit(draft.map((game, index) => (preview.games[index].needed ? { status: game.status, a: toNumber(game.a), b: toNumber(game.b) } : { status: 'scheduled', a: null, b: null })));
+  }
+  function reset() {
+    if (!window.confirm(`Zerar todos os jogos de ${label}? A série volta para "A jogar".`)) return;
+    setDirty(false);
+    submit([]);
+  }
+  const homeName = match.home?.name || 'time A';
+  const awayName = match.away?.name || 'time B';
+  const played = shown.status !== 'scheduled';
+  return <article className={`adm-tour-match adm-tour-series is-${shown.status} ${dirty ? 'is-dirty' : ''}`}>
+    <header><strong>{label}</strong><span className={`adm-tour-status is-${shown.status}`}>{STATUS_LABELS[shown.status]}</span></header>
+    <div className="adm-tour-series-score" aria-label={played ? `Série: ${homeName} ${shown.a ?? 0}, ${awayName} ${shown.b ?? 0}` : 'Série ainda não começou'}>
+      <span className="adm-tour-team">{match.home?.name || <em>{match.placeholders?.[0]}</em>}</span>
+      <b aria-hidden="true">{played ? <>{shown.a ?? 0}<span>×</span>{shown.b ?? 0}</> : '—'}</b>
+      <span className="adm-tour-team is-away">{match.away?.name || <em>{match.placeholders?.[1]}</em>}</span>
+    </div>
+    <p className="adm-context-note adm-tour-series-hint">Placar da série calculado pelos jogos encerrados.</p>
+    {match.manual && !dirty && <p className="adm-tour-warning" role="status"><AlertTriangle size={14} /> Série lançada sem placar por jogo. Preencha os jogos para substituir o placar salvo.</p>}
+    {!ready && <p className="adm-context-note">Defina as duas equipes antes de lançar o placar.</p>}
+    <ol className="adm-tour-games">{draft.map((game, index) => {
+      const { needed } = preview.games[index];
+      const locked = !ready || busy || !needed;
+      const status = needed ? game.status : 'scheduled';
+      const scoreInput = (side, name) => <input type="number" inputMode="numeric" min="0" step="1" aria-label={`Gols de ${name} no jogo ${index + 1}`} value={needed ? game[side] : ''} disabled={locked} onChange={event => change(index, { [side]: event.target.value })} />;
+      return <li key={index} className={`adm-tour-game is-${needed ? status : 'unneeded'}`}>
+        <header><strong>Jogo {index + 1}</strong><span className={`adm-tour-status is-${needed ? status : 'unneeded'}`}>{needed ? STATUS_LABELS[status] : 'Não necessário'}</span></header>
+        <div className="adm-tour-score">
+          <span className="adm-tour-team">{homeName}</span>
+          {scoreInput('a', homeName)}<span aria-hidden="true">×</span>{scoreInput('b', awayName)}
+          <span className="adm-tour-team is-away">{awayName}</span>
+        </div>
+        {needed && <div className="adm-tour-segment" role="group" aria-label={`Status do jogo ${index + 1} de ${label}`}>{Object.entries(STATUS_LABELS).map(([value, text]) => <button type="button" key={value} aria-pressed={status === value} disabled={locked} onClick={() => change(index, { status: value })}>{text}</button>)}</div>}
+      </li>;
+    })}</ol>
+    <div className="adm-tour-actions">
+      <button type="button" className="adm-primary" disabled={!ready || busy || !dirty} onClick={save}><Save size={15} /> {busy ? 'Salvando…' : 'Salvar jogos'}</button>
+      <button type="button" title="Zerar todos os jogos da série" disabled={busy || match.status === 'scheduled'} onClick={reset}><RotateCcw size={15} /> Zerar</button>
     </div>
     {feedback?.error && <p className="adm-error" role="alert">{feedback.error}</p>}
     {feedback?.ok && <p className="adm-tour-ok" role="status"><Check size={14} /> {feedback.ok}</p>}
@@ -161,7 +234,7 @@ export default function TournamentAdmin({ request }) {
     {filter === 'KO' && <>
       {view.groupsComplete && <Card title="Classificados" description="Sementes calculadas pela classificação final dos grupos."><ol className="adm-tour-seeds">{view.seeds.map(id => { const team = view.teams.find(item => item.id === id); return <li key={id}>{team.name} <small>Grupo {team.group}</small></li>; })}</ol>{view.thirdTies.map(ids => <TieBreaker key={ids.join()} title="Empate entre os terceiros colocados" ids={ids} teams={view.teams} onSave={saveTie('thirds')} />)}</Card>}
       <QuartersEditor view={view} onSave={body => send('/torneio/mata-mata', body)} />
-      {view.rounds.map(round => <div className="adm-tour-list" key={round.id}><h3 className="adm-tour-round">{round.name} · {formatLabel(round.format)} · {round.venue}</h3>{round.matches.map(match => <MatchEditor key={match.id} match={match} format={match.format} label={match.id === 'F' ? 'Grande final' : match.id} onSave={saveMatch} />)}</div>)}
+      {view.rounds.map(round => <div className="adm-tour-list" key={round.id}><h3 className="adm-tour-round">{round.name} · {formatLabel(round.format)} · {round.venue}</h3>{round.matches.map(match => (isSeries(match.format) ? <SeriesEditor key={match.id} match={match} label={match.id === 'F' ? 'Grande final' : match.id} onSave={saveMatch} /> : <MatchEditor key={match.id} match={match} format={match.format} label={match.id === 'F' ? 'Grande final' : match.id} onSave={saveMatch} />))}</div>)}
     </>}
     {filter === 'teams' && <TeamsEditor view={view} onSave={body => send('/torneio/equipes', body)} />}
   </div>;

@@ -13,17 +13,29 @@
 .adm-tour-status { padding:3px 9px; border-radius:20px; font-size:.66rem; font-weight:750; text-transform:uppercase; letter-spacing:.05em; background:#ffffff0d; color:var(--adm-dim); }
 .adm-tour-status.is-live { background:var(--adm-green); color:#14220e; }
 .adm-tour-status.is-finished { background:#b5ee8a1a; color:#c0f2a2; }
+.adm-tour-status.is-unneeded { background:transparent; border:1px dashed var(--adm-line); }
 .adm-tour-score { display:grid; grid-template-columns:minmax(0,1fr) 64px auto 64px minmax(0,1fr); align-items:center; gap:8px; }
 .adm-tour-team { font-size:.85rem; font-weight:650; text-align:right; overflow-wrap:anywhere; line-height:1.3; }
 .adm-tour-team.is-away { text-align:left; }
 .adm-tour-team em { font-style:normal; color:var(--adm-dim); font-weight:400; }
-.adm-tour-score input, .adm-tour-games input { width:100%; min-height:48px; border:1px solid #354038; border-radius:9px; background:#111713; color:var(--adm-text); font:inherit; font-size:1.25rem; font-weight:750; text-align:center; font-variant-numeric:tabular-nums; }
+.adm-tour-score input { width:100%; min-height:48px; border:1px solid #354038; border-radius:9px; background:#111713; color:var(--adm-text); font:inherit; font-size:1.25rem; font-weight:750; text-align:center; font-variant-numeric:tabular-nums; }
 .adm-tour-score input:disabled { opacity:.45; }
 .adm-tour-score > span[aria-hidden] { color:var(--adm-dim); }
-.adm-tour-games summary { cursor:pointer; font-size:.75rem; color:var(--adm-dim); }
-.adm-tour-games > div { display:grid; gap:8px; margin-top:10px; }
-.adm-tour-games label { display:grid; grid-template-columns:64px 60px auto 60px; align-items:center; gap:8px; font-size:.75rem; color:var(--adm-dim); }
-.adm-tour-games input { min-height:40px; font-size:1rem; }
+/* Série MD3/MD5: placar da série em destaque e um jogo por linha. */
+.adm-tour-series-score { display:grid; grid-template-columns:minmax(0,1fr) auto minmax(0,1fr); align-items:center; gap:14px; padding:12px 14px; border-radius:12px; background:#101713; }
+.adm-tour-series-score .adm-tour-team { font-size:.95rem; }
+.adm-tour-series-score > b { display:inline-flex; align-items:center; gap:10px; font-size:2rem; font-weight:800; line-height:1; font-variant-numeric:tabular-nums; }
+.adm-tour-series-score > b span { color:var(--adm-dim); font-size:1.1rem; font-weight:500; }
+.adm-tour-series.is-live .adm-tour-series-score > b { color:#c0f2a2; }
+.adm-tour-series-hint { margin:-6px 0 0; text-align:center; }
+.adm-tour-warning { display:flex; align-items:flex-start; gap:8px; margin:0; padding:10px 12px; border:1px dashed #d8c36a; border-radius:10px; color:#e9da98; font-size:.75rem; line-height:1.5; }
+.adm-tour-warning svg { flex:none; margin-top:2px; }
+.adm-tour-games { list-style:none; display:grid; gap:10px; margin:0; padding:0; }
+.adm-tour-game { display:grid; gap:10px; padding:12px; border:1px solid var(--adm-line); border-radius:12px; background:#151a17; }
+.adm-tour-game.is-live { border-color:#88b96b; }
+.adm-tour-game.is-unneeded { opacity:.55; border-style:dashed; background:transparent; }
+.adm-tour-game > header { display:flex; align-items:center; justify-content:space-between; gap:10px; font-size:.78rem; }
+.adm-tour-game .adm-tour-segment { flex:none; }
 .adm-tour-actions { display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
 .adm-tour-segment { display:flex; flex:1 1 260px; padding:3px; gap:3px; border:1px solid var(--adm-line); border-radius:10px; background:#101713; }
 .adm-page .adm-tour-segment button { flex:1; min-height:38px; padding:6px 8px; border:0; background:transparent; color:var(--adm-dim); font-size:.75rem; }
@@ -59,6 +71,9 @@
   .adm-tour-match { padding:14px 12px; }
   .adm-tour-score { grid-template-columns:minmax(0,1fr) 56px auto 56px minmax(0,1fr); gap:6px; }
   .adm-tour-team { font-size:.78rem; }
+  .adm-tour-game { padding:10px; }
+  .adm-tour-series-score { gap:10px; padding:10px; }
+  .adm-tour-series-score > b { font-size:1.6rem; gap:8px; }
   .adm-tour-actions > button { flex:1; }
   .adm-tour-segment { flex-basis:100%; }
   .adm-tour-quarters { grid-template-columns:1fr; }

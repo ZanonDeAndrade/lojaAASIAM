@@ -33,11 +33,11 @@ Os dados de apresentação e regras publicados estão em uma configuração comp
 É a primeira seção do menu (`/admin?section=placar`) e a que abre depois do login. Diferente das outras, **não usa Publicar alterações**: cada placar é salvo na hora e a página `/torneio-rocket-league` busca os dados sozinha a cada 20 segundos.
 
 - **Grupo A, B e C**: classificação calculada e as partidas do grupo. Em cada partida, preencha os gols, escolha o status (A jogar, Ao vivo ou Encerrado) e toque em **Salvar**. **Zerar** volta a partida para "A jogar". Só partidas encerradas contam na tabela.
-- **Mata-mata**: formato das quartas (MD3 por padrão), confrontos das quartas (com **Sugerir pela classificação** depois dos 26 jogos dos grupos) e as séries. Nas séries, informe as vitórias (ex.: 2 × 1) e, opcionalmente, o placar de cada jogo. O vencedor avança sozinho.
+- **Mata-mata**: formato das quartas (MD3 por padrão), confrontos das quartas (com **Sugerir pela classificação** depois dos 26 jogos dos grupos) e as séries. Nas séries MD3/MD5, lance cada jogo na sua linha (Jogo 1, Jogo 2…) com placar e status próprios e clique em **Salvar jogos**. O placar da série (ex.: 2 × 1) é calculado pelos jogos encerrados; quando alguém chega a 2 vitórias (MD3) ou 3 (MD5), os jogos restantes ficam como **Não necessário** e o vencedor avança sozinho. **Zerar** limpa todos os jogos da série. Uma série salva antes, sem placar por jogo, mantém o valor e mostra o aviso "Série lançada sem placar por jogo" até os jogos serem preenchidos.
 - **Equipes**: nomes e jogadores. Jogadores só aparecem no site quando preenchidos.
 - Empates que pontos, saldo, gols marcados e confronto direto não resolvem aparecem no painel para definir a ordem do sorteio.
 
-Validações: sem gols negativos, sem empate em partida encerrada, MD3 termina com exatamente 2 vitórias do vencedor e MD5 com 3. Os dados ficam na aba **Torneio Placar** da planilha (ou `torneio.json` em `.site-data` no desenvolvimento). A tabela oficial dos jogos está em `backend/shared/rocket-tournament.js`; o teste `npm run test:torneio` confere a tabela, a classificação e a API.
+Validações: sem gols negativos, sem empate em partida ou jogo encerrado, o Jogo N só começa ou encerra depois do Jogo N-1 encerrado e nada é lançado depois que a série está decidida. Os dados ficam na aba **Torneio Placar** da planilha (ou `torneio.json` em `.site-data` no desenvolvimento). A tabela oficial dos jogos está em `backend/shared/rocket-tournament.js`; o teste `npm run test:torneio` confere a tabela, a classificação, as séries jogo a jogo e a API.
 
 ## Editar e publicar
 
