@@ -68,6 +68,10 @@ const post = (rota, corpo) =>
     body: JSON.stringify(corpo),
   });
 
+// A rota pública /api/usar-cupom foi removida (qualquer um queimava cupons);
+// a contagem continua acontecendo no webhook do pagamento, pela mesma função.
+const usarCupom = async ({ codigo, orderId }) => (await import("./cupons.js")).marcarCupomUsado(codigo, orderId);
+
 let passed = 0;
 const failures = [];
 
@@ -126,11 +130,11 @@ await test("os cupons da loja continuam funcionando", async () => {
 
   // Contabilizar (idempotente) e revalidar: 1/2 continua válido.
   assert.equal(
-    (await post("/api/usar-cupom", { codigo: "Amanda", orderId: "X1" }).then((r) => r.json())).ok,
+    (await usarCupom({ codigo: "Amanda", orderId: "X1" })).ok,
     true
   );
   assert.equal(
-    (await post("/api/usar-cupom", { codigo: "amanda", orderId: "X1" }).then((r) => r.json())).jaContava,
+    (await usarCupom({ codigo: "amanda", orderId: "X1" })).jaContava,
     true
   );
   assert.equal(
@@ -139,32 +143,16 @@ await test("os cupons da loja continuam funcionando", async () => {
   );
 
   // Segundo uso esgota; terceiro é bloqueado.
-  await post("/api/usar-cupom", { codigo: "Amanda", orderId: "X2" });
+  await usarCupom({ codigo: "Amanda", orderId: "X2" });
   assert.deepEqual(await post("/api/validar-cupom", { codigo: "Amanda" }).then((r) => r.json()), {
     valido: false,
     motivo: "esgotado",
   });
   assert.equal(
-    (await post("/api/usar-cupom", { codigo: "Amanda", orderId: "X3" }).then((r) => r.json())).ok,
+    (await usarCupom({ codigo: "Amanda", orderId: "X3" })).ok,
     false
   );
 
-  // Cupons de teste (R$ 1,00) seguem intactos e ilimitados.
-  assert.deepEqual(await post("/api/validar-cupom", { codigo: " GabiMinuzzi100 " }).then((r) => r.json()), {
-    valido: true,
-    tipo: "teste",
-    codigo: "GabiMinuzzi100",
-  });
-  await post("/api/usar-cupom", { codigo: "GabiMinuzzi100", orderId: "X4" });
-  assert.equal(
-    (await post("/api/validar-cupom", { codigo: "gabiminuzzi100" }).then((r) => r.json())).valido,
-    true
-  );
-  assert.deepEqual(await post("/api/validar-cupom", { codigo: "  GabrielaMinuzzi100 " }).then((r) => r.json()), {
-    valido: true,
-    tipo: "teste",
-    codigo: "GabrielaMinuzzi100",
-  });
 });
 
 await test("cupom programador5 (5% do subtotal): case-insensitive, sem limite de uso", async () => {
@@ -185,7 +173,7 @@ await test("cupom programador5 (5% do subtotal): case-insensitive, sem limite de
   // Sem limite de uso: contabilizar não altera a validade em pedidos futuros.
   for (const orderId of ["PED-A", "PED-B", "PED-C"]) {
     assert.equal(
-      (await post("/api/usar-cupom", { codigo: "programador5", orderId }).then((r) => r.json())).ok,
+      (await usarCupom({ codigo: "programador5", orderId })).ok,
       true
     );
   }
@@ -200,39 +188,12 @@ await test("cupom programador5 (5% do subtotal): case-insensitive, sem limite de
   });
 });
 
-await test("POST /api/validar-cupom: cupom Diretoria (1REAL) só existe com ENABLE_TEST_COUPON=true, e o código volta igual em toda chamada", async () => {
-  const codigo = "1REAL";
-  const original = process.env.ENABLE_TEST_COUPON;
-
-  try {
-    // Ausente: rejeitado, resposta idêntica à de um código qualquer inexistente.
-    delete process.env.ENABLE_TEST_COUPON;
+await test("POST /api/validar-cupom: cupons de R$ 1,00 removidos (1REAL e os antigos de teste) são recusados", async () => {
+  for (const codigo of ["1REAL", "  1real ", "GabiMinuzzi100", "gabrielaminuzzi100"]) {
     assert.deepEqual(await post("/api/validar-cupom", { codigo }).then((r) => r.json()), {
       valido: false,
       motivo: "invalido",
-    });
-
-    // Valor diferente de "true" (mesmo "1" ou "TRUE"): também rejeitado.
-    process.env.ENABLE_TEST_COUPON = "1";
-    assert.equal((await post("/api/validar-cupom", { codigo }).then((r) => r.json())).valido, false);
-    process.env.ENABLE_TEST_COUPON = "TRUE";
-    assert.equal((await post("/api/validar-cupom", { codigo }).then((r) => r.json())).valido, false);
-
-    // Habilitado: válido, e o nome canônico volta igual em qualquer variação de
-    // escrita — é esse valor que o carrinho reenvia ao checkout depois, e ele
-    // precisa continuar batendo (bug corrigido: o checkout não pode recusar o
-    // código que o próprio carrinho já validou).
-    process.env.ENABLE_TEST_COUPON = "true";
-    for (const variacao of [codigo, codigo.toLowerCase(), `  ${codigo} `]) {
-      assert.deepEqual(await post("/api/validar-cupom", { codigo: variacao }).then((r) => r.json()), {
-        valido: true,
-        tipo: "valorFixo",
-        codigo: "1REAL",
-      });
-    }
-  } finally {
-    if (original === undefined) delete process.env.ENABLE_TEST_COUPON;
-    else process.env.ENABLE_TEST_COUPON = original;
+    }, codigo);
   }
 });
 
@@ -857,9 +818,11 @@ await test("Camisetas Verde e Chumbo: tamanho obrigatório, nome/número opciona
   assert.equal(fundido.totalCents, 4 * 9000, "preço da camiseta mudou com a personalização");
 });
 
-await test("o webhook da InfinitePay da loja continua no ar e no endereço antigo", async () => {
-  const res = await post("/api/webhooks/infinitepay", {});
-  assert.equal(res.status, 200, "a loja precisa continuar respondendo 200 rápido");
+await test("rotas removidas por segurança respondem 404 (webhook InfinitePay, usar-cupom, diagnósticos)", async () => {
+  for (const [metodo, rota] of [["POST", "/api/webhooks/infinitepay"], ["POST", "/api/usar-cupom"], ["GET", "/api/test-sheets"], ["GET", "/api/test-planilha-pedido"]]) {
+    const res = metodo === "POST" ? await post(rota, { paid_amount: 1, order_nsu: "X" }) : await get(rota);
+    assert.equal(res.status, 404, rota);
+  }
 });
 
 await test("a consulta de pedido da loja continua respondendo", async () => {

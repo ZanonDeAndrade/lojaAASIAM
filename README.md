@@ -60,8 +60,9 @@ Para testar a pagina no navegador sem pagamento real, veja
 3. Cupons validos aplicam o preco de custo, revalidados no servidor.
 4. A pessoa paga no Checkout Integrado da InfinitePay e volta para
    `/pagamento-concluido`.
-5. `POST /api/webhooks/infinitepay` confirma pelo `payment_check` e grava a linha
-   na aba de pedidos.
+5. O webhook da InfinitePay foi removido por segurança (aceitava eventos sem
+   assinatura). A loja atual usa o Mercado Pago (`/api/loja/checkout`), que
+   confirma pelo webhook assinado.
 
 ## Rotas da loja
 
@@ -70,8 +71,6 @@ POST /api/checkout                    cria o link de pagamento
 GET  /api/pedido/:orderId             consulta do pedido
 GET  /api/pedido/:orderId/status      polling do status
 POST /api/validar-cupom               valida um cupom sem gastar
-POST /api/usar-cupom                  marca um cupom de uso unico
-POST /api/webhooks/infinitepay        webhook da loja
 GET  /api/health · GET /api/config    diagnostico
 ```
 
@@ -110,12 +109,10 @@ carrinho ser vendido pelo seu `costCents`, em vez do preco de venda. Cada um val
 - **Contagem:** so quando o pagamento e **aprovado** (`aplicarOrder` →
   `STATUS_PAGO`). Idempotente por `orderId` (webhook reenviado nao conta 2x) e
   serializada (duas compras na ultima utilizacao nao passam de 2).
-- **Normalizacao:** `" ZANON "`, `zanon`, `Zanon` sao o mesmo cupom; o nome
-  canonico volta para exibicao ("Cupom Zanon aplicado").
+- **Normalizacao:** `" ABC "`, `abc`, `Abc` sao o mesmo cupom; o nome
+  canonico volta para exibicao ("Cupom Abc aplicado").
 - **Pedido:** a aba `Pedidos Loja` ganhou `Cupom`, `Subtotal sem cupom` e
   `Desconto do cupom` (colunas X–Z), congelados no pedido.
-- `GabiMinuzzi100` / `GabrielaMinuzzi100` continuam sendo cupons de **teste**
-  (R$ 1,00/item, ilimitados) — apagar quando os testes de pagamento acabarem.
 
 ### Variaveis dos cupons
 
@@ -204,8 +201,8 @@ POST /api/churrasco/webhook/mercadopago         webhook do Mercado Pago
 GET  /api/churrasco/config                      o que a pagina precisa saber
 ```
 
-O webhook da loja (`/api/webhooks/infinitepay`) continua intacto e em outro
-endereco. O do churrasco ignora qualquer order cuja `external_reference` nao
+A loja usa o webhook do Mercado Pago em outro endereco
+(`/api/loja/webhook/mercadopago`). O do churrasco ignora qualquer order cuja `external_reference` nao
 comece com `CHURRASCO-`.
 
 ## Variaveis do churrasco
@@ -559,4 +556,5 @@ automaticamente, com os cabecalhos certos, se ainda nao existirem.
 
 1. Suba o backend.
 2. Abra `/api/health` e confirme `googleSheetsConfigured: true`.
-3. `GET /api/test-sheets` faz uma escrita de diagnostico na aba da loja.
+3. As rotas de diagnostico que escreviam na planilha foram removidas por
+   seguranca; valide a integracao com um pedido ou inscricao de teste.
