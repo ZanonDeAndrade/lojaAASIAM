@@ -29,19 +29,20 @@ import {
 
 export const CUPONS_SHEET_NAME = process.env.CUPONS_SHEET_NAME || "Cupons";
 
-/** Cupons pessoais criados pelo seed. Cada um começa com 2 utilizações. */
+/** Cupons pessoais criados pelo seed. Cada um começa com 2 utilizações.
+ *  Códigos aleatórios; o de-para com as pessoas fica fora do repositório. */
 export const CUPONS_PESSOAIS = Object.freeze([
-  "Dotto",
-  "Schmidt",
-  "Milton",
-  "Samuel",
-  "Marcelo",
-  "Zanon",
-  "Amanda",
-  "Jessika",
-  "Gabriel",
-  "Guilherme",
-  "Sofia",
+  "EYZCE7PAPE",
+  "CAUD7YFZQT",
+  "TTWCTESUT8",
+  "7BZBDW9R2K",
+  "6EDS6NW7ND",
+  "KTUYVNUW9D",
+  "NY36XFNC75",
+  "CNYNRW8RNT",
+  "HU7QABX68Z",
+  "HHCVCDN9ZM",
+  "7ZTAFCGDFQ",
 ]);
 
 export const MAX_USOS_PADRAO = 2;

@@ -58,3 +58,6 @@ Thumbs.db
 .claude/
 .codex-screenshots/
 .codex-logs/
+
+# Lista local de cupons gerada fora do git (apagar depois de distribuir)
+cupons-novos.txt

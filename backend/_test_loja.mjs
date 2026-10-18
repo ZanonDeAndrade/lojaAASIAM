@@ -72,6 +72,15 @@ const post = (rota, corpo) =>
 // a contagem continua acontecendo no webhook do pagamento, pela mesma função.
 const usarCupom = async ({ codigo, orderId }) => (await import("./cupons.js")).marcarCupomUsado(codigo, orderId);
 
+// Códigos dos cupons lidos do próprio código: os testes não repetem os códigos reais.
+const { CUPONS_PESSOAIS } = await import("./cupons-store.js");
+const { PERCENT_COUPONS, CUSTO_DIRETO_COUPONS } = await import("./cupons.js");
+const PESSOAL_A = CUPONS_PESSOAIS[5];
+const PESSOAL_B = CUPONS_PESSOAIS[6];
+const CUPOM_5 = [...PERCENT_COUPONS.values()][0].codigo;
+const CUPOM_PROFESSOR = [...CUSTO_DIRETO_COUPONS.values()][0];
+const misto = (texto) => [...texto].map((c, i) => (i % 2 ? c.toLowerCase() : c.toUpperCase())).join("");
+
 let passed = 0;
 const failures = [];
 
@@ -117,10 +126,10 @@ await test("os cupons da loja continuam funcionando", async () => {
   resetCuponsStoreForTests();
 
   // Cupom pessoal — case-insensitive, trim, nome canônico de volta.
-  assert.deepEqual(await post("/api/validar-cupom", { codigo: "  ZANON  " }).then((r) => r.json()), {
+  assert.deepEqual(await post("/api/validar-cupom", { codigo: `  ${misto(PESSOAL_A)}  ` }).then((r) => r.json()), {
     valido: true,
     tipo: "custo",
-    codigo: "Zanon",
+    codigo: PESSOAL_A,
   });
 
   assert.deepEqual(await post("/api/validar-cupom", { codigo: "fulano da silva" }).then((r) => r.json()), {
@@ -130,42 +139,42 @@ await test("os cupons da loja continuam funcionando", async () => {
 
   // Contabilizar (idempotente) e revalidar: 1/2 continua válido.
   assert.equal(
-    (await usarCupom({ codigo: "Amanda", orderId: "X1" })).ok,
+    (await usarCupom({ codigo: PESSOAL_B, orderId: "X1" })).ok,
     true
   );
   assert.equal(
-    (await usarCupom({ codigo: "amanda", orderId: "X1" })).jaContava,
+    (await usarCupom({ codigo: PESSOAL_B.toLowerCase(), orderId: "X1" })).jaContava,
     true
   );
   assert.equal(
-    (await post("/api/validar-cupom", { codigo: "amanda" }).then((r) => r.json())).valido,
+    (await post("/api/validar-cupom", { codigo: PESSOAL_B.toLowerCase() }).then((r) => r.json())).valido,
     true
   );
 
   // Segundo uso esgota; terceiro é bloqueado.
-  await usarCupom({ codigo: "Amanda", orderId: "X2" });
-  assert.deepEqual(await post("/api/validar-cupom", { codigo: "Amanda" }).then((r) => r.json()), {
+  await usarCupom({ codigo: PESSOAL_B, orderId: "X2" });
+  assert.deepEqual(await post("/api/validar-cupom", { codigo: PESSOAL_B }).then((r) => r.json()), {
     valido: false,
     motivo: "esgotado",
   });
   assert.equal(
-    (await usarCupom({ codigo: "Amanda", orderId: "X3" })).ok,
+    (await usarCupom({ codigo: PESSOAL_B, orderId: "X3" })).ok,
     false
   );
 
 });
 
-await test("cupom programador5 (5% do subtotal): case-insensitive, sem limite de uso", async () => {
+await test("cupom de 5% do subtotal: case-insensitive, sem limite de uso", async () => {
   const { resetSheet } = await import(fake("google-sheets.js"));
   const { resetCuponsStoreForTests } = await import("./cupons-store.js");
   resetSheet();
   resetCuponsStoreForTests();
 
-  for (const variacao of ["programador5", "PROGRAMADOR5", "  Programador5  "]) {
+  for (const variacao of [CUPOM_5, CUPOM_5.toLowerCase(), `  ${misto(CUPOM_5)}  `]) {
     assert.deepEqual(await post("/api/validar-cupom", { codigo: variacao }).then((r) => r.json()), {
       valido: true,
       tipo: "percentual",
-      codigo: "programador5",
+      codigo: CUPOM_5,
       percentual: 5,
     });
   }
@@ -173,16 +182,16 @@ await test("cupom programador5 (5% do subtotal): case-insensitive, sem limite de
   // Sem limite de uso: contabilizar não altera a validade em pedidos futuros.
   for (const orderId of ["PED-A", "PED-B", "PED-C"]) {
     assert.equal(
-      (await usarCupom({ codigo: "programador5", orderId })).ok,
+      (await usarCupom({ codigo: CUPOM_5, orderId })).ok,
       true
     );
   }
   assert.equal(
-    (await post("/api/validar-cupom", { codigo: "programador5" }).then((r) => r.json())).valido,
+    (await post("/api/validar-cupom", { codigo: CUPOM_5 }).then((r) => r.json())).valido,
     true
   );
 
-  assert.deepEqual(await post("/api/validar-cupom", { codigo: "programador10" }).then((r) => r.json()), {
+  assert.deepEqual(await post("/api/validar-cupom", { codigo: "codigo-inexistente" }).then((r) => r.json()), {
     valido: false,
     motivo: "invalido",
   });

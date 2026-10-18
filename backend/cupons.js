@@ -37,14 +37,14 @@ export function normalizeCoupon(codigo) {
  * sem limite de usos, qualquer cliente pode usar — por isso não passam pela
  * planilha (`cupons-store.js`), igual aos cupons de teste.
  */
-const PERCENT_COUPONS = new Map([["programador5", { codigo: "programador5", percentual: 5 }]]);
+export const PERCENT_COUPONS = new Map([["jhpr3dkrr5", { codigo: "JHPR3DKRR5", percentual: 5 }]]);
 
 /**
  * Cupons de CUSTO DIRETO: preço de custo em todos os produtos e o total do
  * checkout do Mercado Pago é o próprio subtotal a custo (`loja-pagamento.js`
  * zera o acréscimo de taxa e força 1x quando o tipo é "custoDireto").
  */
-const CUSTO_DIRETO_COUPONS = new Map([["professor", "PROFESSOR"]]);
+export const CUSTO_DIRETO_COUPONS = new Map([["uze3un2wgg", "UZE3UN2WGG"]]);
 
 /** Tipo cujo total cobrado é o subtotal do pedido, sem repasse de taxa. */
 export function cupomSemTaxa(tipo) {

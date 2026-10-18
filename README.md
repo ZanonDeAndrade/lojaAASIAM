@@ -91,8 +91,7 @@ do mapa `COST_CENTS` no fim do arquivo — mesmo bloco no front-end e no back-en
 
 ## Cupons pessoais (preco de custo)
 
-Cupons por nome — `Dotto`, `Schmidt`, `Milton`, `Samuel`, `Marcelo`, `Zanon`,
-`Amanda`, `Jessika`, `Gabriel`, `Guilherme`, `Sofia` — que fazem cada item do
+Cupons pessoais (11 códigos aleatórios, a lista fica fora do repositório) — que fazem cada item do
 carrinho ser vendido pelo seu `costCents`, em vez do preco de venda. Cada um vale
 **2 utilizacoes**.
 
