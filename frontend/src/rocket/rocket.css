@@ -76,6 +76,8 @@
 .rl-block-head h3 { margin: 0; font-size: 1.45rem; letter-spacing: -0.02em; }
 /* Ocupa a linha toda (fica abaixo do título), mas limita a medida do texto a 80ch. */
 .rl-block-head p { flex-basis: 100%; margin: 0; padding-right: max(0px, calc(100% - 80ch)); color: var(--rl-text-dim); font-size: 0.92rem; line-height: 1.55; }
+.rl-block-head .rl-venue { display: flex; flex-basis: auto; width: fit-content; max-width: 100%; align-items: flex-start; gap: 8px; padding: 10px 14px; border: 1px solid var(--rl-line-strong); border-left: 3px solid var(--rl-green); border-radius: 10px; background: var(--rl-panel); color: var(--rl-text); }
+.rl-venue svg { flex: none; margin-top: 3px; color: var(--rl-green-soft); }
 .rl-note { margin: 0; max-width: 90ch; color: var(--rl-text-dim); font-size: 0.8rem; line-height: 1.55; }
 .rl-visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .rl-zone-legend { list-style: none; display: flex; flex-wrap: wrap; gap: 6px 20px; margin: 0; padding: 0; color: var(--rl-text-dim); font-size: 0.82rem; }

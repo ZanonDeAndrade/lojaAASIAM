@@ -1,4 +1,4 @@
-import { CalendarDays, CheckCircle2, ChevronDown, RefreshCw, Trophy, WifiOff } from 'lucide-react';
+import { CalendarDays, CheckCircle2, ChevronDown, MapPin, RefreshCw, Trophy, WifiOff } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { buildTournament, formatLabel, isSeries, STATUS_LABELS } from '../../../backend/shared/rocket-tournament.js';
 import { API_BASE, site } from '../settings/site.js';
@@ -191,6 +191,7 @@ export default function MatchSchedule() {
       <div className="rl-block-head">
         <h3 id="rl-mata-mata-titulo">Chaveamento</h3>
         <p>{site.rocket.qualification} {site.rocket.bracketNote}</p>
+        <p className="rl-venue"><MapPin size={16} aria-hidden="true" /><span><strong>Semifinais e grande final presenciais</strong> no Auditório da AMF · sábado, 24/10, a partir das 9h</span></p>
       </div>
       <Bracket tournament={tournament} />
     </section>

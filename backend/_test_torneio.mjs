@@ -28,6 +28,7 @@ for (const group of fresh.groups) {
 check(GROUPS.flatMap(group => group.matches).length === 26);
 check(fresh.groups[0].matches[0].number === '01' && fresh.groups[0].matches[0].status === 'scheduled');
 check(fresh.rounds[0].matches[0].home === null && fresh.rounds[0].matches[0].placeholders[0] === 'Classificado 1');
+check(fresh.rounds.map(round => round.venue).join() === 'Online,Presencial,Presencial', 'quartas online; semifinais e final presenciais');
 check(fresh.rounds[1].matches[0].placeholders.join() === 'Vencedor QF1,Vencedor QF2' && fresh.rounds[2].format === 'MD5' && fresh.rounds[1].format === 'MD3' && fresh.rounds[0].format === 'MD3');
 
 // Validações do placar.

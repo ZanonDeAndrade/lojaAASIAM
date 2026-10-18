@@ -39,7 +39,7 @@ export const isSeries = format => format === 'MD3' || format === 'MD5';
 export const seriesLength = format => (isSeries(format) ? WINS[format] * 2 - 1 : 0);
 export const KNOCKOUT_ROUNDS = [
   { id: 'QF', name: 'Quartas de final', venue: 'Online', matches: ['QF1', 'QF2', 'QF3', 'QF4'] },
-  { id: 'SF', name: 'Semifinal', venue: 'Online', format: 'MD3', matches: ['SF1', 'SF2'] },
+  { id: 'SF', name: 'Semifinal', venue: 'Presencial', format: 'MD3', matches: ['SF1', 'SF2'] },
   { id: 'F', name: 'Grande final', venue: 'Presencial', format: 'MD5', matches: ['F'] },
 ];
 // A SF1 recebe os vencedores da QF1 e da QF2; a SF2, da QF3 e da QF4.
