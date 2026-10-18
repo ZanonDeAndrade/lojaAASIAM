@@ -71,8 +71,8 @@ try {
   check(validateSiteConfig(badColor) !== null);
   const missingPrice = structuredClone(config); delete missingPrice.store.products[0].priceCents;
   check(validateSiteConfig(missingPrice) !== null);
-  const badMatch = structuredClone(config); badMatch.rocket.schedule.matches[0].teams[0] = 'inexistente';
-  check(validateSiteConfig(badMatch) !== null);
+  const badSchedule = structuredClone(config); badSchedule.rocket.schedule.day = 15;
+  check(validateSiteConfig(badSchedule) !== null);
   const badIcon = structuredClone(config); badIcon.navigation.rocket.icon = 'icone-inexistente';
   check(validateSiteConfig(badIcon) !== null);
   const unsafeSection = structuredClone(config); unsafeSection.navigation.rocket.page.sections[0].buttonHref = 'javascript:alert(1)';

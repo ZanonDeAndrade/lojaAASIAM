@@ -23,10 +23,21 @@ O frontend continua usando `VITE_API_URL` para chegar ao backend. O CORS aceita 
 - Banners: adicionar, remover, ordenar, enviar imagens, descrições acessíveis, links, dimensões, prioridade por data e intervalo do carrossel.
 - Imagens: upload PNG/JPEG/WebP/GIF de até 3 MB. Na seção Ajustes de imagens, use a mesma URL da imagem para definir enquadramento, posição, zoom, proporção, descrição e bordas.
 - Loja: abrir/encerrar, editar os produtos existentes, preços, descrições, imagens, capas, categorias, tamanhos, variações e estoque. Os identificadores e tipos dos produtos são preservados para manter a compatibilidade dos pedidos. Produtos ocultos também ficam indisponíveis no checkout.
-- Torneio: nome, banner, textos, abas, valor e prazo das inscrições, premiação, regulamento da página, URL de um novo PDF, grupos, equipes, jogadores, horários, confrontos e vagas do chaveamento.
+- Torneio: nome, banner, textos, abas, valor e prazo das inscrições, premiação, regulamento da página, URL de um novo PDF e textos da tabela (data, regra de classificação e observações). Placares, equipes e chaveamento ficam em **Torneio ao vivo**.
 - Eventos: textos, banners, datas e horários exibidos, local e cardápio. Esses campos de apresentação não alteram os prazos e preços de cobrança dos churrascos, que continuam em `shared/churrasco-eventos.js`.
 
 Os dados de apresentação e regras publicados estão em uma configuração compartilhada. Os valores iniciais ficam em `backend/shared/site-defaults.js`. Não há edição de credenciais de pagamento, chaves privadas, código JavaScript ou regras de autenticação pelo painel.
+
+## Torneio ao vivo (placares da Copa AASIAM)
+
+É a primeira seção do menu (`/admin?section=tournament`). Diferente das outras, **não usa Publicar alterações**: cada placar é salvo na hora e a página `/torneio-rocket-league` busca os dados sozinha a cada 20 segundos.
+
+- **Grupo A, B e C**: classificação calculada e as partidas do grupo. Em cada partida, preencha os gols, escolha o status (A jogar, Ao vivo ou Encerrado) e toque em **Salvar**. **Zerar** volta a partida para "A jogar". Só partidas encerradas contam na tabela.
+- **Mata-mata**: formato das quartas (MD3 por padrão), confrontos das quartas (com **Sugerir pela classificação** depois dos 26 jogos dos grupos) e as séries. Nas séries, informe as vitórias (ex.: 2 × 1) e, opcionalmente, o placar de cada jogo. O vencedor avança sozinho.
+- **Equipes**: nomes e jogadores. Jogadores só aparecem no site quando preenchidos.
+- Empates que pontos, saldo, gols marcados e confronto direto não resolvem aparecem no painel para definir a ordem do sorteio.
+
+Validações: sem gols negativos, sem empate em partida encerrada, MD3 termina com exatamente 2 vitórias do vencedor e MD5 com 3. Os dados ficam na aba **Torneio Placar** da planilha (ou `torneio.json` em `.site-data` no desenvolvimento). A tabela oficial dos jogos está em `backend/shared/rocket-tournament.js`; o teste `npm run test:torneio` confere a tabela, a classificação e a API.
 
 ## Editar e publicar
 

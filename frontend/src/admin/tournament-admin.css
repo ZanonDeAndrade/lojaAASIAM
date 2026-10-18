@@ -1,0 +1,64 @@
+/* Torneio ao vivo: lançamento de placares pensado para o celular. */
+.adm-tour-bar { display:flex; align-items:flex-start; justify-content:space-between; gap:10px; flex-wrap:wrap; }
+.adm-tour-bar > button small { color:var(--adm-dim); font-size:.66rem; }
+.adm-tour-list { display:grid; gap:12px; }
+.adm-tour-round { margin:10px 0 0; font-size:.9rem; color:var(--adm-green); }
+.adm-tour-match { display:grid; gap:12px; padding:16px; border:1px solid var(--adm-line); border-radius:14px; background:var(--adm-panel); }
+.adm-tour-match.is-live { border-color:#88b96b; }
+.adm-tour-match.is-dirty { border-style:dashed; border-color:#d8c36a; }
+.adm-tour-match > header { display:flex; align-items:center; justify-content:space-between; gap:10px; font-size:.8rem; }
+.adm-tour-status { padding:3px 9px; border-radius:20px; font-size:.66rem; font-weight:750; text-transform:uppercase; letter-spacing:.05em; background:#ffffff0d; color:var(--adm-dim); }
+.adm-tour-status.is-live { background:var(--adm-green); color:#14220e; }
+.adm-tour-status.is-finished { background:#b5ee8a1a; color:#c0f2a2; }
+.adm-tour-score { display:grid; grid-template-columns:minmax(0,1fr) 64px auto 64px minmax(0,1fr); align-items:center; gap:8px; }
+.adm-tour-team { font-size:.85rem; font-weight:650; text-align:right; overflow-wrap:anywhere; line-height:1.3; }
+.adm-tour-team.is-away { text-align:left; }
+.adm-tour-team em { font-style:normal; color:var(--adm-dim); font-weight:400; }
+.adm-tour-score input, .adm-tour-games input { width:100%; min-height:48px; border:1px solid #354038; border-radius:9px; background:#111713; color:var(--adm-text); font:inherit; font-size:1.25rem; font-weight:750; text-align:center; font-variant-numeric:tabular-nums; }
+.adm-tour-score input:disabled { opacity:.45; }
+.adm-tour-score > span[aria-hidden] { color:var(--adm-dim); }
+.adm-tour-games summary { cursor:pointer; font-size:.75rem; color:var(--adm-dim); }
+.adm-tour-games > div { display:grid; gap:8px; margin-top:10px; }
+.adm-tour-games label { display:grid; grid-template-columns:64px 60px auto 60px; align-items:center; gap:8px; font-size:.75rem; color:var(--adm-dim); }
+.adm-tour-games input { min-height:40px; font-size:1rem; }
+.adm-tour-actions { display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
+.adm-tour-segment { display:flex; flex:1 1 260px; padding:3px; gap:3px; border:1px solid var(--adm-line); border-radius:10px; background:#101713; }
+.adm-page .adm-tour-segment button { flex:1; min-height:38px; padding:6px 8px; border:0; background:transparent; color:var(--adm-dim); font-size:.75rem; }
+.adm-page .adm-tour-segment button[aria-pressed=true] { background:#b5ee8a1c; color:#c0f2a2; font-weight:750; }
+.adm-tour-ok { display:flex; align-items:center; gap:6px; margin:0; color:#c4f2b1; font-size:.75rem; }
+.adm-tour-match .adm-error, .adm-tour .adm-card .adm-error { padding:0; }
+.adm-tour-table-wrap { overflow-x:auto; }
+.adm-tour-table { width:100%; border-collapse:collapse; font-size:.78rem; font-variant-numeric:tabular-nums; }
+.adm-tour-table th, .adm-tour-table td { padding:8px 4px; border-bottom:1px solid var(--adm-line); text-align:center; }
+.adm-tour-table tbody th { text-align:left; font-weight:600; width:100%; min-width:110px; }
+.adm-tour-table thead th { color:var(--adm-dim); font-size:.66rem; font-weight:600; }
+.adm-tour-table tr.is-qualified td:first-child { box-shadow:inset 3px 0 0 var(--adm-green); }
+.adm-tour-table tr.is-third-in td:first-child { box-shadow:inset 3px 0 0 #b5ee8a66; }
+.adm-tour-tie { margin-top:18px; padding:14px; border:1px dashed #d8c36a; border-radius:12px; display:grid; gap:10px; }
+.adm-tour-tie p { margin:0; }
+.adm-tour-tie ol { list-style:none; margin:0; padding:0; display:grid; gap:6px; }
+.adm-tour-tie li { display:flex; align-items:center; gap:6px; font-size:.8rem; }
+.adm-tour-tie li span { flex:1; }
+.adm-page .adm-tour-tie li button { min-height:32px; padding:4px 8px; }
+.adm-tour-format { max-width:260px; padding:0; margin-bottom:16px; }
+.adm-tour-quarters { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; margin-bottom:16px; }
+.adm-tour-quarters fieldset { display:grid; gap:8px; margin:0; padding:12px; border:1px solid var(--adm-line); border-radius:12px; }
+.adm-tour-quarters legend { padding:0 6px; font-size:.75rem; color:var(--adm-green); font-weight:750; }
+.adm-tour-quarters select { width:100%; min-height:44px; border:1px solid #354038; border-radius:9px; background:#111713; color:var(--adm-text); padding:8px 10px; font-size:.8rem; }
+.adm-tour-seeds { margin:0; padding-left:22px; display:grid; gap:6px; font-size:.82rem; }
+.adm-tour-seeds small { color:var(--adm-dim); }
+.adm-tour-teams { display:grid; gap:12px; margin:0 0 18px; padding:14px; border:1px solid var(--adm-line); border-radius:12px; }
+.adm-tour-teams legend { padding:0 6px; color:var(--adm-green); font-size:.78rem; font-weight:750; }
+.adm-tour-teams > div { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1.3fr); gap:10px; }
+.adm-tour-teams .adm-field { padding:0; }
+.adm-tour-teams .adm-field + .adm-field { margin-top:0; }
+@media(max-width:760px) {
+  .adm-tour-match { padding:14px 12px; }
+  .adm-tour-score { grid-template-columns:minmax(0,1fr) 56px auto 56px minmax(0,1fr); gap:6px; }
+  .adm-tour-team { font-size:.78rem; }
+  .adm-tour-actions > button { flex:1; }
+  .adm-tour-segment { flex-basis:100%; }
+  .adm-tour-quarters { grid-template-columns:1fr; }
+  .adm-tour-teams > div { grid-template-columns:1fr; padding-bottom:10px; border-bottom:1px solid var(--adm-line); }
+  .adm-tour-bar > button { width:100%; }
+}

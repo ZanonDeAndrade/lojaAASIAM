@@ -192,7 +192,8 @@ function PaymentPanel({ order, onBack }) {
 }
 
 export default function RocketPage({ preview = false }) {
-	const [activeTab, setActiveTab] = useState('torneio');
+	// Com as inscrições encerradas, quem abre a página quer acompanhar os jogos.
+	const [activeTab, setActiveTab] = useState(() => pageSettings(site, 'rocket').showSchedule && (!site.rocket.registration.enabled || Date.now() > Date.parse(site.rocket.registration.deadline)) ? 'jogos' : 'torneio');
 	const [draft, setDraft] = useState(() => preview ? structuredClone(EMPTY_DRAFT) : load(STORAGE_DRAFT, EMPTY_DRAFT)); const [order, setOrder] = useState(() => preview ? null : load(STORAGE_ORDER, null) || orderFromHash()); const [availability, setAvailability] = useState(null);
 	useEffect(() => { document.title = `${site.rocket.title} | ${site.brand.name}`; fetch(`${API_BASE}/api/rocket-league/availability`).then(r => r.json()).then(data => data.ok && setAvailability(data)).catch(() => {}); }, []);
 	useEffect(() => { if (!preview) save(STORAGE_DRAFT, draft); }, [draft, preview]);

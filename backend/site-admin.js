@@ -124,5 +124,5 @@ export function registerSiteAdmin(app, { store = createSiteStore(), password = p
       res.send(media.bytes);
     } catch { res.sendStatus(503); }
   });
-  return { load };
+  return { load, router };
 }

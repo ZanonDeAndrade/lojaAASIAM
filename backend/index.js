@@ -45,6 +45,7 @@ import {
 } from "./rocket.js";
 import { rateLimit } from "./rate-limit.js";
 import { registerSiteAdmin } from './site-admin.js';
+import { registerRocketTournament } from './rocket-torneio.js';
 
 const app = express();
 const port = process.env.PORT || 3333;
@@ -115,7 +116,8 @@ app.use((req, res, next) => {
 
 app.use('/api/admin/media', express.json({ limit: '5mb' }));
 app.use(express.json({ limit: "1mb" }));
-registerSiteAdmin(app);
+const siteAdmin = registerSiteAdmin(app);
+registerRocketTournament(app, { adminRouter: siteAdmin.router });
 
 /* ─── CHURRASCOS (AMF Games e Semana Acadêmica de SI) ─── */
 // /api/churrasco/*           Churrasco da Alcateia (AMF Games)

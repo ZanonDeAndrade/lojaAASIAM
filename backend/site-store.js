@@ -40,6 +40,26 @@ export function createSiteStore({ directory = process.env.SITE_DATA_DIR || './.s
       const chunks = Array.from({ length: 20 }, (_, i) => [json.slice(i * 30000, (i + 1) * 30000)]);
       await client.spreadsheets.values.update({ spreadsheetId, range: `${name}!A1:A20`, valueInputOption: 'RAW', requestBody: { values: chunks } });
     },
+    // Placares do torneio: documento próprio, salvo a cada partida, sem passar
+    // pela revisão da configuração do site.
+    async readTournament() {
+      if (sheets) {
+        const name = await sheet('Torneio Placar');
+        const response = await client.spreadsheets.values.get({ spreadsheetId, range: `${name}!A1:A5` });
+        const json = (response.data.values || []).map(row => row[0] || '').join('');
+        return json ? JSON.parse(json) : null;
+      }
+      try { return JSON.parse(await readFile(path.resolve(directory, 'torneio.json'), 'utf8')); }
+      catch (error) { if (error.code === 'ENOENT') return null; throw error; }
+    },
+    async writeTournament(document) {
+      const json = JSON.stringify(document);
+      if (json.length > 150000) throw new Error('Os dados do torneio excedem o limite de 150 KB.');
+      if (!sheets) return diskWrite('torneio.json', json);
+      const name = await sheet('Torneio Placar');
+      const chunks = Array.from({ length: 5 }, (_, i) => [json.slice(i * 30000, (i + 1) * 30000)]);
+      await client.spreadsheets.values.update({ spreadsheetId, range: `${name}!A1:A5`, valueInputOption: 'RAW', requestBody: { values: chunks } });
+    },
     async writeMedia(id, mime, bytes) {
       if (!sheets) {
         await diskWrite(`${id}.json`, JSON.stringify({ mime, base64: bytes.toString('base64') }));

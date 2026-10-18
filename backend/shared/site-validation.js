@@ -38,8 +38,8 @@ export function validateSiteConfig(config) {
     } else if (plain(baseline)) {
       if (!plain(value)) throw new Error(`Seção inválida: ${location}.`);
       for (const [key, child] of Object.entries(baseline)) {
-        // A estrutura de blocos do regulamento e de jogos aceita variações.
-        if (location.includes('.regulation') || location.includes('.matches') || location.includes('.products')) continue;
+        // A estrutura de blocos do regulamento aceita variações.
+        if (location.includes('.regulation') || location.includes('.products')) continue;
         if (!(key in value)) throw new Error(`Campo ausente: ${location}.${key}.`);
         shape(value[key], child, `${location}.${key}`);
       }
@@ -84,25 +84,9 @@ export function validateSiteConfig(config) {
       if (['soldOut', 'hidden'].some(key => key in product && typeof product[key] !== 'boolean')) throw new Error('A visibilidade e o estoque devem ser verdadeiros ou falsos.');
       if (!Number.isInteger(product.priceCents) || product.priceCents < 1 || typeof product.name !== 'string' || !product.name.trim() || !Array.isArray(product.images) || product.images.some(src => typeof src !== 'string' || !safeUrl(src))) throw new Error('Nome, preço ou imagens de produto inválidos.');
     }
-    const teams = new Set();
-    const groupIds = new Set();
-    for (const group of config.rocket.groups) {
-      if (typeof group.id !== 'string' || !group.id || groupIds.has(group.id) || !Array.isArray(group.teams)) throw new Error('Grupo inválido ou repetido.');
-      groupIds.add(group.id);
-      for (const team of group.teams) {
-        if (typeof team.id !== 'string' || !team.id || teams.has(team.id) || typeof team.name !== 'string' || !team.name.trim() || !Array.isArray(team.players) || team.players.some(player => typeof player !== 'string')) throw new Error('Equipe inválida ou repetida.');
-        teams.add(team.id);
-      }
-    }
-    for (const match of config.rocket.schedule.matches) {
-      if (!match.id || !Array.isArray(match.teams || match.placeholders) || (match.teams || match.placeholders).length !== 2 || match.teams?.some(id => !teams.has(id)) || (match.teams && match.teams[0] === match.teams[1])) throw new Error('Confronto inválido. Selecione duas equipes cadastradas.');
-      if (typeof match.time !== 'string' || typeof match.stage !== 'string' || typeof match.format !== 'string') throw new Error('Horário ou fase do confronto inválidos.');
-    }
-    if (config.rocket.rounds.length !== 3 || config.rocket.rounds.some((round, index) => !Array.isArray(round.matches) || round.matches.length !== [4, 2, 1][index] || round.matches.some(match => !Array.isArray(match.sides) || match.sides.length !== 2))) throw new Error('O chaveamento deve ter quatro quartas, duas semifinais e uma final.');
     for (const section of config.rocket.regulation) {
       if (!plain(section) || typeof section.title !== 'string' || (section.paragraphs && (!Array.isArray(section.paragraphs) || section.paragraphs.some(text => typeof text !== 'string'))) || (section.items && (!Array.isArray(section.items) || section.items.some(item => !plain(item) || typeof item.label !== 'string' || typeof item.text !== 'string' || (item.list && (!Array.isArray(item.list) || item.list.some(text => typeof text !== 'string'))))))) throw new Error('Seção ou item do regulamento inválido.');
     }
-    for (const round of config.rocket.rounds) if (typeof round.name !== 'string' || typeof round.format !== 'string' || round.matches.some(match => typeof match.id !== 'string' || match.sides.some(side => typeof side !== 'string'))) throw new Error('Nome, formato ou vagas do chaveamento inválidos.');
     if (config.home.banners.some(banner => !banner.id || !banner.src || !banner.href || !(banner.largura > 0) || !(banner.altura > 0))) throw new Error('Preencha as imagens, links e dimensões dos banners.');
     if (config.home.interval < 2000 || config.home.interval > 60000) throw new Error('O intervalo dos banners deve ficar entre 2000 e 60000 ms.');
     if (config.media.some(media => !plain(media) || !safeUrl(media.src) || !['contain', 'cover', 'fill', 'none', 'scale-down'].includes(media.fit) || !Number.isFinite(media.scale) || media.scale < 0.1 || media.scale > 3 || !Number.isFinite(media.radius) || media.radius < 0 || media.radius > 200 || typeof media.position !== 'string' || !/^[\w% .-]{1,60}$/.test(media.position))) throw new Error('Ajuste de imagem inválido.');
