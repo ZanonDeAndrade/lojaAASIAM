@@ -117,7 +117,7 @@ export async function ensureSheetHeader(sheets, spreadsheetId, sheetName, header
   await sheets.spreadsheets.values.update({
     spreadsheetId,
     range: `${quoteSheetName(sheetName)}!A1`,
-    valueInputOption: "USER_ENTERED",
+    valueInputOption: "RAW",
     requestBody: { values: [headers] },
   });
   console.log(`[Sheets] Cabeçalho da aba "${sheetName}" atualizado.`);

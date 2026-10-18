@@ -14,6 +14,7 @@
  * Reaproveita os helpers de autenticação e de aba de `google-sheets.js`, os
  * mesmos usados pela aba de pedidos da loja.
  */
+import { sheetSafe } from "./sheet-safe.js";
 import {
   columnLetter,
   createSheetsClient,
@@ -116,21 +117,7 @@ export const COLUNA_CARONA = {
 const FIRST_DATA_ROW = 2;
 
 /** Caracteres de controle — montado por escapes para não sujar o arquivo. */
-const CONTROLE_RE = new RegExp("[\\u0000-\\u001f\\u007f]", "g");
 
-/**
- * Neutraliza formula injection e caracteres de controle. Junto com
- * `valueInputOption: "RAW"`, garante que nada digitado no formulário seja
- * interpretado como fórmula pelo Google Sheets.
- */
-function sheetSafe(value, maxLength = 200) {
-  return String(value ?? "")
-    .replace(CONTROLE_RE, " ")
-    .replace(/^[=+\-@]+/, "")
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, maxLength);
-}
 
 export function isChurrascoSheetConfigured() {
   return isGoogleSheetsConfigured();

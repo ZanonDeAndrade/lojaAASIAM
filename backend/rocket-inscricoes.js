@@ -5,6 +5,7 @@
  * pedidos da loja. Uma linha representa uma equipe e é criada antes da order
  * do Mercado Pago, portanto uma notificação nunca fica sem inscrição.
  */
+import { sheetSafe } from "./sheet-safe.js";
 import {
   columnLetter,
   createSheetsClient,
@@ -49,17 +50,9 @@ const PLAYER_COLUMNS = [
 
 const FIRST_DATA_ROW = 2;
 const LAST_COLUMN = columnLetter(ROCKET_SHEET_HEADERS.length);
-const CONTROL_RE = new RegExp("[\\u0000-\\u001f\\u007f]", "g");
 const STATUS_LABELS = new Set(["Pendente", "Processando", "Pago", "Recusado", "Expirado", "Erro", "Revisão manual"]);
 
-function clean(value, max = 300) {
-  return String(value ?? "")
-    .replace(CONTROL_RE, " ")
-    .replace(/^[=+\-@]+/, "")
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, max);
-}
+const clean = (value, max = 300) => sheetSafe(value, max);
 
 export function isRocketSheetConfigured() {
   return isGoogleSheetsConfigured();

@@ -14,6 +14,7 @@
  *
  * Reaproveita os helpers de autenticação e de aba de `google-sheets.js`.
  */
+import { sheetSafe } from "./sheet-safe.js";
 import {
   columnLetter,
   createSheetsClient,
@@ -105,17 +106,6 @@ const COL = {
 const LAST_COLUMN = columnLetter(LOJA_SHEET_HEADERS.length);
 const FIRST_DATA_ROW = 2;
 
-const CONTROLE_RE = new RegExp("[\\u0000-\\u001f\\u007f]", "g");
-
-/** Neutraliza formula injection + caracteres de controle (com `RAW`). */
-function sheetSafe(value, maxLength = 200) {
-  return String(value ?? "")
-    .replace(CONTROLE_RE, " ")
-    .replace(/^[=+\-@]+/, "")
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, maxLength);
-}
 
 /** "R$ 105,24" → 10524. `null` quando não há dígitos. */
 function centsDaPlanilha(texto) {
