@@ -146,9 +146,13 @@ O jeito mais rápido é voltar ao deploy anterior nos painéis:
 - **Render:** Deploys → deploy anterior → **Rollback**.
 - **Vercel:** Deployments → deploy anterior da `main` → **⋯ → Promote to Production** (Instant Rollback).
 
-Depois, para alinhar o código, reverta os commits da etapa 1 (sem reescrever histórico):
+Depois, para alinhar o código, volte ao estado de antes da etapa 1 (`666b143`, que já inclui o mata-mata jogo a jogo). É um commit novo, sem reescrever histórico:
 
 ```bash
-git revert --no-edit fbc27c0..main
+git checkout main
+git restore --source=666b143 --staged --worktree -- .
+git commit -m "revert: desfaz a etapa 1 de segurança (volta ao código de 666b143)"
 git push origin main
 ```
+
+Os códigos novos de cupom deixam de valer, e os antigos voltam a funcionar enquanto as linhas antigas da aba "Cupons" estiverem ativas.
