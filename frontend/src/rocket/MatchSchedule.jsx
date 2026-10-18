@@ -1,12 +1,14 @@
-import { CalendarDays, CheckCircle2, ChevronDown, MapPin, RefreshCw, Trophy, WifiOff } from 'lucide-react';
+import { CalendarDays, CheckCircle2, ChevronDown, MapPin, Medal, RefreshCw, Trophy, WifiOff } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { buildTournament, formatLabel, isSeries, STATUS_LABELS } from '../../../backend/shared/rocket-tournament.js';
 import { API_BASE, site } from '../settings/site.js';
 
 const REFRESH_MS = 20000;
 const JUMPS = [{ href: '#rl-grupo-A', label: 'Grupo A' }, { href: '#rl-grupo-B', label: 'Grupo B' }, { href: '#rl-grupo-C', label: 'Grupo C' }, { href: '#rl-mata-mata', label: 'Mata-mata' }];
-// Rótulos curtos do chaveamento: Q1…Q4, S1, S2 e F.
+// Rótulos curtos do chaveamento: Q1…Q4, S1, S2, F e 3º lugar.
 const shortId = text => text.replace(/\bQF(\d)/g, 'Q$1').replace(/\bSF(\d)/g, 'S$1');
+const cardLabel = id => ({ T3: '3º lugar' })[id] || shortId(id);
+const matchName = id => ({ F: 'Grande final', T3: 'Disputa de 3º lugar' })[id] || shortId(id);
 const signed = value => (value > 0 ? `+${value}` : value);
 
 /* Consulta o placar a cada 20 s enquanto a aba está visível e na hora em que
@@ -124,11 +126,11 @@ function SeriesGames({ match, id }) {
 function BracketCard({ match, round, open, onToggle }) {
   const played = match.status !== 'scheduled';
   const side = index => (match.winner ? ((index ? match.away : match.home)?.id === match.winner ? 'is-winner' : 'is-loser') : '');
-  const label = match.id === 'F' ? 'F' : shortId(match.id);
+  const label = cardLabel(match.id);
   const series = isSeries(match.format);
   const liveGame = series && match.games.find(game => game.needed && game.status === 'live');
   // Tocar em qualquer parte do card abre ou fecha a lista de jogos.
-  return <article className={`rl-br-card is-${match.status} ${match.id === 'F' ? 'is-final' : ''} ${series ? 'has-games' : ''} ${open ? 'is-open' : ''}`} aria-label={`${match.id === 'F' ? 'Grande final' : label}: ${match.home?.name || shortId(match.placeholders[0])} contra ${match.away?.name || shortId(match.placeholders[1])}`} onClick={series ? onToggle : undefined}>
+  return <article className={`rl-br-card is-${match.status} ${match.id === 'F' ? 'is-final' : ''} ${series ? 'has-games' : ''} ${open ? 'is-open' : ''}`} aria-label={`${matchName(match.id)}: ${match.home?.name || shortId(match.placeholders[0])} contra ${match.away?.name || shortId(match.placeholders[1])}`} onClick={series ? onToggle : undefined}>
     <header><strong>{label}</strong><span className="rl-br-format">{formatLabel(round.format)} · {round.venue}</span><StatusBadge status={match.status} /></header>
     <BracketSide team={match.home} placeholder={match.placeholders[0]} score={played ? match.a ?? 0 : '—'} state={side(0)} />
     <BracketSide team={match.away} placeholder={match.placeholders[1]} score={played ? match.b ?? 0 : '—'} state={side(1)} />
@@ -140,8 +142,21 @@ function BracketCard({ match, round, open, onToggle }) {
     </>}
   </article>;
 }
-function Champion({ team }) {
-  return <div className={`rl-champion ${team ? 'is-decided' : ''}`} role="status"><Trophy size={26} aria-hidden="true" /><span><small>Campeão</small><strong>{team ? team.name : 'A definir'}</strong></span></div>;
+/* Pódio: campeão e vice pela final, 3º lugar pela disputa entre os perdedores
+   das semifinais. Cada posição fica "A definir" até sair o resultado. */
+const PODIUM = [
+  { key: 'champion', label: 'Campeão', Icon: Trophy },
+  { key: 'runnerUp', label: 'Vice', Icon: Medal },
+  { key: 'third', label: '3º lugar', Icon: Medal },
+];
+function Podium({ podium }) {
+  return <section className="rl-podium" aria-labelledby="rl-podio-titulo">
+    <h5 id="rl-podio-titulo" className="rl-visually-hidden">Pódio</h5>
+    <ol>{PODIUM.map(({ key, label, Icon }) => <li key={key} className={`is-${key} ${podium[key] ? 'is-decided' : ''}`}>
+      <Icon size={key === 'champion' ? 24 : 20} aria-hidden="true" />
+      <span><small>{label}</small><strong>{podium[key]?.name || 'A definir'}</strong></span>
+    </li>)}</ol>
+  </section>;
 }
 
 function Bracket({ tournament }) {
@@ -154,10 +169,12 @@ function Bracket({ tournament }) {
     return () => document.removeEventListener('click', close);
   }, [openId]);
   const card = (match, round) => <BracketCard match={match} round={round} open={openId === match.id} onToggle={() => setOpenId(current => (current === match.id ? null : match.id))} />;
-  return <div className="rl-bracket">{tournament.rounds.map(round => <section className={`rl-br-round rl-br-${round.id}`} key={round.id} aria-labelledby={`rl-br-${round.id}-titulo`}>
+  // O 3º lugar não entra nas colunas: fica na coluna da final, sem conectores.
+  const thirdRound = tournament.rounds.find(round => round.id === 'T3');
+  return <div className="rl-bracket">{tournament.rounds.filter(round => round !== thirdRound).map(round => <section className={`rl-br-round rl-br-${round.id}`} key={round.id} aria-labelledby={`rl-br-${round.id}-titulo`}>
     <header className="rl-br-heading"><h4 id={`rl-br-${round.id}-titulo`}>{round.id === 'SF' ? 'Semifinais' : round.name}</h4><span>{formatLabel(round.format)} · {round.venue}</span></header>
     <div className="rl-br-slots">{round.matches.map((match, index) => <div key={match.id} className={['rl-br-slot', index % 2 ? 'is-lower' : 'is-upper', match.winner && 'has-winner', match.home && match.away && 'is-fed'].filter(Boolean).join(' ')}>
-      {round.id === 'F' ? <div className="rl-br-final">{card(match, round)}<Champion team={tournament.champion} /></div> : card(match, round)}
+      {round.id === 'F' ? <div className="rl-br-final">{card(match, round)}<div className="rl-br-third">{card(thirdRound.matches[0], thirdRound)}</div><Podium podium={tournament.podium} /></div> : card(match, round)}
     </div>)}</div>
   </section>)}</div>;
 }

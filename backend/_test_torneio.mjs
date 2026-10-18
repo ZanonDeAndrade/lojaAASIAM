@@ -28,8 +28,10 @@ for (const group of fresh.groups) {
 check(GROUPS.flatMap(group => group.matches).length === 26);
 check(fresh.groups[0].matches[0].number === '01' && fresh.groups[0].matches[0].status === 'scheduled');
 check(fresh.rounds[0].matches[0].home === null && fresh.rounds[0].matches[0].placeholders[0] === 'Classificado 1');
-check(fresh.rounds.map(round => round.venue).join() === 'Online,Presencial,Presencial', 'quartas online; semifinais e final presenciais');
-check(fresh.rounds[1].matches[0].placeholders.join() === 'Vencedor QF1,Vencedor QF2' && fresh.rounds[2].format === 'MD5' && fresh.rounds[1].format === 'MD3' && fresh.rounds[0].format === 'MD3');
+check(fresh.rounds.map(round => `${round.id}:${round.venue}`).join() === 'QF:Online,SF:Presencial,T3:Presencial,F:Presencial', 'quartas online; semifinais, 3º lugar e final presenciais');
+check(fresh.rounds[1].matches[0].placeholders.join() === 'Vencedor QF1,Vencedor QF2' && fresh.rounds[3].format === 'MD5' && fresh.rounds[2].format === 'MD3' && fresh.rounds[1].format === 'MD3' && fresh.rounds[0].format === 'MD3');
+check(fresh.knockout.T3.home === null && fresh.knockout.T3.placeholders.join() === 'Perdedor SF1,Perdedor SF2' && fresh.knockout.T3.format === 'MD3', '3º lugar começa com os perdedores a definir');
+check(Object.values(fresh.podium).every(place => place === null), 'pódio começa a definir');
 
 // Validações do placar.
 check(validateResult('single', { status: 'finished', a: -1, b: 2 }) === 'Os gols não podem ser negativos.');
@@ -178,6 +180,45 @@ check(view.champion?.id === view.knockout.SF1.winner);
 const reset = updateResult(full, 'F', { games: [] }).state;
 check(!reset.results.F && buildTournament(reset).champion === null, 'zerar limpa todos os jogos da série');
 
+// Disputa de 3º lugar: perdedores das semifinais, independente da final.
+view = buildTournament(full);
+const [sf1, sf2] = [view.knockout.SF1, view.knockout.SF2];
+check(view.knockout.T3.home.id === sf1.loser && view.knockout.T3.away.id === sf2.loser && sf1.loser !== sf1.winner, 'perdedores das semis entram no 3º lugar');
+check(view.podium.champion.id === view.knockout.F.winner && view.podium.runnerUp.id === view.knockout.F.loser && view.podium.third === null, 'campeão e vice saem da final');
+let partial = updateResult(full, 'SF2', { games: [] });
+check(partial.error, 'semifinal com a final lançada não é zerada');
+partial = updateResult(updateResult(full, 'F', { games: [] }).state, 'SF2', { games: [] }).state;
+view = buildTournament(partial);
+check(view.knockout.T3.home.id === sf1.loser && view.knockout.T3.away === null && view.knockout.T3.placeholders[1] === 'Perdedor SF2', 'cada semifinal encerrada já manda o seu perdedor');
+check(updateResult(partial, 'T3', { games: [done(1, 0)] }).error, '3º lugar só com as duas equipes definidas');
+// Antes da final, durante e depois: o 3º lugar não depende dela.
+let third = updateResult(full, 'F', { games: [] }).state;
+third = seriesOf(third, 'T3', [done(2, 1), live(0, 0)]);
+check(buildTournament(third).knockout.T3.status === 'live' && buildTournament(third).podium.third === null, '3º lugar ao vivo antes da final');
+third = seriesOf(third, 'F', [live(1, 1)]);
+third = seriesOf(third, 'T3', [done(2, 1), done(0, 3), done(4, 2)]);
+view = buildTournament(third);
+check(view.knockout.F.status === 'live' && view.podium.third.id === sf1.loser && view.podium.champion === null, '3º lugar decidido com a final ao vivo');
+third = seriesOf(third, 'F', [done(1, 0), done(1, 0), done(1, 0)]);
+view = buildTournament(third);
+check(view.podium.champion.id === view.knockout.F.winner && view.podium.runnerUp.id === view.knockout.F.loser && view.podium.third.id === sf1.loser, 'pódio completo');
+check(JSON.stringify(updateResult(third, 'F', { games: [] }).state.results.T3) === JSON.stringify(third.results.T3), 'zerar a final não mexe no 3º lugar');
+check(JSON.stringify(updateResult(third, 'T3', { games: [] }).state.results.F) === JSON.stringify(third.results.F) && buildTournament(updateResult(third, 'T3', { games: [] }).state).podium.third === null, 'zerar o 3º lugar não mexe na final');
+check(/3º lugar já tem placar/.test(updateResult(updateResult(third, 'F', { games: [] }).state, 'SF1', { games: [done(0, 1), done(0, 1)] }).error), 'semifinal não troca de vencedor com o 3º lugar lançado');
+// Validações da série valem para o 3º lugar.
+check(/empatado/.test(updateResult(third, 'T3', { games: [done(2, 2)] }).error));
+check(/não é necessário/.test(updateResult(third, 'T3', { games: [done(1, 0), done(1, 0), done(1, 0)] }).error));
+check(/Jogo 2 só pode ser encerrado/.test(updateResult(third, 'T3', { games: [live(1, 0), done(1, 0)] }).error));
+check(updateResult(third, 'T3', { status: 'finished', a: 2, b: 0 }).error, '3º lugar recusa placar manual da série');
+// Formato configurável: MD3 por padrão, MD5 opcional, travado com placar lançado.
+check(updateQuarters(third, { quarterFormat: 'MD3', quarters: third.quarters, thirdFormat: 'MD5' }).error, 'formato do 3º lugar não muda com placar lançado');
+check(updateQuarters(third, { quarterFormat: 'MD3', quarters: third.quarters, thirdFormat: 'MD1' }).error, '3º lugar só aceita MD3 ou MD5');
+const md5 = updateQuarters(updateResult(third, 'T3', { games: [] }).state, { quarterFormat: 'MD3', quarters: third.quarters, thirdFormat: 'MD5' }).state;
+view = buildTournament(md5);
+check(md5.thirdFormat === 'MD5' && view.knockout.T3.format === 'MD5' && view.rounds[2].format === 'MD5' && view.knockout.T3.games.length === 5, '3º lugar em MD5');
+check(updateQuarters(md5, { quarterFormat: 'MD3', quarters: md5.quarters }).state.thirdFormat === 'MD5', 'painel antigo sem thirdFormat mantém o formato');
+check(normalizeTournament({ ...md5, thirdFormat: 'MD7' }).thirdFormat === 'MD3' && normalizeTournament(md5).thirdFormat === 'MD5');
+
 // Série lançada antes do placar por jogo: mantém o valor salvo, com aviso.
 const legacy = structuredClone(full);
 legacy.results.QF4 = { status: 'finished', a: 2, b: 1 };
@@ -222,7 +263,8 @@ async function call(url, { token, body } = {}) {
 try {
   const publicRead = await call('/api/rocket-league/torneio');
   check(publicRead.status === 200 && publicRead.data.torneio.revision === 0);
-  check(Object.keys(publicRead.data.series).join() === 'QF1,QF2,QF3,QF4,SF1,SF2,F' && publicRead.data.series.F.games.length === 5 && publicRead.data.series.SF1.format === 'MD3', 'rota pública devolve os jogos de cada série');
+  check(Object.keys(publicRead.data.series).join() === 'QF1,QF2,QF3,QF4,SF1,SF2,T3,F' && publicRead.data.series.F.games.length === 5 && publicRead.data.series.SF1.format === 'MD3' && publicRead.data.series.T3.games.length === 3, 'rota pública devolve os jogos de cada série, inclusive o 3º lugar');
+  check(JSON.stringify(publicRead.data.podium) === '{"champion":null,"runnerUp":null,"third":null}', 'rota pública devolve o pódio');
   check((await call('/api/admin/torneio/partidas/A01', { body: { status: 'finished', a: 2, b: 1 } })).status === 401);
   const token = (await call('/api/admin/login', { body: { username: 'admin', password: 'senha-de-teste' } })).data.token;
   const saved = await call('/api/admin/torneio/partidas/A01', { token, body: { status: 'finished', a: 2, b: 1 } });
@@ -249,8 +291,29 @@ try {
   check(seriesRead.data.series.QF1.status === 'live' && seriesRead.data.series.QF1.a === 1 && seriesRead.data.series.QF1.games[1].status === 'live' && seriesRead.data.series.QF1.games[1].b === 2, 'rota pública mostra o jogo ao vivo');
   const stored = await store.readTournament();
   check(stored.results.QF1.games.length === 2 && stored.results.A01.a === 2 && stored.results.C01.b === 3, 'jogos gravados junto dos placares existentes');
+  // 3º lugar pela API: formato salvo junto das quartas, pódio na rota pública.
+  const apiState = structuredClone(third);
+  apiState.revision = (await store.readTournament()).revision;
+  await store.writeTournament(apiState);
+  const fresh3 = registerRocketTournament(express(), { adminRouter: express.Router(), store });
+  check((await fresh3.load()).results.T3.games.length === 3, 'documento com 3º lugar relido do disco');
+  const app3 = express(); app3.use(express.json());
+  const admin3 = registerSiteAdmin(app3, { store, password: 'senha-de-teste' });
+  registerRocketTournament(app3, { adminRouter: admin3.router, store });
+  const server3 = app3.listen(0, '127.0.0.1'); await once(server3, 'listening');
+  try {
+    const base3 = `http://127.0.0.1:${server3.address().port}`;
+    const read3 = await (await fetch(`${base3}/api/rocket-league/torneio`)).json();
+    check(read3.podium.champion.id === buildTournament(third).podium.champion.id && read3.podium.runnerUp && read3.podium.third.id === sf1.loser && read3.series.T3.status === 'finished', 'rota pública devolve o 3º lugar e o pódio');
+    const token3 = (await (await fetch(`${base3}/api/admin/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: 'admin', password: 'senha-de-teste' }) })).json()).token;
+    const post3 = (url, body) => fetch(base3 + url, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token3}` }, body: JSON.stringify(body) });
+    check((await post3('/api/admin/torneio/partidas/T3', { games: [] })).status === 200);
+    check((await (await post3('/api/admin/torneio/mata-mata', { quarterFormat: 'MD3', quarters: third.quarters, thirdFormat: 'MD5' })).json()).torneio.thirdFormat === 'MD5', 'formato do 3º lugar salvo pela API');
+    const after3 = await store.readTournament();
+    check(after3.thirdFormat === 'MD5' && !after3.results.T3 && after3.results.F.games.length === 3 && after3.results.A01.a === full.results.A01.a, '3º lugar gravado sem apagar o resto');
+  } finally { server3.close(); }
 } finally {
   server.close();
   await rm(directory, { recursive: true, force: true });
 }
-console.log(`Torneio: ${passed} verificações passaram (tabela oficial, classificação, desempates, mata-mata jogo a jogo, validações e API).`);
+console.log(`Torneio: ${passed} verificações passaram (tabela oficial, classificação, desempates, mata-mata jogo a jogo, 3º lugar, pódio, validações e API).`);

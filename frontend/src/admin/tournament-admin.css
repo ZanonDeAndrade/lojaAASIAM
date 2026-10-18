@@ -55,7 +55,8 @@
 .adm-tour-tie li { display:flex; align-items:center; gap:6px; font-size:.8rem; }
 .adm-tour-tie li span { flex:1; }
 .adm-page .adm-tour-tie li button { min-height:32px; padding:4px 8px; }
-.adm-tour-format { max-width:260px; padding:0; margin-bottom:16px; }
+.adm-tour-formats { display:flex; flex-wrap:wrap; gap:12px 18px; margin-bottom:16px; }
+.adm-tour-format { flex:1 1 220px; max-width:260px; padding:0; }
 .adm-tour-quarters { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; margin-bottom:16px; }
 .adm-tour-quarters fieldset { display:grid; gap:8px; margin:0; padding:12px; border:1px solid var(--adm-line); border-radius:12px; }
 .adm-tour-quarters legend { padding:0 6px; font-size:.75rem; color:var(--adm-green); font-weight:750; }

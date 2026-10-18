@@ -34,23 +34,29 @@ const GROUP_MATCH_IDS = new Set(GROUPS.flatMap(group => group.matches.map(match 
 
 export const STATUS_LABELS = { scheduled: 'A jogar', live: 'Ao vivo', finished: 'Encerrado' };
 export const QUARTER_FORMATS = ['MD1', 'MD3', 'MD5'];
+export const THIRD_FORMATS = ['MD3', 'MD5'];
 const WINS = { MD1: 1, MD3: 2, MD5: 3 };
 export const isSeries = format => format === 'MD3' || format === 'MD5';
 export const seriesLength = format => (isSeries(format) ? WINS[format] * 2 - 1 : 0);
+// O formato das quartas e o do 3º lugar são escolhidos no painel (formatKey).
 export const KNOCKOUT_ROUNDS = [
-  { id: 'QF', name: 'Quartas de final', venue: 'Online', matches: ['QF1', 'QF2', 'QF3', 'QF4'] },
+  { id: 'QF', name: 'Quartas de final', venue: 'Online', formatKey: 'quarterFormat', matches: ['QF1', 'QF2', 'QF3', 'QF4'] },
   { id: 'SF', name: 'Semifinal', venue: 'Presencial', format: 'MD3', matches: ['SF1', 'SF2'] },
+  { id: 'T3', name: '3º lugar', venue: 'Presencial', formatKey: 'thirdFormat', matches: ['T3'] },
   { id: 'F', name: 'Grande final', venue: 'Presencial', format: 'MD5', matches: ['F'] },
 ];
-// A SF1 recebe os vencedores da QF1 e da QF2; a SF2, da QF3 e da QF4.
-const FEEDS = { SF1: ['QF1', 'QF2'], SF2: ['QF3', 'QF4'], F: ['SF1', 'SF2'] };
+// A SF1 recebe os vencedores da QF1 e da QF2; a SF2, da QF3 e da QF4. O 3º
+// lugar recebe os perdedores das semifinais e não depende da final.
+const FEEDS = { SF1: ['QF1', 'QF2'], SF2: ['QF3', 'QF4'], T3: ['SF1', 'SF2'], F: ['SF1', 'SF2'] };
+const FROM_LOSERS = new Set(['T3']);
+const MATCH_NAMES = { F: 'final', T3: 'disputa de 3º lugar' };
 const KNOCKOUT_IDS = KNOCKOUT_ROUNDS.flatMap(round => round.matches);
 const TIEBREAK_KEYS = ['A', 'B', 'C', 'thirds'];
 
 export function formatLabel(format) { return format === 'MD1' || format === 'single' ? 'Partida única' : format; }
 
 export function emptyTournament() {
-  return { revision: 0, updatedAt: null, teams: structuredClone(DEFAULT_TEAMS), results: {}, quarterFormat: 'MD3', quarters: [[null, null], [null, null], [null, null], [null, null]], tiebreaks: {} };
+  return { revision: 0, updatedAt: null, teams: structuredClone(DEFAULT_TEAMS), results: {}, quarterFormat: 'MD3', quarters: [[null, null], [null, null], [null, null], [null, null]], thirdFormat: 'MD3', tiebreaks: {} };
 }
 
 const isScore = value => Number.isInteger(value) && value >= 0 && value <= 99;
@@ -79,6 +85,7 @@ export function normalizeTournament(raw) {
     state.results[id] = cleanResult(result);
   }
   if (QUARTER_FORMATS.includes(raw.quarterFormat)) state.quarterFormat = raw.quarterFormat;
+  if (THIRD_FORMATS.includes(raw.thirdFormat)) state.thirdFormat = raw.thirdFormat;
   if (Array.isArray(raw.quarters)) state.quarters = state.quarters.map((pair, index) => pair.map((_, side) => (TEAM_IDS.includes(raw.quarters[index]?.[side]) ? raw.quarters[index][side] : null)));
   for (const key of TIEBREAK_KEYS) if (Array.isArray(raw.tiebreaks?.[key])) state.tiebreaks[key] = raw.tiebreaks[key].filter(id => TEAM_IDS.includes(id));
   return state;
@@ -87,6 +94,7 @@ export function normalizeTournament(raw) {
 export function matchFormat(state, id) {
   if (GROUP_MATCH_IDS.has(id)) return 'single';
   if (/^QF[1-4]$/.test(id)) return state.quarterFormat;
+  if (id === 'T3') return state.thirdFormat;
   return id === 'SF1' || id === 'SF2' ? 'MD3' : id === 'F' ? 'MD5' : null;
 }
 function resultOf(state, id) { return state.results[id] || { status: 'scheduled', a: null, b: null, games: [] }; }
@@ -246,16 +254,19 @@ export function buildTournament(raw) {
   for (const id of KNOCKOUT_IDS) {
     const quarter = /^QF(\d)$/.exec(id);
     const index = quarter ? Number(quarter[1]) - 1 : -1;
-    const sides = quarter ? state.quarters[index] : FEEDS[id].map(feed => knockout[feed].winner);
-    const placeholders = quarter ? [`Classificado ${index * 2 + 1}`, `Classificado ${index * 2 + 2}`] : FEEDS[id].map(feed => `Vencedor ${feed}`);
+    const sides = quarter ? state.quarters[index] : FEEDS[id].map(feed => (FROM_LOSERS.has(id) ? knockout[feed].loser : knockout[feed].winner));
+    const placeholders = quarter ? [`Classificado ${index * 2 + 1}`, `Classificado ${index * 2 + 2}`] : FEEDS[id].map(feed => `${FROM_LOSERS.has(id) ? 'Perdedor' : 'Vencedor'} ${feed}`);
     const format = matchFormat(state, id);
     const result = isSeries(format) ? seriesResult(format, state.results[id]) : resultOf(state, id);
     const winner = result.status === 'finished' && sides[0] && sides[1] ? (result.a > result.b ? sides[0] : sides[1]) : null;
-    knockout[id] = { id, format, ...result, home: sides[0] ? team(sides[0]) : null, away: sides[1] ? team(sides[1]) : null, placeholders, winner };
+    const loser = winner && (winner === sides[0] ? sides[1] : sides[0]);
+    knockout[id] = { id, format, ...result, home: sides[0] ? team(sides[0]) : null, away: sides[1] ? team(sides[1]) : null, placeholders, winner, loser };
   }
-  const rounds = KNOCKOUT_ROUNDS.map(round => ({ ...round, format: round.format || state.quarterFormat, matches: round.matches.map(id => knockout[id]) }));
+  const rounds = KNOCKOUT_ROUNDS.map(round => ({ ...round, format: round.format || state[round.formatKey], matches: round.matches.map(id => knockout[id]) }));
+  // Pódio: campeão e vice saem da final; o 3º lugar, da disputa entre os perdedores das semis.
+  const podium = { champion: knockout.F.winner ? team(knockout.F.winner) : null, runnerUp: knockout.F.loser ? team(knockout.F.loser) : null, third: knockout.T3.winner ? team(knockout.T3.winner) : null };
 
-  return { state, teams: TEAM_IDS.map(team), groups, groupsComplete, thirds, thirdTies, seeds, suggestion: seeds && suggestQuarters(seeds), rounds, knockout, champion: knockout.F.winner ? team(knockout.F.winner) : null };
+  return { state, teams: TEAM_IDS.map(team), groups, groupsComplete, thirds, thirdTies, seeds, suggestion: seeds && suggestQuarters(seeds), rounds, knockout, champion: podium.champion, podium };
 }
 
 // Séries do mata-mata com todos os jogos, para a rota pública do placar.
@@ -291,8 +302,10 @@ export function updateResult(raw, id, payload) {
   if (saved) next.results[id] = saved;
   else delete next.results[id];
   // Trocar o vencedor depois que a fase seguinte já começou bagunçaria a chave.
-  const fed = Object.keys(FEEDS).find(key => FEEDS[key].includes(id));
-  if (fed && state.results[fed] && before.knockout[id].winner !== buildTournament(next).knockout[id].winner) return { error: `A ${fed === 'F' ? 'final' : fed} já tem placar. Zere a ${fed === 'F' ? 'final' : fed} antes de mudar o vencedor desta série.` };
+  // Numa semifinal isso vale para a final e para o 3º lugar (muda o perdedor).
+  const fed = Object.keys(FEEDS).find(key => FEEDS[key].includes(id) && state.results[key]);
+  const fedName = MATCH_NAMES[fed] || fed;
+  if (fed && before.knockout[id].winner !== buildTournament(next).knockout[id].winner) return { error: `A ${fedName} já tem placar. Zere a ${fedName} antes de mudar o vencedor desta série.` };
   return { state: next };
 }
 
@@ -316,6 +329,10 @@ export function updateQuarters(raw, payload) {
   const state = normalizeTournament(raw);
   const format = payload?.quarterFormat;
   if (!QUARTER_FORMATS.includes(format)) return { error: 'Escolha o formato das quartas: partida única, MD3 ou MD5.' };
+  // Painel aberto antes do 3º lugar não manda thirdFormat: mantém o atual.
+  const thirdFormat = payload.thirdFormat ?? state.thirdFormat;
+  if (!THIRD_FORMATS.includes(thirdFormat)) return { error: 'Escolha o formato da disputa de 3º lugar: MD3 ou MD5.' };
+  if (thirdFormat !== state.thirdFormat && state.results.T3) return { error: 'Zere o placar da disputa de 3º lugar antes de mudar o formato.' };
   const playedQuarters = KNOCKOUT_ROUNDS[0].matches.filter(id => state.results[id]);
   if (format !== state.quarterFormat && playedQuarters.length) return { error: 'Zere os placares das quartas antes de mudar o formato.' };
   const quarters = Array.isArray(payload.quarters) && payload.quarters.length === 4 ? payload.quarters.map(pair => [0, 1].map(side => (pair?.[side] ? pair[side] : null))) : null;
@@ -329,6 +346,7 @@ export function updateQuarters(raw, payload) {
   const next = structuredClone(state);
   next.quarterFormat = format;
   next.quarters = quarters;
+  next.thirdFormat = thirdFormat;
   return { state: next };
 }
 
