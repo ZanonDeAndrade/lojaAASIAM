@@ -111,6 +111,22 @@ await test("/api/health responde e separa loja e churrasco", async () => {
   assert.ok(!cru.includes(process.env.MERCADO_PAGO_WEBHOOK_SECRET), "segredo do webhook vazou");
 });
 
+await test("/api/health mostra os saltos do proxy sem expor IPs, e o X-Powered-By sumiu", async () => {
+  const res = await get("/api/health", { headers: { "X-Forwarded-For": "198.51.100.23, 203.0.113.9" } });
+  const corpo = await res.json();
+  assert.deepEqual(corpo.proxy, { xffHops: 2, trustProxyHops: 1 });
+  const cru = JSON.stringify(corpo);
+  assert.ok(!cru.includes("198.51.100.23") && !cru.includes("203.0.113.9"), "IP vazou no /api/health");
+  assert.equal(res.headers.get("x-powered-by"), null);
+  assert.deepEqual((await (await get("/api/health")).json()).proxy, { xffHops: 0, trustProxyHops: 1 });
+});
+
+await test("churrasco do AMF: inscrições encerradas em 12/09 (relógio real)", async () => {
+  const res = await post("/api/churrasco/checkout", { name: "Pessoa Teste", phone: "(51) 98888-7777", email: "pessoa@exemplo.com", course: "Direito" });
+  assert.equal(res.status, 403);
+  assert.equal((await res.json()).error, "Inscrições encerradas em 12/09 às 23h59.");
+});
+
 await test("/api/config continua entregando o que a loja lê", async () => {
   const corpo = await (await get("/api/config")).json();
 

@@ -6,10 +6,11 @@
   "scripts": {
     "test:admin": "node _test_site_admin.mjs",
     "test:torneio": "node _test_torneio.mjs",
+    "test:seguranca": "node _test_seguranca.mjs",
     "start": "node index.js",
     "build": "for f in *.js shared/*.js; do node --check \"$f\" || exit 1; done",
     "dev": "node --watch index.js",
-    "test": "LOJA_ENCERRADA=false node _test_churrasco.mjs && LOJA_ENCERRADA=false node _test_churrasco_semana.mjs && LOJA_ENCERRADA=false node _test_comprovante.mjs && LOJA_ENCERRADA=false node _test_loja.mjs && LOJA_ENCERRADA=false node _test_loja_pagamento.mjs && LOJA_ENCERRADA=false node _test_webhook_central.mjs && LOJA_ENCERRADA=false node _test_rocket.mjs",
+    "test": "LOJA_ENCERRADA=false node _test_churrasco.mjs && LOJA_ENCERRADA=false node _test_churrasco_semana.mjs && LOJA_ENCERRADA=false node _test_comprovante.mjs && LOJA_ENCERRADA=false node _test_loja.mjs && LOJA_ENCERRADA=false node _test_loja_pagamento.mjs && LOJA_ENCERRADA=false node _test_webhook_central.mjs && node _test_seguranca.mjs && LOJA_ENCERRADA=false node _test_rocket.mjs",
     "test:churrasco": "LOJA_ENCERRADA=false node _test_churrasco.mjs",
     "test:churrasco-semana": "LOJA_ENCERRADA=false node _test_churrasco_semana.mjs",
     "test:loja": "LOJA_ENCERRADA=false node _test_loja.mjs",
