@@ -174,7 +174,7 @@ function Bracket({ tournament }) {
   return <div className="rl-bracket">{tournament.rounds.filter(round => round !== thirdRound).map(round => <section className={`rl-br-round rl-br-${round.id}`} key={round.id} aria-labelledby={`rl-br-${round.id}-titulo`}>
     <header className="rl-br-heading"><h4 id={`rl-br-${round.id}-titulo`}>{round.id === 'SF' ? 'Semifinais' : round.name}</h4><span>{formatLabel(round.format)} · {round.venue}</span></header>
     <div className="rl-br-slots">{round.matches.map((match, index) => <div key={match.id} className={['rl-br-slot', index % 2 ? 'is-lower' : 'is-upper', match.winner && 'has-winner', match.home && match.away && 'is-fed'].filter(Boolean).join(' ')}>
-      {round.id === 'F' ? <div className="rl-br-final">{card(match, round)}<div className="rl-br-third">{card(thirdRound.matches[0], thirdRound)}</div><Podium podium={tournament.podium} /></div> : card(match, round)}
+      {round.id === 'F' ? <div className="rl-br-final">{card(match, round)}<div className="rl-br-below"><div className="rl-br-third">{card(thirdRound.matches[0], thirdRound)}</div><Podium podium={tournament.podium} /></div></div> : card(match, round)}
     </div>)}</div>
   </section>)}</div>;
 }
