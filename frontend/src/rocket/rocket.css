@@ -76,6 +76,8 @@
 .rl-block-head h3 { margin: 0; font-size: 1.45rem; letter-spacing: -0.02em; }
 /* Ocupa a linha toda (fica abaixo do título), mas limita a medida do texto a 80ch. */
 .rl-block-head p { flex-basis: 100%; margin: 0; padding-right: max(0px, calc(100% - 80ch)); color: var(--rl-text-dim); font-size: 0.92rem; line-height: 1.55; }
+.rl-block-head .rl-venue { display: flex; flex-basis: auto; width: fit-content; max-width: 100%; align-items: flex-start; gap: 8px; padding: 10px 14px; border: 1px solid var(--rl-line-strong); border-left: 3px solid var(--rl-green); border-radius: 10px; background: var(--rl-panel); color: var(--rl-text); }
+.rl-venue svg { flex: none; margin-top: 3px; color: var(--rl-green-soft); }
 .rl-note { margin: 0; max-width: 90ch; color: var(--rl-text-dim); font-size: 0.8rem; line-height: 1.55; }
 .rl-visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .rl-zone-legend { list-style: none; display: flex; flex-wrap: wrap; gap: 6px 20px; margin: 0; padding: 0; color: var(--rl-text-dim); font-size: 0.82rem; }
@@ -208,12 +210,31 @@
 .rl-br-card.is-final .rl-br-side { min-height: 64px; }
 .rl-br-card.is-final .rl-br-side strong { font-size: 1.1rem; }
 .rl-br-card.is-final .rl-br-side b { font-size: 1.45rem; }
-.rl-br-final { position: relative; }
-.rl-champion { position: absolute; top: calc(100% + 18px); left: 0; right: 0; display: flex; align-items: center; gap: 14px; padding: 14px 16px; border: 1px dashed var(--rl-line-strong); border-radius: 16px; color: var(--rl-muted); }
-.rl-champion small { display: block; color: var(--rl-text-dim); font-size: 0.78rem; font-weight: 700; }
-.rl-champion strong { display: block; margin-top: 2px; color: var(--rl-text-dim); font-size: 1.1rem; }
-.rl-champion.is-decided { border: 1px solid rgba(232, 193, 92, 0.5); background: linear-gradient(110deg, rgba(232, 193, 92, 0.14), transparent); color: var(--rl-gold); }
-.rl-champion.is-decided strong { color: #fff; font-size: 1.25rem; }
+/* Coluna da final: a final fica exatamente no meio (onde chegam os conectores
+   das semis), com o 3º lugar e o pódio abaixo, sem conectores. As duas faixas
+   de fora têm 1fr cada (a de cima fica vazia), então o meio não se desloca:
+   se o que vem abaixo for mais alto, a chave inteira cresce junto. */
+.rl-br-F .rl-br-slot { align-items: stretch; }
+.rl-br-final { display: grid; grid-template-rows: 1fr auto 1fr; }
+.rl-br-final > .rl-br-card { grid-row: 2; }
+.rl-br-below { grid-row: 3; display: flex; flex-direction: column; gap: 18px; padding-top: 18px; }
+.rl-podium { overflow: hidden; border: 1px solid var(--rl-line-strong); border-radius: 16px; background: var(--rl-panel); }
+.rl-podium ol { list-style: none; margin: 0; padding: 0; }
+.rl-podium li { display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 8px 16px; }
+.rl-podium li + li { border-top: 1px solid var(--rl-line); }
+.rl-podium li > svg { flex: none; opacity: 0.45; }
+.rl-podium li.is-decided > svg { opacity: 1; }
+.rl-podium .is-champion > svg { color: var(--rl-gold); }
+.rl-podium .is-runnerUp > svg { color: #c7ccd1; }
+.rl-podium .is-third > svg { color: #d99a5b; }
+.rl-podium li > span { min-width: 0; }
+.rl-podium small { display: block; color: var(--rl-text-dim); font-size: 0.74rem; font-weight: 700; }
+.rl-podium strong { display: block; margin-top: 1px; color: var(--rl-muted); font-size: 1rem; font-weight: 650; line-height: 1.25; overflow-wrap: anywhere; }
+.rl-podium li.is-decided strong { color: #fff; font-weight: 800; }
+.rl-podium li.is-champion { min-height: 62px; }
+.rl-podium li.is-champion strong { font-size: 1.1rem; }
+.rl-podium li.is-champion.is-decided { background: linear-gradient(110deg, rgba(232, 193, 92, 0.14), transparent); }
+.rl-podium li.is-champion.is-decided strong { font-size: 1.25rem; }
 
 @media (max-width: 1279px) {
   .rl-groups { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -237,8 +258,10 @@
   .rl-br-slot { padding: 0; }
   .rl-bracket .rl-br-slot::before, .rl-bracket .rl-br-slot::after { display: none; }
   .rl-br-F .rl-br-slots { grid-template-columns: 1fr; }
-  .rl-br-final { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
-  .rl-champion { position: static; }
+  .rl-br-final { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: none; gap: 14px; }
+  .rl-br-final > .rl-br-card { grid-row: auto; }
+  .rl-br-below { display: contents; }
+  .rl-podium { grid-column: 1 / -1; }
 }
 @media (max-width: 767px) {
   .rl-layout { gap: 28px; }

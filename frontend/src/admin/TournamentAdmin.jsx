@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, ArrowDown, ArrowUp, Check, RefreshCw, RotateCcw, Save, Sparkles } from 'lucide-react';
-import { buildTournament, deriveSeries, formatLabel, GROUPS, isSeries, QUARTER_FORMATS, STATUS_LABELS, validateResult } from '../../../backend/shared/rocket-tournament.js';
+import { buildTournament, deriveSeries, formatLabel, GROUPS, isSeries, QUARTER_FORMATS, STATUS_LABELS, THIRD_FORMATS, validateResult } from '../../../backend/shared/rocket-tournament.js';
 import './tournament-admin.css';
 
 const FILTERS = [{ id: 'A', label: 'Grupo A' }, { id: 'B', label: 'Grupo B' }, { id: 'C', label: 'Grupo C' }, { id: 'KO', label: 'Mata-mata' }, { id: 'teams', label: 'Equipes' }];
 const time = () => new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 const toNumber = value => (value === '' ? null : Number(value));
+const matchLabel = id => ({ F: 'Grande final', T3: '3º lugar' })[id] || id;
 
 function Card({ title, description, action, children }) {
   return <section className="adm-card"><header className="adm-card-head"><div><h2>{title}</h2>{description && <p>{description}</p>}</div>{action}</header>{children}</section>;
@@ -158,7 +159,7 @@ function TieBreaker({ title, ids, teams, onSave }) {
 }
 
 function QuartersEditor({ view, onSave }) {
-  const server = JSON.stringify({ format: view.state.quarterFormat, quarters: view.state.quarters });
+  const server = JSON.stringify({ format: view.state.quarterFormat, quarters: view.state.quarters, thirdFormat: view.state.thirdFormat });
   const [draft, setDraft] = useState(() => JSON.parse(server));
   const [dirty, setDirty] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -167,14 +168,17 @@ function QuartersEditor({ view, onSave }) {
   function change(next) { setDraft(current => ({ ...current, ...next })); setDirty(true); setFeedback(null); }
   async function save() {
     setBusy(true); setFeedback(null);
-    try { await onSave({ quarterFormat: draft.format, quarters: draft.quarters }); setDirty(false); setFeedback({ ok: `Confrontos salvos às ${time()}` }); }
+    try { await onSave({ quarterFormat: draft.format, quarters: draft.quarters, thirdFormat: draft.thirdFormat }); setDirty(false); setFeedback({ ok: `Confrontos salvos às ${time()}` }); }
     catch (error) { setFeedback({ error: error.message }); }
     finally { setBusy(false); }
   }
   const seedLabel = id => { const index = view.seeds?.indexOf(id); return index >= 0 ? ` (classificado ${index + 1})` : ''; };
-  return <Card title="Formato e confrontos das quartas" description="Escolha as equipes de cada quarta. A sugestão segue a classificação (1×8, 4×5, 2×7, 3×6) e evita equipes do mesmo grupo; você pode editar antes de salvar." action={<button type="button" disabled={!view.suggestion} onClick={() => change({ quarters: view.suggestion })} title={view.suggestion ? '' : 'Disponível quando todos os jogos dos grupos estiverem encerrados'}><Sparkles size={15} /> Sugerir pela classificação</button>}>
+  return <Card title="Formatos do mata-mata e confrontos das quartas" description="Escolha o formato das quartas e o da disputa de 3º lugar, e as equipes de cada quarta. A sugestão segue a classificação (1×8, 4×5, 2×7, 3×6) e evita equipes do mesmo grupo; você pode editar antes de salvar." action={<button type="button" disabled={!view.suggestion} onClick={() => change({ quarters: view.suggestion })} title={view.suggestion ? '' : 'Disponível quando todos os jogos dos grupos estiverem encerrados'}><Sparkles size={15} /> Sugerir pela classificação</button>}>
     {!view.suggestion && <p className="adm-context-note">A sugestão fica disponível quando os 26 jogos dos grupos estiverem encerrados.</p>}
-    <label className="adm-field adm-tour-format"><span>Formato das quartas</span><select value={draft.format} onChange={event => change({ format: event.target.value })}>{QUARTER_FORMATS.map(format => <option key={format} value={format}>{formatLabel(format)}</option>)}</select></label>
+    <div className="adm-tour-formats">
+      <label className="adm-field adm-tour-format"><span>Formato das quartas</span><select value={draft.format} onChange={event => change({ format: event.target.value })}>{QUARTER_FORMATS.map(format => <option key={format} value={format}>{formatLabel(format)}</option>)}</select></label>
+      <label className="adm-field adm-tour-format"><span>Formato da disputa de 3º lugar</span><select value={draft.thirdFormat} onChange={event => change({ thirdFormat: event.target.value })}>{THIRD_FORMATS.map(format => <option key={format} value={format}>{formatLabel(format)}</option>)}</select></label>
+    </div>
     <div className="adm-tour-quarters">{draft.quarters.map((pair, index) => <fieldset key={index}><legend>QF{index + 1}</legend>{pair.map((id, side) => <select key={side} aria-label={`QF${index + 1}, equipe ${side + 1}`} value={id || ''} onChange={event => change({ quarters: draft.quarters.map((item, i) => (i === index ? item.map((team, s) => (s === side ? event.target.value || null : team)) : item)) })}><option value="">Classificado {index * 2 + side + 1} (a definir)</option>{GROUPS.map(group => <optgroup key={group.id} label={`Grupo ${group.id}`}>{group.teams.map(teamId => <option key={teamId} value={teamId}>{view.teams.find(team => team.id === teamId).name}{seedLabel(teamId)}</option>)}</optgroup>)}</select>)}</fieldset>)}</div>
     <div className="adm-tour-actions"><button type="button" className="adm-primary" disabled={busy || !dirty} onClick={save}><Save size={15} /> {busy ? 'Salvando…' : 'Salvar confrontos'}</button></div>
     {feedback?.error && <p className="adm-error" role="alert">{feedback.error}</p>}
@@ -234,7 +238,7 @@ export default function TournamentAdmin({ request }) {
     {filter === 'KO' && <>
       {view.groupsComplete && <Card title="Classificados" description="Sementes calculadas pela classificação final dos grupos."><ol className="adm-tour-seeds">{view.seeds.map(id => { const team = view.teams.find(item => item.id === id); return <li key={id}>{team.name} <small>Grupo {team.group}</small></li>; })}</ol>{view.thirdTies.map(ids => <TieBreaker key={ids.join()} title="Empate entre os terceiros colocados" ids={ids} teams={view.teams} onSave={saveTie('thirds')} />)}</Card>}
       <QuartersEditor view={view} onSave={body => send('/torneio/mata-mata', body)} />
-      {view.rounds.map(round => <div className="adm-tour-list" key={round.id}><h3 className="adm-tour-round">{round.name} · {formatLabel(round.format)} · {round.venue}</h3>{round.matches.map(match => (isSeries(match.format) ? <SeriesEditor key={match.id} match={match} label={match.id === 'F' ? 'Grande final' : match.id} onSave={saveMatch} /> : <MatchEditor key={match.id} match={match} format={match.format} label={match.id === 'F' ? 'Grande final' : match.id} onSave={saveMatch} />))}</div>)}
+      {view.rounds.map(round => <div className="adm-tour-list" key={round.id}><h3 className="adm-tour-round">{round.name} · {formatLabel(round.format)} · {round.venue}</h3>{round.matches.map(match => (isSeries(match.format) ? <SeriesEditor key={match.id} match={match} label={matchLabel(match.id)} onSave={saveMatch} /> : <MatchEditor key={match.id} match={match} format={match.format} label={matchLabel(match.id)} onSave={saveMatch} />))}</div>)}
     </>}
     {filter === 'teams' && <TeamsEditor view={view} onSave={body => send('/torneio/equipes', body)} />}
   </div>;
